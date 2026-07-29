@@ -41,6 +41,7 @@ Thumbs.db
 *.tmp
 *.temp
 ~$*
+work/
 
 # Local synthetic-lab work areas (retained evidence is never stored here)
 .lab_work/
