@@ -11,11 +11,10 @@ work areas, generated exports, attachments, screenshots, and proprietary
 files. A verified Git bundle preserving the complete source history and a
 tracked-tree ZIP were created outside this repository before initialization.
 
-Historical commits in that bundle identify these authors/contributors:
-
-- Michael Vu
-- Mickey Vu
-- taiduc1302
+The verified external bundle preserves the complete historical commit graph,
+including the exact original author and contributor identities. Those
+identities are not duplicated here because this standalone repository retains
+the inherited tracked-content privacy scanner.
 
 The standalone root commit records the source-tree migration; it does not
 claim that the exported work was newly authored by the migration process.
