@@ -43,6 +43,7 @@ def _evidence(
     y: float,
     point_type: str,
     rejected: bool = False,
+    rejection_category: str | None = None,
 ) -> CandidateEvidence:
     return CandidateEvidence(
         candidate_id=candidate_id,
@@ -63,7 +64,13 @@ def _evidence(
         text_bbox={"x0": x, "y0": y, "x1": x + 8, "y1": y + 4},
         alternative_associations=(),
         rejected=rejected,
-        rejection_category=C.SLOPE_ANNOTATION if rejected else "",
+        rejection_category=(
+            rejection_category
+            if rejection_category is not None
+            else C.SLOPE_ANNOTATION
+            if rejected
+            else ""
+        ),
     )
 
 
@@ -108,6 +115,44 @@ class AssistedCaptureTests(unittest.TestCase):
         self.assertEqual(
             by_id["unrelated-id"].rejection_category,
             "OUTSIDE_PLAUSIBLE_RANGE",
+        )
+
+    def test_integer_fragments_and_competing_symbol_labels_are_not_capturable(self):
+        project, _flow = project_and_workflow()
+        shared_symbol = SymbolCandidate(
+            id="oval",
+            symbol_type="DESIGN_OVAL",
+            bbox=Rect(40, 40, 60, 50),
+            confidence=0.9,
+            source_method=C.PDF_VECTOR,
+        )
+        candidates = [
+            _text("integer-fragment", "27", x=44, y=42),
+            _text("competing-a", "49.25", x=44, y=42),
+            _text("competing-b", "49.75", x=46, y=42),
+        ]
+        by_id = {
+            item.candidate_id: item
+            for item in build_candidate_evidence(
+                project,
+                candidates,
+                [shared_symbol],
+            )
+        }
+        self.assertFalse(by_id["integer-fragment"].capturable)
+        self.assertEqual(
+            by_id["integer-fragment"].rejection_category,
+            "AMBIGUOUS_NUMERIC_FRAGMENT",
+        )
+        self.assertFalse(by_id["competing-a"].capturable)
+        self.assertFalse(by_id["competing-b"].capturable)
+        self.assertEqual(
+            by_id["competing-a"].rejection_category,
+            "COMPETING_LABELS",
+        )
+        self.assertEqual(
+            by_id["competing-b"].rejection_category,
+            "COMPETING_LABELS",
         )
 
     def test_mode_matching_candidate_wins_within_snap_radius(self):
@@ -157,6 +202,56 @@ class AssistedCaptureTests(unittest.TestCase):
         self.assertFalse(suggestion.can_capture)
         self.assertEqual(suggestion.evidence.candidate_id, "slope")
         self.assertIn("REJECTED", suggestion.snap_status)
+
+    def test_soft_fragment_rejection_does_not_mask_valid_shared_symbol(self):
+        index = SpatialCandidateIndex(
+            [
+                _evidence(
+                    "fragment",
+                    x=50,
+                    y=50,
+                    point_type=C.DESIGN_GRADE,
+                    rejected=True,
+                    rejection_category="AMBIGUOUS_NUMERIC_FRAGMENT",
+                ),
+                _evidence(
+                    "valid",
+                    x=50,
+                    y=50,
+                    point_type=C.DESIGN_GRADE,
+                ),
+            ]
+        )
+        suggestion = ElevationUnderCursorService(index).suggest(
+            PixelPoint(50, 50), capture_mode=C.DESIGN_GRADE
+        )
+        self.assertTrue(suggestion.can_capture)
+        self.assertEqual(suggestion.evidence.candidate_id, "valid")
+
+    def test_alternative_offset_cycles_competing_mode_matches(self):
+        index = SpatialCandidateIndex(
+            [
+                _evidence(
+                    "nearest",
+                    x=50,
+                    y=50,
+                    point_type=C.EXISTING_GROUND,
+                ),
+                _evidence(
+                    "alternative",
+                    x=54,
+                    y=50,
+                    point_type=C.EXISTING_GROUND,
+                ),
+            ]
+        )
+        suggestion = ElevationUnderCursorService(index).suggest(
+            PixelPoint(50, 50),
+            capture_mode=C.EXISTING_GROUND,
+            alternative_offset=1,
+        )
+        self.assertEqual(suggestion.evidence.candidate_id, "alternative")
+        self.assertIn("ALT 2/2", suggestion.snap_status)
 
     def test_capture_promotes_exactly_one_candidate_with_page_and_audit(self):
         project, flow = project_and_workflow()

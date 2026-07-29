@@ -3,10 +3,17 @@ from __future__ import annotations
 import csv
 import json
 import unittest
+from unittest import mock
 
 from screen2xyz_civil import PRELIMINARY_WARNING
 from screen2xyz_civil import contracts as C
-from screen2xyz_civil.exports import AGTEK_HEADER, ExportError, export_handoff
+from screen2xyz_civil.estimator_exports import verify_export_round_trip
+from screen2xyz_civil.exports import (
+    AGTEK_HEADER,
+    ExportError,
+    approved_points,
+    export_handoff,
+)
 from screen2xyz_civil.models import PixelPoint
 from screen2xyz_civil.persistence import (
     ProjectPersistenceError,
@@ -19,6 +26,32 @@ from .helpers_civil import add_approved, clock, fresh_dir, project_and_workflow
 
 
 class PersistenceExportTests(unittest.TestCase):
+    def test_approved_contour_line_exports_geometry_and_vertices(self):
+        root = fresh_dir()
+        project, flow = project_and_workflow()
+        add_approved(flow)
+        line = flow.add_elevation_line(
+            [PixelPoint(60, 90), PixelPoint(90, 80)],
+            elevation=49.5,
+        )
+        flow.approve_elevation_line(line.id)
+        saved = root / "contours.s2c.json"
+        save_project(project, saved)
+        self.assertEqual(load_project(saved).elevation_lines[0].id, line.id)
+        result = export_handoff(project, root, now=clock, export_id="contours")
+        geometry = json.loads(
+            (result["export_dir"] / "Contour_Lines.geojson").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(geometry["features"][0]["id"], line.id)
+        with (result["export_dir"] / "Contour_Line_Vertices.csv").open(
+            encoding="utf-8-sig", newline=""
+        ) as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["Elevation"], "49.500000")
+
     def test_project_save_load_round_trip(self):
         root = fresh_dir()
         project, flow = project_and_workflow()
@@ -106,6 +139,10 @@ class PersistenceExportTests(unittest.TestCase):
             "Reviewed_Points.geojson",
             "Reviewed_Points.dxf",
             "Breaklines.geojson",
+            "Contour_Lines.geojson",
+            "Contour_Line_Vertices.csv",
+            "Approved_Point_Cart.xlsx",
+            "Export_Round_Trip_Report.md",
         }
         self.assertEqual(
             required,
@@ -117,6 +154,88 @@ class PersistenceExportTests(unittest.TestCase):
             )
         )
         self.assertEqual(audit["warning"], PRELIMINARY_WARNING)
+
+    def test_xlsx_has_required_sheets_numeric_cells_and_filters(self):
+        from openpyxl import load_workbook
+
+        root = fresh_dir()
+        project, flow = project_and_workflow()
+        add_approved(flow)
+        project.source_manifest["display_name"] = "=unsafe-formula.png"
+        line = flow.add_elevation_line(
+            [PixelPoint(60, 90), PixelPoint(90, 80)],
+            elevation=49.5,
+        )
+        flow.approve_elevation_line(line.id)
+        result = export_handoff(project, root, now=clock, export_id="xlsx")
+        workbook = load_workbook(
+            result["export_dir"] / "Approved_Point_Cart.xlsx",
+            read_only=False,
+            data_only=True,
+        )
+        try:
+            self.assertEqual(
+                workbook.sheetnames,
+                [
+                    "Existing Points",
+                    "Design Points",
+                    "Contours and Lines",
+                    "All Approved Data",
+                    "QA Summary",
+                    "Calibration",
+                    "Source Metadata",
+                    "Export Settings",
+                ],
+            )
+            sheet = workbook["All Approved Data"]
+            self.assertEqual(sheet.freeze_panes, "A2")
+            self.assertTrue(sheet.auto_filter.ref)
+            self.assertIsInstance(sheet["B2"].value, (int, float))
+            self.assertIsInstance(sheet["C2"].value, (int, float))
+            self.assertIsInstance(sheet["D2"].value, (int, float))
+            contour_sheet = workbook["Contours and Lines"]
+            self.assertEqual(contour_sheet.auto_filter.ref, "A1:P3")
+            self.assertIsInstance(contour_sheet["B2"].value, (int, float))
+            source_rows = {
+                row[0].value: row[1].value
+                for row in workbook["Source Metadata"].iter_rows()
+            }
+            self.assertEqual(
+                source_rows["display_name"],
+                "'=unsafe-formula.png",
+            )
+        finally:
+            workbook.close()
+        report = (
+            result["export_dir"] / "Export_Round_Trip_Report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("- Overall: PASS", report)
+
+    def test_round_trip_detects_modified_point_file(self):
+        root = fresh_dir()
+        project, flow = project_and_workflow()
+        add_approved(flow)
+        result = export_handoff(project, root, now=clock, export_id="tamper")
+        existing_path = result["export_dir"] / "Existing_Points.csv"
+        text = existing_path.read_text(encoding="utf-8-sig")
+        existing_path.write_text(
+            text.replace("49.060000", "99.990000"),
+            encoding="utf-8-sig",
+            newline="",
+        )
+        verification = verify_export_round_trip(
+            project,
+            result["export_dir"],
+            approved_points(project),
+            coordinate_order="NE",
+        )
+        self.assertFalse(verification["passed"])
+        self.assertTrue(
+            any(
+                not check["passed"] and check["name"] == "Existing_Points.csv round trip"
+                for check in verification["checks"]
+            )
+        )
 
     def test_source_manifest_redacts_local_path(self):
         root = fresh_dir()
@@ -136,6 +255,30 @@ class PersistenceExportTests(unittest.TestCase):
         export_handoff(project, root, now=clock, export_id="same")
         with self.assertRaises(ExportError):
             export_handoff(project, root, now=clock, export_id="same")
+
+    def test_failed_export_leaves_no_partial_final_or_staging_folder(self):
+        root = fresh_dir()
+        project, flow = project_and_workflow()
+        add_approved(flow)
+        prior_history = list(project.export_history)
+        prior_stale = project.exports_stale
+        with mock.patch(
+            "screen2xyz_civil.exports.verify_export_round_trip",
+            side_effect=OSError("injected late verification failure"),
+        ):
+            with self.assertRaises(ExportError):
+                export_handoff(project, root, now=clock, export_id="atomic")
+        self.assertFalse((root / "Synthetic-Civil_export_atomic").exists())
+        self.assertFalse(
+            any(
+                path.name.startswith(
+                    ".Synthetic-Civil_export_atomic.staging-"
+                )
+                for path in root.iterdir()
+            )
+        )
+        self.assertEqual(project.export_history, prior_history)
+        self.assertEqual(project.exports_stale, prior_stale)
 
     def test_en_coordinate_preset_is_explicit(self):
         root = fresh_dir()

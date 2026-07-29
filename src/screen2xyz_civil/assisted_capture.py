@@ -36,6 +36,10 @@ STRICT_REJECTION_TYPES = frozenset(
     }
 )
 
+HARD_CURSOR_GUARD_CATEGORIES = STRICT_REJECTION_TYPES | frozenset(
+    {"EXCLUSION_ZONE", "OUTSIDE_CROP"}
+)
+
 
 @dataclass(frozen=True)
 class CandidateEvidence:
@@ -171,6 +175,7 @@ class ElevationUnderCursorService:
         cursor: PixelPoint,
         *,
         capture_mode: str,
+        alternative_offset: int = 0,
     ) -> HoverSuggestion:
         if capture_mode not in C.TERRAIN_POINT_TYPES:
             raise ValueError("capture_mode must be Existing, Design, or Contour")
@@ -184,10 +189,20 @@ class ElevationUnderCursorService:
         status = "NO CANDIDATE"
         if nearby:
             nearest, nearest_distance = nearby[0]
-            if nearest.rejected and nearest_distance <= self.rejection_guard_px:
-                evidence = nearest
-                distance = nearest_distance
-                status = f"REJECTED {nearest.rejection_category}"
+            guarding = next(
+                (
+                    item
+                    for item in nearby
+                    if item[0].rejected
+                    and item[1] <= self.rejection_guard_px
+                    and item[0].rejection_category
+                    in HARD_CURSOR_GUARD_CATEGORIES
+                ),
+                None,
+            )
+            if guarding is not None:
+                evidence, distance = guarding
+                status = f"REJECTED {evidence.rejection_category}"
             else:
                 capturable = [item for item in nearby if item[0].capturable]
                 matching = [
@@ -195,14 +210,17 @@ class ElevationUnderCursorService:
                     for item in capturable
                     if item[0].likely_type == capture_mode
                 ]
-                chosen = (matching or capturable)
+                chosen = matching or capturable
                 if chosen:
-                    evidence, distance = chosen[0]
+                    selection = alternative_offset % len(chosen)
+                    evidence, distance = chosen[selection]
                     status = (
                         "SNAP MATCH"
                         if evidence.likely_type == capture_mode
                         else "SNAP MODE OVERRIDE"
                     )
+                    if len(chosen) > 1:
+                        status += f" ALT {selection + 1}/{len(chosen)}"
                 else:
                     evidence, distance = nearest, nearest_distance
                     status = (
@@ -308,6 +326,15 @@ def build_candidate_evidence(
             and local_elevation_center is not None
             and re.fullmatch(r"\d{4,}", candidate.text.strip()) is not None
         )
+        ambiguous_numeric_fragment = (
+            repaired_text is None
+            and normalized_value is not None
+            and re.fullmatch(
+                r"[+-]?(?:\d+[.,]\d+|[.,]\d+)",
+                candidate.text.strip(),
+            )
+            is None
+        )
         strict_rejection = classification.point_type in STRICT_REJECTION_TYPES
         rejected = (
             outside_crop
@@ -315,9 +342,18 @@ def build_candidate_evidence(
             or strict_rejection
             or outside_plausible
             or local_pattern_conflict
+            or ambiguous_numeric_fragment
         )
         rejection_category = ""
         reasons = list(classification.reasons)
+        if (
+            candidate.source_method == C.PDF_TEXT
+            and candidate.confidence < 0.9
+        ):
+            reasons.append(
+                "embedded font uses a custom character mapping; confirm the "
+                "visible raster glyphs before approval"
+            )
         if outside_crop:
             rejection_category = "OUTSIDE_CROP"
             reasons.append("candidate lies outside the selected crop")
@@ -329,6 +365,12 @@ def build_candidate_evidence(
             rejection_category = "OUTSIDE_PLAUSIBLE_RANGE"
         elif local_pattern_conflict:
             rejection_category = "LOCAL_ELEVATION_PATTERN_CONFLICT"
+        elif ambiguous_numeric_fragment:
+            rejection_category = "AMBIGUOUS_NUMERIC_FRAGMENT"
+            reasons.append(
+                "integer or incomplete decimal token may be a fragmented label; "
+                "manual review required"
+            )
         evidence_items.append(
             CandidateEvidence(
                 candidate_id=candidate.id,
@@ -368,12 +410,55 @@ def build_candidate_evidence(
                 rejection_category=rejection_category,
             )
         )
+    evidence_items = _reject_competing_labels(evidence_items)
     return tuple(
         sorted(
             evidence_items,
             key=lambda item: (item.page_index, item.pixel.y, item.pixel.x, item.candidate_id),
         )
     )
+
+
+def _reject_competing_labels(
+    evidence_items: Iterable[CandidateEvidence],
+) -> list[CandidateEvidence]:
+    """Keep a shared symbol from silently accepting conflicting elevations."""
+
+    items = list(evidence_items)
+    by_symbol_point: dict[
+        tuple[int, float, float, str], list[int]
+    ] = {}
+    for index, item in enumerate(items):
+        if not item.capturable or item.symbol_type == "NONE":
+            continue
+        key = (
+            item.page_index,
+            round(item.pixel.x, 3),
+            round(item.pixel.y, 3),
+            item.symbol_type,
+        )
+        by_symbol_point.setdefault(key, []).append(index)
+    for indexes in by_symbol_point.values():
+        elevations = {
+            round(float(items[index].elevation), 6)
+            for index in indexes
+            if items[index].elevation is not None
+        }
+        if len(elevations) <= 1:
+            continue
+        for index in indexes:
+            item = items[index]
+            items[index] = replace(
+                item,
+                rejected=True,
+                rejection_category="COMPETING_LABELS",
+                reasons=item.reasons
+                + (
+                    "multiple conflicting labels share the same proposed symbol; "
+                    "manual review required",
+                ),
+            )
+    return items
 
 
 def _dominant_explicit_decimal_center(

@@ -353,6 +353,70 @@ class CivilPoint:
         )
 
 
+@dataclass
+class CivilElevationLine:
+    """A reviewer-drawn constant-elevation line in source-pixel geometry."""
+
+    id: str
+    elevation: float
+    vertices: list[PixelPoint]
+    source_method: str
+    review_status: str
+    created_at: str
+    updated_at: str
+    description: str = "CONTOUR"
+    sheet: str = ""
+    revision_label: str = ""
+    notes: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.id.startswith("CL-"):
+            raise CivilModelError("elevation line id must start with CL-")
+        if len(self.vertices) < 2:
+            raise CivilModelError("elevation line requires at least two vertices")
+        if self.source_method not in C.SOURCE_METHODS:
+            raise CivilModelError("invalid elevation-line source method")
+        if self.review_status not in C.REVIEW_STATUSES:
+            raise CivilModelError("invalid elevation-line review status")
+
+    @property
+    def approved(self) -> bool:
+        return self.review_status in C.APPROVED_STATUSES
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "elevation": self.elevation,
+            "vertices": [point.to_dict() for point in self.vertices],
+            "source_method": self.source_method,
+            "review_status": self.review_status,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "description": self.description,
+            "sheet": self.sheet,
+            "revision_label": self.revision_label,
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "CivilElevationLine":
+        return cls(
+            id=str(value["id"]),
+            elevation=float(value["elevation"]),
+            vertices=[
+                PixelPoint.from_dict(item) for item in value.get("vertices", [])
+            ],
+            source_method=str(value.get("source_method", C.MANUAL)),
+            review_status=str(value.get("review_status", C.UNREVIEWED)),
+            created_at=str(value.get("created_at", "")),
+            updated_at=str(value.get("updated_at", "")),
+            description=str(value.get("description", "CONTOUR")),
+            sheet=str(value.get("sheet", "")),
+            revision_label=str(value.get("revision_label", "")),
+            notes=str(value.get("notes", "")),
+        )
+
+
 def _optional_float(value: Any) -> float | None:
     return None if value is None else float(value)
 
@@ -372,6 +436,7 @@ class CivilProject:
     plausible_elevation_min: float = C.DEFAULT_PLAUSIBLE_ELEVATION_RANGE[0]
     plausible_elevation_max: float = C.DEFAULT_PLAUSIBLE_ELEVATION_RANGE[1]
     points: list[CivilPoint] = field(default_factory=list)
+    elevation_lines: list[CivilElevationLine] = field(default_factory=list)
     boundaries: list[list[PixelPoint]] = field(default_factory=list)
     exclusion_polygons: list[list[PixelPoint]] = field(default_factory=list)
     breaklines: list[list[PixelPoint]] = field(default_factory=list)
@@ -432,6 +497,9 @@ class CivilProject:
             "manual_points": [
                 point.id for point in self.points if point.source_method == C.MANUAL
             ],
+            "elevation_lines": [
+                line.to_dict() for line in self.elevation_lines
+            ],
             "boundaries": [_polygon_to_dict(item) for item in self.boundaries],
             "exclusion_polygons": [
                 _polygon_to_dict(item) for item in self.exclusion_polygons
@@ -482,6 +550,10 @@ class CivilProject:
             points=[
                 CivilPoint.from_dict(item)
                 for item in value.get("point_candidates", value.get("points", []))
+            ],
+            elevation_lines=[
+                CivilElevationLine.from_dict(item)
+                for item in value.get("elevation_lines", [])
             ],
             boundaries=[
                 _polygon_from_dict(item) for item in value.get("boundaries", [])

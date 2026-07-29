@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from screen2xyz_lab.evidence import (
+from .io_utils import (
     atomic_write_bytes,
     atomic_write_json,
+    csv_bytes,
+    formula_safe_display,
     sha256_file,
     write_manifest,
 )
-from screen2xyz_lab.exporters import csv_bytes, formula_safe_display
 
 from . import PRELIMINARY_WARNING
 from . import contracts as C
@@ -22,10 +25,17 @@ from .advanced_exports import (
     dxf_bytes,
     geojson_bytes,
     landxml_bytes,
-    nez_bytes,
-    xyz_bytes,
+)
+from .estimator_exports import (
+    EstimatorExportError,
+    generic_nez_bytes,
+    generic_xyz_bytes,
+    point_number,
+    verify_export_round_trip,
+    write_estimator_workbook,
 )
 from .models import CivilPoint, CivilProject
+from .transform import to_local
 from .qa import has_critical_export_errors, qa_summary
 from .surface import SurfaceError, build_project_surface
 
@@ -51,7 +61,7 @@ def approved_points(project: CivilProject) -> list[CivilPoint]:
             and point.local_east is not None
             and point.local_north is not None
         ),
-        key=lambda point: point.id,
+        key=lambda point: (point_number(point), point.id),
     )
 
 
@@ -62,6 +72,76 @@ def export_handoff(
     now: Callable[[], str],
     export_id: str | None = None,
     coordinate_order: str = "NE",
+    point_ids: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """Build privately in a staging directory and publish in one rename."""
+
+    timestamp = now()
+    token = export_id or re.sub(r"[^0-9A-Za-z]+", "", timestamp)
+    if not token:
+        raise ExportError("export id is empty after sanitization")
+    safe_name = (
+        re.sub(r"[^0-9A-Za-z._-]+", "-", project.name).strip("-")
+        or "project"
+    )
+    root = output_root.expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    final_dir = root / f"{safe_name}_export_{token}"
+    if final_dir.exists():
+        raise ExportError(
+            f"versioned export already exists: {final_dir.name}"
+        )
+    stage_root = root / f".{final_dir.name}.staging-{os.getpid()}"
+    if stage_root.exists():
+        raise ExportError(
+            f"export staging directory already exists: {stage_root.name}"
+        )
+    history_length = len(project.export_history)
+    prior_stale = project.exports_stale
+    stage_root.mkdir()
+    try:
+        result = _build_unpublished_handoff(
+            project,
+            stage_root,
+            now=lambda: timestamp,
+            export_id=token,
+            coordinate_order=coordinate_order,
+            point_ids=point_ids,
+        )
+        staged_export = Path(result["export_dir"]).resolve()
+        if (
+            staged_export.parent != stage_root
+            or staged_export.name != final_dir.name
+        ):
+            raise ExportError("export staging path failed containment check")
+        os.replace(staged_export, final_dir)
+        stage_root.rmdir()
+        result["export_dir"] = final_dir
+        if "round_trip" in result:
+            result["round_trip"]["report_path"] = (
+                final_dir / "Export_Round_Trip_Report.md"
+            )
+        return result
+    except Exception:
+        del project.export_history[history_length:]
+        project.exports_stale = prior_stale
+        safe_stage = stage_root.resolve()
+        if (
+            safe_stage.parent == root
+            and safe_stage.name.startswith(f".{final_dir.name}.staging-")
+        ):
+            shutil.rmtree(safe_stage, ignore_errors=True)
+        raise
+
+
+def _build_unpublished_handoff(
+    project: CivilProject,
+    output_root: Path,
+    *,
+    now: Callable[[], str],
+    export_id: str | None = None,
+    coordinate_order: str = "NE",
+    point_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     if coordinate_order not in {"NE", "EN"}:
         raise ExportError("coordinate_order must be NE or EN")
@@ -78,14 +158,44 @@ def export_handoff(
         raise ExportError(f"versioned export already exists: {export_dir.name}")
     export_dir.mkdir(parents=True)
 
-    points = approved_points(project)
+    selected_ids = None if point_ids is None else set(point_ids)
+    if selected_ids is not None:
+        known_ids = {point.id for point in project.points}
+        unknown_ids = selected_ids - known_ids
+        if unknown_ids:
+            raise ExportError(
+                "selected export contains unknown Point Cart IDs: "
+                + ", ".join(sorted(unknown_ids))
+            )
+    points = [
+        point
+        for point in approved_points(project)
+        if selected_ids is None or point.id in selected_ids
+    ]
+    if selected_ids is not None and not points:
+        raise ExportError(
+            "none of the selected Point Cart rows are approved terrain points"
+        )
     existing = [point for point in points if point.point_type == C.EXISTING_GROUND]
     design = [point for point in points if point.point_type == C.DESIGN_GRADE]
     _write_agtek_csv(export_dir / "Existing_Points.csv", existing, coordinate_order)
     _write_agtek_csv(export_dir / "Design_Points.csv", design, coordinate_order)
     _write_all_reviewed(export_dir / "All_Reviewed_Points.csv", points, coordinate_order)
-    atomic_write_bytes(export_dir / "Reviewed_Points.xyz", xyz_bytes(points))
-    atomic_write_bytes(export_dir / "Reviewed_Points.nez", nez_bytes(points))
+    atomic_write_bytes(
+        export_dir / "Reviewed_Points.xyz", generic_xyz_bytes(points)
+    )
+    atomic_write_bytes(
+        export_dir / "Reviewed_Points.nez", generic_nez_bytes(points)
+    )
+    try:
+        write_estimator_workbook(
+            project,
+            export_dir / "Approved_Point_Cart.xlsx",
+            points,
+            qa_summary=summary,
+        )
+    except EstimatorExportError as exc:
+        raise ExportError(f"XLSX export failed: {exc}") from exc
     atomic_write_bytes(
         export_dir / "Reviewed_Points.geojson",
         geojson_bytes(project, points),
@@ -97,6 +207,14 @@ def export_handoff(
     atomic_write_bytes(
         export_dir / "Breaklines.geojson",
         breaklines_geojson_bytes(project),
+    )
+    atomic_write_bytes(
+        export_dir / "Contour_Lines.geojson",
+        _contour_lines_geojson_bytes(project),
+    )
+    atomic_write_bytes(
+        export_dir / "Contour_Line_Vertices.csv",
+        _contour_line_vertices_csv(project),
     )
     atomic_write_json(
         export_dir / "Project_Audit.json",
@@ -139,6 +257,20 @@ def export_handoff(
             landxml_status = "EXPORTED_PRELIMINARY"
         except (SurfaceError, ValueError) as exc:
             raise ExportError(f"LandXML gate failed: {exc}") from exc
+    try:
+        round_trip = verify_export_round_trip(
+            project,
+            export_dir,
+            points,
+            coordinate_order=coordinate_order,
+        )
+    except (EstimatorExportError, OSError, ValueError, KeyError) as exc:
+        raise ExportError(f"export round-trip verification failed: {exc}") from exc
+    if not round_trip["passed"]:
+        raise ExportError(
+            "export round-trip verification failed; inspect "
+            "Export_Round_Trip_Report.md"
+        )
     artifact_hashes = {
         path.name: sha256_file(path)
         for path in sorted(export_dir.iterdir(), key=lambda item: item.name)
@@ -192,6 +324,7 @@ def export_handoff(
         "approved_count": len(points),
         "hashes": final_hashes,
         "qa_summary": summary,
+        "round_trip": round_trip,
     }
 
 
@@ -225,7 +358,7 @@ def _agtek_row(point: CivilPoint, coordinate_order: str) -> dict[str, Any]:
     if coordinate_order == "EN":
         northing, easting = easting, northing
     return {
-        "Point": point.id,
+        "Point": point_number(point),
         "Northing": northing,
         "Easting": easting,
         "Elevation": _format_number(point.elevation),
@@ -239,6 +372,90 @@ def _format_number(value: float | None) -> str:
     if value is None:
         return ""
     return format(float(value), ".6f")
+
+
+def _approved_contour_line_vertices(project: CivilProject) -> list[dict[str, Any]]:
+    if project.calibration is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in project.elevation_lines:
+        if not line.approved:
+            continue
+        for index, vertex in enumerate(line.vertices, start=1):
+            east, north = to_local(vertex, project.calibration)
+            rows.append(
+                {
+                    "Line": line.id,
+                    "Vertex": index,
+                    "Northing": _format_number(north),
+                    "Easting": _format_number(east),
+                    "Elevation": _format_number(line.elevation),
+                    "Description": formula_safe_display(line.description),
+                    "Sheet": formula_safe_display(line.sheet),
+                    "Revision": formula_safe_display(line.revision_label),
+                }
+            )
+    return rows
+
+
+def _contour_line_vertices_csv(project: CivilProject) -> bytes:
+    return csv_bytes(
+        _approved_contour_line_vertices(project),
+        (
+            "Line",
+            "Vertex",
+            "Northing",
+            "Easting",
+            "Elevation",
+            "Description",
+            "Sheet",
+            "Revision",
+        ),
+    )
+
+
+def _contour_lines_geojson_bytes(project: CivilProject) -> bytes:
+    features = []
+    if project.calibration is not None:
+        for line in project.elevation_lines:
+            if not line.approved:
+                continue
+            coordinates = [
+                [*to_local(vertex, project.calibration), line.elevation]
+                for vertex in line.vertices
+            ]
+            features.append(
+                {
+                    "type": "Feature",
+                    "id": line.id,
+                    "properties": {
+                        "elevation": line.elevation,
+                        "description": formula_safe_display(line.description),
+                        "sheet": formula_safe_display(line.sheet),
+                        "revision": formula_safe_display(line.revision_label),
+                        "review_status": line.review_status,
+                        "preliminary": True,
+                    },
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": coordinates,
+                    },
+                }
+            )
+    return (
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "coordinate_basis": "LOCAL_EAST_NORTH_METRES",
+                "warning": PRELIMINARY_WARNING,
+                "features": features,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+        ).encode("utf-8")
+        + b"\n"
+    )
 
 
 def _audit_payload(
@@ -272,7 +489,8 @@ def _redacted_source_manifest(project: CivilProject) -> dict[str, Any]:
         "height_px",
         "source_type",
         "page_count",
-        "source_revision",
+        "sheet_id",
+        "revision",
     }
     return {
         "schema_version": C.SCHEMA_VERSION,

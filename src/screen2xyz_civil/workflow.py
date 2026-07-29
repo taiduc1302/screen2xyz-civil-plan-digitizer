@@ -6,6 +6,7 @@ import math
 import re
 import secrets
 from dataclasses import replace
+from functools import wraps
 from typing import Any, Callable
 
 from . import contracts as C
@@ -20,6 +21,7 @@ from .detection import (
 from .models import (
     Calibration,
     CivilModelError,
+    CivilElevationLine,
     CivilPoint,
     CivilProject,
     CropRegion,
@@ -69,10 +71,38 @@ def new_project(
     return project
 
 
+def undoable(method):
+    """Record one project snapshot for each outer estimator action."""
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        outer = self._mutation_depth == 0
+        snapshot = None
+        if outer:
+            snapshot = self.project.to_dict()
+            self._undo_stack.append(snapshot)
+            self._redo_stack.clear()
+        self._mutation_depth += 1
+        try:
+            return method(self, *args, **kwargs)
+        except Exception:
+            if outer and snapshot is not None:
+                self._restore_snapshot(snapshot)
+                self._undo_stack.pop()
+            raise
+        finally:
+            self._mutation_depth -= 1
+
+    return wrapper
+
+
 class CivilWorkflow:
     def __init__(self, project: CivilProject, *, now: Callable[[], str]) -> None:
         self.project = project
         self._now = now
+        self._undo_stack: list[dict[str, Any]] = []
+        self._redo_stack: list[dict[str, Any]] = []
+        self._mutation_depth = 0
 
     def _touch(self) -> str:
         timestamp = self._now()
@@ -84,6 +114,7 @@ class CivilWorkflow:
         event.update(extra)
         self.project.decision_log.append(event)
 
+    @undoable
     def set_crop(self, crop: CropRegion) -> None:
         width = float(self.project.source_manifest.get("width_px", 0))
         height = float(self.project.source_manifest.get("height_px", 0))
@@ -95,6 +126,32 @@ class CivilWorkflow:
         self.project.exports_stale = True
         self._audit("CROP_SET", "Working crop selected.", crop=crop.to_dict())
 
+    @undoable
+    def set_plausible_elevation_range(
+        self,
+        minimum: float,
+        maximum: float,
+    ) -> None:
+        minimum = float(minimum)
+        maximum = float(maximum)
+        if not math.isfinite(minimum) or not math.isfinite(maximum):
+            raise WorkflowError("plausible elevation limits must be finite")
+        if minimum >= maximum:
+            raise WorkflowError("minimum elevation must be less than maximum elevation")
+        self.project.plausible_elevation_min = minimum
+        self.project.plausible_elevation_max = maximum
+        self.project.exports_stale = True
+        self._audit(
+            "PLAUSIBLE_ELEVATION_RANGE_SET",
+            (
+                f"Project elevation screening range set to "
+                f"{minimum:g} through {maximum:g} metres."
+            ),
+            minimum=minimum,
+            maximum=maximum,
+        )
+
+    @undoable
     def apply_calibration(
         self,
         *,
@@ -151,6 +208,7 @@ class CivilWorkflow:
         )
         return calibration
 
+    @undoable
     def verify_current_scale(
         self,
         point_1: PixelPoint,
@@ -181,6 +239,7 @@ class CivilWorkflow:
         )
         return check
 
+    @undoable
     def add_manual_point(
         self,
         *,
@@ -211,6 +270,7 @@ class CivilWorkflow:
         )
         point = CivilPoint(
             id=point_id,
+            point_number=point_id,
             page_index=page_index,
             page_label=page_label,
             source_file=str(self.project.source_manifest.get("display_name", "")),
@@ -239,6 +299,7 @@ class CivilWorkflow:
         )
         return point
 
+    @undoable
     def capture_assisted_point(
         self,
         evidence: CandidateEvidence,
@@ -377,6 +438,76 @@ class CivilWorkflow:
         )
         return point
 
+    @undoable
+    def add_elevation_line(
+        self,
+        vertices: list[PixelPoint],
+        *,
+        elevation: float,
+        source_method: str = C.MANUAL,
+        description: str = "CONTOUR",
+    ) -> CivilElevationLine:
+        self._validate_elevation(elevation)
+        if len(vertices) < 2:
+            raise WorkflowError("contour line requires at least two vertices")
+        if source_method not in C.SOURCE_METHODS:
+            raise WorkflowError("invalid contour-line source method")
+        for vertex in vertices:
+            if self.project.crop is not None and not self.project.crop.contains(vertex):
+                raise WorkflowError("contour-line vertex is outside the selected crop")
+        timestamp = self._now()
+        next_number = max(
+            (
+                int(line.id.split("-")[-1])
+                for line in self.project.elevation_lines
+                if line.id.split("-")[-1].isdigit()
+            ),
+            default=0,
+        ) + 1
+        line = CivilElevationLine(
+            id=f"CL-{next_number:06d}",
+            elevation=float(elevation),
+            vertices=list(vertices),
+            source_method=source_method,
+            review_status=C.UNREVIEWED,
+            created_at=timestamp,
+            updated_at=timestamp,
+            description=description.strip() or "CONTOUR",
+            sheet=str(self.project.source_manifest.get("sheet_id") or ""),
+            revision_label=str(self.project.source_manifest.get("revision") or ""),
+        )
+        self.project.elevation_lines.append(line)
+        self.project.exports_stale = True
+        self._audit(
+            "ELEVATION_LINE_ADDED",
+            "Reviewer supplied explicit contour-line geometry and elevation.",
+            line_id=line.id,
+            vertex_count=len(vertices),
+            elevation=float(elevation),
+        )
+        return line
+
+    @undoable
+    def approve_elevation_line(self, line_id: str) -> CivilElevationLine:
+        if self.project.calibration is None:
+            raise WorkflowError("calibration is required before line approval")
+        line = next(
+            (item for item in self.project.elevation_lines if item.id == line_id),
+            None,
+        )
+        if line is None:
+            raise WorkflowError(f"unknown elevation line: {line_id}")
+        line.review_status = C.APPROVED
+        line.updated_at = self._touch()
+        self.project.exports_stale = True
+        self._audit(
+            "ELEVATION_LINE_APPROVED",
+            "Reviewer explicitly approved contour-line geometry.",
+            line_id=line.id,
+        )
+        return line
+
+    @undoable
     def add_candidate(self, point: CivilPoint) -> CivilPoint:
         if any(existing.id == point.id for existing in self.project.points):
             raise WorkflowError(f"duplicate point id: {point.id}")
@@ -391,6 +522,8 @@ class CivilWorkflow:
                 PixelPoint(point.pixel_x, point.pixel_y), self.project.calibration
             )
             point.calibration_revision = self.project.calibration.revision
+        if not point.point_number:
+            point.point_number = point.id
         self.project.points.append(point)
         self.project.exports_stale = True
         self._audit(
@@ -400,6 +533,7 @@ class CivilWorkflow:
         )
         return point
 
+    @undoable
     def ingest_text_candidates(
         self,
         candidates: list[TextCandidate],
@@ -489,6 +623,7 @@ class CivilWorkflow:
         )
         return {"added": added, "filtered": filtered}
 
+    @undoable
     def use_alternative_association(
         self, point_id: str, alternative_index: int = 0
     ) -> CivilPoint:
@@ -509,6 +644,7 @@ class CivilWorkflow:
         )
         return updated
 
+    @undoable
     def edit_point(
         self,
         point_id: str,
@@ -516,6 +652,11 @@ class CivilWorkflow:
         elevation: float | None = None,
         point_type: str | None = None,
         pixel: PixelPoint | None = None,
+        point_number: str | None = None,
+        description: str | None = None,
+        sheet: str | None = None,
+        revision_label: str | None = None,
+        notes: str | None = None,
     ) -> CivilPoint:
         point = self.project.point(point_id)
         before = {
@@ -524,6 +665,11 @@ class CivilWorkflow:
             "pixel_x": point.pixel_x,
             "pixel_y": point.pixel_y,
             "review_status": point.review_status,
+            "point_number": point.point_number,
+            "description": point.description,
+            "sheet": point.sheet,
+            "revision_label": point.revision_label,
+            "notes": point.notes,
         }
         if elevation is not None:
             self._validate_elevation(elevation)
@@ -543,6 +689,24 @@ class CivilWorkflow:
                     pixel, self.project.calibration
                 )
                 point.calibration_revision = self.project.calibration.revision
+        if point_number is not None:
+            cleaned = point_number.strip()
+            if not cleaned:
+                raise WorkflowError("point number cannot be empty")
+            if any(
+                other.id != point.id and other.point_number == cleaned
+                for other in self.project.points
+            ):
+                raise WorkflowError("point number must be unique")
+            point.point_number = cleaned
+        if description is not None:
+            point.description = description.strip()
+        if sheet is not None:
+            point.sheet = sheet.strip()
+        if revision_label is not None:
+            point.revision_label = revision_label.strip()
+        if notes is not None:
+            point.notes = notes.strip()
         point.review_status = C.REVIEW_REQUIRED
         timestamp = self._touch()
         point.updated_at = timestamp
@@ -555,6 +719,11 @@ class CivilWorkflow:
                     "point_type": point.point_type,
                     "pixel_x": point.pixel_x,
                     "pixel_y": point.pixel_y,
+                    "point_number": point.point_number,
+                    "description": point.description,
+                    "sheet": point.sheet,
+                    "revision_label": point.revision_label,
+                    "notes": point.notes,
                 },
             }
         )
@@ -569,6 +738,7 @@ class CivilWorkflow:
         )
         return point
 
+    @undoable
     def approve_point(self, point_id: str) -> CivilPoint:
         point = self.project.point(point_id)
         if self.project.calibration is None:
@@ -594,6 +764,7 @@ class CivilWorkflow:
         )
         return point
 
+    @undoable
     def reject_point(self, point_id: str, reason: str = "Reviewer rejected point.") -> CivilPoint:
         point = self.project.point(point_id)
         point.review_status = C.REJECTED
@@ -610,6 +781,7 @@ class CivilWorkflow:
         )
         return point
 
+    @undoable
     def mark_review_required(self, point_id: str, reason: str) -> CivilPoint:
         point = self.project.point(point_id)
         point.review_status = C.REVIEW_REQUIRED
@@ -618,6 +790,7 @@ class CivilWorkflow:
         self.project.exports_stale = True
         return point
 
+    @undoable
     def merge_duplicate(self, keep_id: str, reject_id: str) -> CivilPoint:
         if keep_id == reject_id:
             raise WorkflowError("cannot merge a point with itself")
@@ -635,6 +808,7 @@ class CivilWorkflow:
             reject_id, f"Merged as duplicate of {keep_id}; separation {distance:.6f} m."
         )
 
+    @undoable
     def delete_manual_point(self, point_id: str) -> None:
         point = self.project.point(point_id)
         if point.source_method != C.MANUAL:
@@ -647,6 +821,150 @@ class CivilWorkflow:
             point_id=point.id,
         )
 
+    @undoable
+    def delete_cart_point(self, point_id: str) -> None:
+        point = self.project.point(point_id)
+        self.project.points.remove(point)
+        self.project.exports_stale = True
+        self._audit(
+            "CART_POINT_DELETED",
+            "Reviewer deleted a Point Cart row after confirmation.",
+            point_id=point.id,
+            point_number=point.point_number or point.id,
+            prior_status=point.review_status,
+        )
+
+    @undoable
+    def bulk_approve(self, point_ids: list[str]) -> list[CivilPoint]:
+        if not point_ids:
+            raise WorkflowError("select at least one point to bulk approve")
+        approved = [self.approve_point(point_id) for point_id in point_ids]
+        self._audit(
+            "POINTS_BULK_APPROVED",
+            f"Reviewer explicitly approved {len(approved)} selected cart rows.",
+            point_ids=list(point_ids),
+        )
+        return approved
+
+    @undoable
+    def bulk_change_description(
+        self,
+        point_ids: list[str],
+        description: str,
+    ) -> list[CivilPoint]:
+        if not point_ids:
+            raise WorkflowError("select at least one point")
+        changed = [
+            self.edit_point(point_id, description=description)
+            for point_id in point_ids
+        ]
+        self._audit(
+            "POINTS_BULK_DESCRIPTION_CHANGED",
+            f"Changed description on {len(changed)} selected cart rows.",
+            point_ids=list(point_ids),
+        )
+        return changed
+
+    @undoable
+    def renumber_points(
+        self,
+        *,
+        point_ids: list[str] | None = None,
+        prefix: str = "P",
+        start: int = 1,
+        padding: int = 4,
+    ) -> list[CivilPoint]:
+        if start < 0 or not 1 <= padding <= 12:
+            raise WorkflowError("renumber settings are invalid")
+        selected = (
+            list(self.project.points)
+            if point_ids is None
+            else [self.project.point(point_id) for point_id in point_ids]
+        )
+        if not selected:
+            raise WorkflowError("there are no points to renumber")
+        untouched = {
+            point.point_number
+            for point in self.project.points
+            if point not in selected and point.point_number
+        }
+        new_numbers = [
+            f"{prefix}{number:0{padding}d}"
+            for number in range(start, start + len(selected))
+        ]
+        if len(set(new_numbers)) != len(new_numbers) or untouched.intersection(
+            new_numbers
+        ):
+            raise WorkflowError("renumbering would create duplicate point numbers")
+        timestamp = self._now()
+        for point, number in zip(selected, new_numbers):
+            point.point_number = number
+            point.updated_at = timestamp
+        self.project.exports_stale = True
+        self._audit(
+            "POINTS_RENUMBERED",
+            f"Renumbered {len(selected)} Point Cart rows.",
+            point_ids=[point.id for point in selected],
+            prefix=prefix,
+            start=start,
+            padding=padding,
+        )
+        return selected
+
+    @undoable
+    def sort_points(self, key: str, *, reverse: bool = False) -> None:
+        keys = {
+            "point_number": lambda point: point.point_number or point.id,
+            "page": lambda point: (point.page_index, point.id),
+            "elevation": lambda point: (point.elevation, point.id),
+            "class": lambda point: (point.point_type, point.id),
+            "status": lambda point: (point.review_status, point.id),
+            "created": lambda point: (point.created_at, point.id),
+        }
+        if key not in keys:
+            raise WorkflowError("unsupported Point Cart sort")
+        self.project.points.sort(key=keys[key], reverse=reverse)
+        self._audit(
+            "POINT_CART_SORTED",
+            f"Point Cart sorted by {key}.",
+            key=key,
+            reverse=reverse,
+        )
+
+    def undo(self) -> str:
+        if not self._undo_stack:
+            raise WorkflowError("nothing to undo")
+        current = self.project.to_dict()
+        snapshot = self._undo_stack.pop()
+        self._redo_stack.append(current)
+        self._restore_snapshot(snapshot)
+        self._audit("UNDO", "Reverted the previous estimator action.")
+        return "Previous estimator action undone."
+
+    def redo(self) -> str:
+        if not self._redo_stack:
+            raise WorkflowError("nothing to redo")
+        current = self.project.to_dict()
+        snapshot = self._redo_stack.pop()
+        self._undo_stack.append(current)
+        self._restore_snapshot(snapshot)
+        self._audit("REDO", "Reapplied the previously undone estimator action.")
+        return "Estimator action redone."
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo_stack)
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo_stack)
+
+    def _restore_snapshot(self, snapshot: dict[str, Any]) -> None:
+        restored = CivilProject.from_dict(snapshot)
+        self.project.__dict__.clear()
+        self.project.__dict__.update(restored.__dict__)
+
+    @undoable
     def set_boundary(self, points: list[PixelPoint]) -> None:
         self._validate_geometry(points, minimum=3, label="boundary")
         self.project.boundaries = [list(points)]
@@ -656,6 +974,7 @@ class CivilWorkflow:
             f"Reviewed boundary set with {len(points)} vertices.",
         )
 
+    @undoable
     def add_exclusion_polygon(self, points: list[PixelPoint]) -> None:
         self._validate_geometry(points, minimum=3, label="exclusion polygon")
         self.project.exclusion_polygons.append(list(points))
@@ -665,6 +984,7 @@ class CivilWorkflow:
             f"Reviewed exclusion polygon added with {len(points)} vertices.",
         )
 
+    @undoable
     def add_breakline(self, points: list[PixelPoint]) -> None:
         self._validate_geometry(points, minimum=2, label="breakline")
         self.project.breaklines.append(list(points))
@@ -674,6 +994,7 @@ class CivilWorkflow:
             f"User-reviewed preliminary breakline added with {len(points)} vertices.",
         )
 
+    @undoable
     def add_no_cross_line(self, points: list[PixelPoint]) -> None:
         self._validate_geometry(points, minimum=2, label="no-cross line")
         self.project.no_cross_lines.append(list(points))
@@ -683,6 +1004,7 @@ class CivilWorkflow:
             f"User-reviewed no-cross line added with {len(points)} vertices.",
         )
 
+    @undoable
     def disable_triangle(self, triangle_id: str) -> None:
         if not re.fullmatch(r"T-\d{4,}", triangle_id):
             raise WorkflowError("invalid triangle id")

@@ -10,10 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from screen2xyz_lab.evidence import sha256_file
-
 from . import contracts as C
 from .detection import Rect, TextCandidate, VectorShape
+from .io_utils import sha256_file
 
 
 class PdfAdapterError(RuntimeError):
@@ -132,22 +131,30 @@ def extract_pdf_text_candidates(
     try:
         page = PdfReader(str(path.expanduser().resolve())).pages[page_index]
         page_info = info.pages[page_index]
-        fragments: list[tuple[str, float, float, float]] = []
+        fragments: list[tuple[str, float, float, float, float]] = []
 
         def visitor(
             text: str,
             _cm: list[float],
             tm: list[float],
-            _font_dict: dict[str, Any] | None,
+            font_dict: dict[str, Any] | None,
             font_size: float,
         ) -> None:
             if text and text.strip():
-                fragments.append((text, float(tm[4]), float(tm[5]), float(font_size)))
+                fragments.append(
+                    (
+                        text,
+                        float(tm[4]),
+                        float(tm[5]),
+                        float(font_size),
+                        _pdf_text_confidence(font_dict),
+                    )
+                )
 
         page.extract_text(visitor_text=visitor)
         candidates: list[TextCandidate] = []
         sequence = 0
-        for fragment, base_x, base_y, font_size in fragments:
+        for fragment, base_x, base_y, font_size, confidence in fragments:
             safe_size = max(1.0, abs(font_size))
             for match in re.finditer(r"\S+", fragment):
                 token = match.group(0)
@@ -166,7 +173,7 @@ def extract_pdf_text_candidates(
                         bbox=pixel_bbox,
                         page_index=page_index,
                         source_method=C.PDF_TEXT,
-                        confidence=1.0,
+                        confidence=confidence,
                         context=fragment.strip(),
                         pdf_bbox=pdf_bbox,
                     )
@@ -176,6 +183,19 @@ def extract_pdf_text_candidates(
         raise
     except Exception as exc:
         raise PdfAdapterError("vector PDF text extraction failed") from exc
+
+
+def _pdf_text_confidence(font_dict: dict[str, Any] | None) -> float:
+    """Flag embedded-font mappings that need raster-glyph confirmation."""
+
+    if not font_dict:
+        return 0.65
+    encoding = font_dict.get("/Encoding")
+    if isinstance(encoding, dict) and encoding.get("/Differences"):
+        return 0.70
+    if not font_dict.get("/ToUnicode"):
+        return 0.72
+    return 0.98
 
 
 def extract_pdf_vector_shapes(

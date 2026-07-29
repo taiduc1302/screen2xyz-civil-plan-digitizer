@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from benchmark_civil import DATASET_ID, run_benchmark
+from .benchmark_civil import DATASET_ID, run_benchmark
 
 
 class BenchmarkTests(unittest.TestCase):
