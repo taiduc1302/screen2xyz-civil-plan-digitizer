@@ -209,6 +209,14 @@ class CivilPoint:
     alternative_associations: list[dict[str, Any]] = field(default_factory=list)
     user_edits: list[dict[str, Any]] = field(default_factory=list)
     calibration_revision: int | None = None
+    point_number: str = ""
+    sheet: str = ""
+    revision_label: str = ""
+    notes: str = ""
+    capture_candidate_id: str = ""
+    capture_mode: str = ""
+    capture_confidence: float | None = None
+    capture_audit: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.id or not self.id.startswith("PT-"):
@@ -230,6 +238,7 @@ class CivilPoint:
             self.symbol_confidence,
             self.association_confidence,
             self.classification_confidence,
+            self.capture_confidence,
         ):
             if confidence is not None and not 0.0 <= confidence <= 1.0:
                 raise CivilModelError("confidence must be between 0 and 1")
@@ -275,6 +284,14 @@ class CivilPoint:
             "updated_at": self.updated_at,
             "user_edits": list(self.user_edits),
             "calibration_revision": self.calibration_revision,
+            "point_number": self.point_number,
+            "sheet": self.sheet,
+            "revision_label": self.revision_label,
+            "notes": self.notes,
+            "capture_candidate_id": self.capture_candidate_id,
+            "capture_mode": self.capture_mode,
+            "capture_confidence": self.capture_confidence,
+            "capture_audit": dict(self.capture_audit),
         }
 
     @classmethod
@@ -325,6 +342,14 @@ class CivilPoint:
                 if value.get("calibration_revision") is None
                 else int(value["calibration_revision"])
             ),
+            point_number=str(value.get("point_number", "")),
+            sheet=str(value.get("sheet", "")),
+            revision_label=str(value.get("revision_label", "")),
+            notes=str(value.get("notes", "")),
+            capture_candidate_id=str(value.get("capture_candidate_id", "")),
+            capture_mode=str(value.get("capture_mode", "")),
+            capture_confidence=_optional_float(value.get("capture_confidence")),
+            capture_audit=dict(value.get("capture_audit", {})),
         )
 
 

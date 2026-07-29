@@ -10,6 +10,12 @@ from typing import Callable
 
 from .. import PRELIMINARY_WARNING
 from .. import contracts as C
+from ..assisted_capture import (
+    ElevationUnderCursorService,
+    HoverSuggestion,
+    SpatialCandidateIndex,
+    build_candidate_evidence,
+)
 from ..exports import ExportError, export_handoff
 from ..detection import detect_symbols
 from ..models import CivilPoint, CropRegion, PixelPoint
@@ -71,9 +77,20 @@ class CivilPlanDigitizerApp:
         self._collect_count = 0
         self._collect_callback: Callable[[list[PixelPoint]], None] | None = None
         self._manual_payload: tuple[float, str] | None = None
+        self._candidate_index = SpatialCandidateIndex()
+        self._hover_service: ElevationUnderCursorService | None = None
+        self._hover_suggestion: HoverSuggestion | None = None
 
         self.status = tk.StringVar(value="Open a local PDF or PNG to begin.")
         self.calibration_status = tk.StringVar(value="Calibration: not set")
+        self.capture_mode = tk.StringVar(value=C.EXISTING_GROUND)
+        self.candidate_summary = tk.StringVar(value="Candidate index: empty")
+        self.cursor_status = tk.StringVar(
+            value=(
+                "Cursor: -- | Mode: Existing | Elevation: -- | "
+                "Source/confidence: -- | NO CANDIDATE"
+            )
+        )
         self.selected_reason = tk.StringVar(value="Select a point to review.")
         self._build()
         self._bind_shortcuts()
@@ -156,6 +173,32 @@ class CivilPlanDigitizerApp:
                 side="left", padx=(5, 0)
             )
 
+        capture = ttk.Frame(self.root, padding=(8, 0, 8, 6))
+        capture.pack(fill="x")
+        ttk.Label(
+            capture,
+            text="Assisted capture:",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(side="left")
+        for label, value in (
+            ("Existing (E)", C.EXISTING_GROUND),
+            ("Design (D)", C.DESIGN_GRADE),
+            ("Contour (C)", C.CONTOUR_ELEVATION),
+        ):
+            ttk.Radiobutton(
+                capture,
+                text=label,
+                value=value,
+                variable=self.capture_mode,
+                command=self._capture_mode_changed,
+            ).pack(side="left", padx=(7, 0))
+        ttk.Label(capture, text="Click or Enter accepts the highlighted suggestion.").pack(
+            side="left", padx=12
+        )
+        ttk.Label(capture, textvariable=self.candidate_summary).pack(
+            side="right", padx=8
+        )
+
         vertical = ttk.Panedwindow(self.root, orient="vertical")
         vertical.pack(fill="both", expand=True, padx=8, pady=(0, 8))
         upper = ttk.Panedwindow(vertical, orient="horizontal")
@@ -181,6 +224,15 @@ class CivilPlanDigitizerApp:
         self.canvas.grid(row=0, column=0, sticky="nsew")
         xscroll.grid(row=1, column=0, sticky="ew")
         yscroll.grid(row=0, column=1, sticky="ns")
+        tk.Label(
+            canvas_frame,
+            textvariable=self.cursor_status,
+            bg="#0f172a",
+            fg="#f8fafc",
+            anchor="w",
+            padx=8,
+            pady=5,
+        ).grid(row=2, column=0, columnspan=2, sticky="ew")
         canvas_frame.rowconfigure(0, weight=1)
         canvas_frame.columnconfigure(0, weight=1)
         self.canvas.bind("<ButtonPress-1>", self._on_left_press)
@@ -189,6 +241,8 @@ class CivilPlanDigitizerApp:
         self.canvas.bind("<ButtonPress-2>", self._pan_start)
         self.canvas.bind("<B2-Motion>", self._pan_move)
         self.canvas.bind("<MouseWheel>", self._mouse_wheel)
+        self.canvas.bind("<Motion>", self._on_pointer_motion, add="+")
+        self.canvas.bind("<Leave>", self._on_pointer_leave, add="+")
 
         details = ttk.Frame(upper, padding=(10, 0, 0, 0), width=330)
         upper.add(details, weight=1)
@@ -275,9 +329,20 @@ class CivilPlanDigitizerApp:
     def _bind_shortcuts(self) -> None:
         self.root.bind("<KeyPress-a>", lambda _event: self.approve_selected())
         self.root.bind("<KeyPress-r>", lambda _event: self.reject_selected())
-        self.root.bind("<KeyPress-e>", lambda _event: self._classify_shortcut(C.EXISTING_GROUND))
-        self.root.bind("<KeyPress-d>", lambda _event: self._classify_shortcut(C.DESIGN_GRADE))
+        self.root.bind(
+            "<KeyPress-e>",
+            lambda event: self._capture_mode_shortcut(event, C.EXISTING_GROUND),
+        )
+        self.root.bind(
+            "<KeyPress-d>",
+            lambda event: self._capture_mode_shortcut(event, C.DESIGN_GRADE),
+        )
+        self.root.bind(
+            "<KeyPress-c>",
+            lambda event: self._capture_mode_shortcut(event, C.CONTOUR_ELEVATION),
+        )
         self.root.bind("<KeyPress-m>", lambda _event: self.begin_manual_point())
+        self.root.bind("<Return>", lambda _event: self.capture_hover_suggestion())
         self.root.bind("<Delete>", lambda _event: self.delete_selected())
         self.root.bind("<Escape>", lambda _event: self.cancel_tool())
         self.root.bind("<Down>", lambda _event: self._select_adjacent(1))
@@ -355,6 +420,7 @@ class CivilPlanDigitizerApp:
         self.project_path = None
         self.source_path = selected
         self.display_source_path = display_path
+        self._clear_candidate_index()
         self._load_image(display_path)
         if self.original_image is not None:
             project.source_manifest["width_px"] = self.original_image.width()
@@ -392,6 +458,7 @@ class CivilPlanDigitizerApp:
         self.project = project
         self.workflow = CivilWorkflow(project, now=_utc_now)
         self.project_path = Path(filename).resolve()
+        self._clear_candidate_index()
         local_path = project.source_manifest.get("local_path")
         self.source_path = Path(str(local_path)) if local_path else None
         if self.source_path and self.source_path.is_file():
@@ -460,17 +527,19 @@ class CivilPlanDigitizerApp:
                 dpi=self.render_dpi,
             )
             symbols = detect_symbols(shapes)
-            result = self.workflow.ingest_text_candidates(candidates, symbols)
-        except (PdfAdapterError, WorkflowError) as exc:
+            evidence = build_candidate_evidence(self.project, candidates, symbols)
+            self._set_candidate_index(evidence)
+        except (PdfAdapterError, WorkflowError, ValueError) as exc:
             messagebox.showerror(
                 "PDF extraction failed", str(exc), parent=self.root
             )
             return
+        capturable = sum(item.capturable for item in evidence)
+        rejected = sum(item.rejected for item in evidence)
         self.status.set(
             f"PDF: {len(candidates)} text boxes and {len(symbols)} symbol "
-            f"proposals inspected; "
-            f"{len(result['added'])} numeric review candidates added; "
-            f"{len(result['filtered'])} filtered."
+            f"proposals inspected; {capturable} capturable suggestions indexed; "
+            f"{rejected} rejected evidence retained; Point Cart unchanged."
         )
         self._refresh()
 
@@ -489,14 +558,23 @@ class CivilPlanDigitizerApp:
                 offset_x=crop.x,
                 offset_y=crop.y,
             )
-            ingestion = self.workflow.ingest_text_candidates(candidates)
-        except (OcrAdapterError, WorkflowError, tk.TclError, OSError) as exc:
+            evidence = build_candidate_evidence(self.project, candidates)
+            self._set_candidate_index(evidence)
+        except (
+            OcrAdapterError,
+            WorkflowError,
+            ValueError,
+            tk.TclError,
+            OSError,
+        ) as exc:
             messagebox.showerror("Local OCR failed", str(exc), parent=self.root)
             return
+        capturable = sum(item.capturable for item in evidence)
+        rejected = sum(item.rejected for item in evidence)
         self.status.set(
             f"Local OCR: {len(candidates)} word boxes inspected; "
-            f"{len(ingestion['added'])} numeric review candidates added; "
-            f"{len(ingestion['filtered'])} filtered."
+            f"{capturable} capturable suggestions indexed; "
+            f"{rejected} rejected evidence retained; Point Cart unchanged."
         )
         self._refresh()
 
@@ -677,6 +755,8 @@ class CivilPlanDigitizerApp:
                     pixel=points[0],
                     elevation=self._manual_payload[0],
                     point_type=self._manual_payload[1],
+                    page_index=self.pdf_page_index,
+                    page_label=str(self.pdf_page_index + 1),
                 )
             except WorkflowError as exc:
                 messagebox.showerror("Point rejected", str(exc), parent=self.root)
@@ -770,6 +850,11 @@ class CivilPlanDigitizerApp:
         if self.original_image is None:
             return
         point = self._event_source_point(event)
+        current = self.canvas.find_withtag("current")
+        if current:
+            tags = self.canvas.gettags(current[0])
+            if any(tag.startswith("point:") for tag in tags):
+                return
         if self._tool == "collect":
             self._collector.append(point)
             self._draw_collection_marker(point, len(self._collector))
@@ -795,6 +880,141 @@ class CivilPlanDigitizerApp:
             self._drag_rect = self.canvas.create_rectangle(
                 x, y, x, y, outline="#facc15", width=2, dash=(6, 3)
             )
+            return
+        if self._tool == "select":
+            self._update_hover(point)
+            self.capture_hover_suggestion(capture_method="CLICK")
+
+    def _on_pointer_motion(self, event) -> None:
+        if self.original_image is None:
+            return
+        point = self._event_source_point(event)
+        if self._tool == "select":
+            self._update_hover(point)
+        else:
+            self._set_cursor_status(point, None)
+
+    def _on_pointer_leave(self, _event) -> None:
+        self.canvas.delete("hover")
+        self._hover_suggestion = None
+        mode = self._capture_mode_label()
+        self.cursor_status.set(
+            f"Cursor: outside plan | Mode: {mode} | Elevation: -- | "
+            "Source/confidence: -- | NO CANDIDATE"
+        )
+
+    def _update_hover(self, point: PixelPoint) -> None:
+        self.canvas.delete("hover")
+        suggestion = (
+            None
+            if self._hover_service is None
+            else self._hover_service.suggest(
+                point, capture_mode=self.capture_mode.get()
+            )
+        )
+        self._hover_suggestion = suggestion
+        self._set_cursor_status(point, suggestion)
+        canvas_x = source_to_canvas(point.x, self.zoom)
+        canvas_y = source_to_canvas(point.y, self.zoom)
+        self.canvas.create_line(
+            canvas_x - 6,
+            canvas_y,
+            canvas_x + 6,
+            canvas_y,
+            fill="#e2e8f0",
+            tags=("hover",),
+        )
+        self.canvas.create_line(
+            canvas_x,
+            canvas_y - 6,
+            canvas_x,
+            canvas_y + 6,
+            fill="#e2e8f0",
+            tags=("hover",),
+        )
+        if suggestion is None or suggestion.evidence is None:
+            return
+        evidence = suggestion.evidence
+        snap_x = source_to_canvas(evidence.pixel.x, self.zoom)
+        snap_y = source_to_canvas(evidence.pixel.y, self.zoom)
+        color = "#ef4444" if evidence.rejected else "#22d3ee"
+        radius = 10
+        self.canvas.create_oval(
+            snap_x - radius,
+            snap_y - radius,
+            snap_x + radius,
+            snap_y + radius,
+            outline=color,
+            width=3,
+            tags=("hover",),
+        )
+        self.canvas.create_line(
+            canvas_x,
+            canvas_y,
+            snap_x,
+            snap_y,
+            fill=color,
+            dash=(3, 2),
+            tags=("hover",),
+        )
+        bbox = evidence.text_bbox
+        self.canvas.create_rectangle(
+            source_to_canvas(float(bbox["x0"]), self.zoom),
+            source_to_canvas(float(bbox["y0"]), self.zoom),
+            source_to_canvas(float(bbox["x1"]), self.zoom),
+            source_to_canvas(float(bbox["y1"]), self.zoom),
+            outline=color,
+            dash=(4, 2),
+            tags=("hover",),
+        )
+
+    def _set_cursor_status(
+        self,
+        point: PixelPoint,
+        suggestion: HoverSuggestion | None,
+    ) -> None:
+        mode = self._capture_mode_label()
+        if suggestion is None:
+            coordinates = f"px ({point.x:.1f}, {point.y:.1f})"
+            self.cursor_status.set(
+                f"Cursor: page {self.pdf_page_index + 1}, {coordinates} | "
+                f"Mode: {mode} | Elevation: -- | Source/confidence: -- | "
+                "NO CANDIDATE"
+            )
+            return
+        if suggestion.local_east is None:
+            coordinates = f"px ({point.x:.1f}, {point.y:.1f})"
+        else:
+            coordinates = (
+                f"E {suggestion.local_east:.3f}, "
+                f"N {suggestion.local_north:.3f}"
+            )
+        evidence = suggestion.evidence
+        if evidence is None:
+            elevation = "--"
+            source_confidence = "--"
+        else:
+            elevation = (
+                "--" if evidence.elevation is None else f"{evidence.elevation:.3f} m"
+            )
+            source_confidence = (
+                f"{evidence.source_method}; class {evidence.likely_type}; "
+                f"text {self._format_confidence(evidence.text_confidence)}, "
+                f"assoc {self._format_confidence(evidence.association_confidence)}, "
+                f"class {evidence.classification_confidence:.2f}"
+            )
+        snap_distance = (
+            ""
+            if suggestion.snap_distance_px is None
+            else f"; {suggestion.snap_distance_px:.1f}px"
+        )
+        self.cursor_status.set(
+            f"Cursor: page {self.pdf_page_index + 1}, {coordinates} | "
+            f"Mode: {mode} | Elevation: {elevation} | "
+            f"Source/confidence: {source_confidence} | "
+            f"{suggestion.snap_status}{snap_distance} | "
+            f"{suggestion.lookup_ms:.2f}ms"
+        )
 
     def _on_left_motion(self, event) -> None:
         if self._tool != "crop" or self._crop_start is None or self._drag_rect is None:
@@ -831,6 +1051,110 @@ class CivilPlanDigitizerApp:
             f"{x2 - x1:.1f}×{y2 - y1:.1f} px."
         )
         self._refresh()
+
+    # -- assisted capture ------------------------------------------------
+
+    def _set_candidate_index(self, evidence) -> None:
+        self._candidate_index = SpatialCandidateIndex(evidence)
+        self._rebuild_hover_service()
+        capturable = sum(item.capturable for item in self._candidate_index.candidates)
+        rejected = sum(item.rejected for item in self._candidate_index.candidates)
+        review = len(self._candidate_index) - capturable - rejected
+        self.candidate_summary.set(
+            f"Candidate index: {capturable} capturable / "
+            f"{rejected} rejected / {review} no elevation"
+        )
+
+    def _clear_candidate_index(self) -> None:
+        self._candidate_index = SpatialCandidateIndex()
+        self._hover_service = None
+        self._hover_suggestion = None
+        self.candidate_summary.set("Candidate index: empty")
+        self.canvas.delete("hover")
+
+    def _rebuild_hover_service(self) -> None:
+        if len(self._candidate_index) == 0:
+            self._hover_service = None
+            return
+        calibration = None if self.project is None else self.project.calibration
+        self._hover_service = ElevationUnderCursorService(
+            self._candidate_index,
+            calibration=calibration,
+        )
+
+    def _capture_mode_changed(self) -> None:
+        self.status.set(
+            f"Capture mode: {self._capture_mode_label()}. "
+            "Hover a proposal, then click or press Enter."
+        )
+        if self._hover_suggestion is not None:
+            self._update_hover(self._hover_suggestion.cursor)
+
+    def _capture_mode_shortcut(self, event, point_type: str) -> str | None:
+        focus = self.root.focus_get()
+        if focus is not None and focus.winfo_class() in {
+            "Entry",
+            "TEntry",
+            "TCombobox",
+            "Text",
+        }:
+            return None
+        self.capture_mode.set(point_type)
+        self._capture_mode_changed()
+        return "break"
+
+    def capture_hover_suggestion(
+        self,
+        *,
+        capture_method: str = "ENTER",
+    ) -> CivilPoint | None:
+        if self.workflow is None or self.project is None:
+            return None
+        focus = self.root.focus_get()
+        if (
+            capture_method == "ENTER"
+            and focus is not None
+            and focus.winfo_class() in {"Entry", "TEntry", "TCombobox", "Text"}
+        ):
+            return None
+        suggestion = self._hover_suggestion
+        if suggestion is None or suggestion.evidence is None:
+            self.status.set("No indexed elevation is under the cursor.")
+            return None
+        if not suggestion.can_capture:
+            category = suggestion.evidence.rejection_category or "NO_ELEVATION"
+            self.status.set(
+                f"Capture blocked: {category}. Rejected evidence stays out of the Point Cart."
+            )
+            return None
+        try:
+            point = self.workflow.capture_assisted_point(
+                suggestion.evidence,
+                capture_mode=self.capture_mode.get(),
+                click_pixel=suggestion.cursor,
+                snap_distance_px=float(suggestion.snap_distance_px or 0.0),
+                capture_method=capture_method,
+            )
+        except WorkflowError as exc:
+            self.status.set(f"Capture blocked: {exc}")
+            return None
+        self.status.set(
+            f"Captured {point.id} from {point.source_method}; "
+            "correct if needed, then explicitly approve or continue."
+        )
+        self._refresh(select_id=point.id)
+        return point
+
+    def _capture_mode_label(self) -> str:
+        return {
+            C.EXISTING_GROUND: "Existing",
+            C.DESIGN_GRADE: "Design",
+            C.CONTOUR_ELEVATION: "Contour",
+        }.get(self.capture_mode.get(), self.capture_mode.get())
+
+    @staticmethod
+    def _format_confidence(value: float | None) -> str:
+        return "--" if value is None else f"{value:.2f}"
 
     # -- review actions ---------------------------------------------------
 
@@ -1368,6 +1692,7 @@ class CivilPlanDigitizerApp:
         )
 
     def _refresh(self, *, select_id: str | None = None) -> None:
+        self._rebuild_hover_service()
         self._refresh_table()
         self._draw_overlays()
         if self.project and self.project.calibration:

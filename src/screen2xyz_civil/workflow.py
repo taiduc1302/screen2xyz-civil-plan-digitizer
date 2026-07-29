@@ -9,6 +9,7 @@ from dataclasses import replace
 from typing import Any, Callable
 
 from . import contracts as C
+from .assisted_capture import CandidateEvidence
 from .detection import (
     SymbolCandidate,
     TextCandidate,
@@ -235,6 +236,144 @@ class CivilWorkflow:
             "POINT_ADDED",
             "Manual point added; explicit review is still required.",
             point_id=point.id,
+        )
+        return point
+
+    def capture_assisted_point(
+        self,
+        evidence: CandidateEvidence,
+        *,
+        capture_mode: str,
+        click_pixel: PixelPoint,
+        snap_distance_px: float,
+        capture_method: str = "CLICK",
+    ) -> CivilPoint:
+        """Promote exactly one indexed suggestion into the estimator Point Cart."""
+
+        if capture_mode not in C.TERRAIN_POINT_TYPES:
+            raise WorkflowError("capture mode must be Existing, Design, or Contour")
+        if not evidence.capturable or evidence.elevation is None:
+            category = evidence.rejection_category or "NOT_CAPTURABLE"
+            raise WorkflowError(f"candidate is rejected evidence: {category}")
+        if any(
+            point.capture_candidate_id == evidence.candidate_id
+            and point.capture_mode == capture_mode
+            for point in self.project.points
+        ):
+            raise WorkflowError(
+                "this candidate is already present in the Point Cart for this mode"
+            )
+        self._validate_elevation(evidence.elevation)
+        if self.project.crop is not None and not self.project.crop.contains(
+            evidence.pixel
+        ):
+            raise WorkflowError("snapped point is outside the selected crop")
+        point_id = self._next_point_id()
+        timestamp = self._now()
+        local_east = local_north = None
+        revision = None
+        if self.project.calibration is not None:
+            local_east, local_north = to_local(
+                evidence.pixel, self.project.calibration
+            )
+            revision = self.project.calibration.revision
+        confidence_values = [
+            value
+            for value in (
+                evidence.text_confidence,
+                evidence.association_confidence,
+                evidence.classification_confidence,
+            )
+            if value is not None
+        ]
+        capture_confidence = (
+            sum(confidence_values) / len(confidence_values)
+            if confidence_values
+            else None
+        )
+        reasons = list(evidence.reasons)
+        reasons.insert(
+            0,
+            (
+                f"estimator accepted assisted {capture_mode} capture "
+                f"using {capture_method}"
+            ),
+        )
+        if evidence.likely_type != capture_mode:
+            reasons.append(
+                f"capture mode overrode likely class {evidence.likely_type}"
+            )
+        description = (
+            "ASSISTED_EX"
+            if capture_mode == C.EXISTING_GROUND
+            else "ASSISTED_DES"
+            if capture_mode == C.DESIGN_GRADE
+            else "CONTOUR"
+        )
+        sheet = str(
+            self.project.source_manifest.get("sheet_id")
+            or evidence.page_label
+        )
+        revision_label = str(
+            self.project.source_manifest.get("revision") or ""
+        )
+        point = CivilPoint(
+            id=point_id,
+            point_number=point_id,
+            page_index=evidence.page_index,
+            page_label=evidence.page_label,
+            sheet=sheet,
+            revision_label=revision_label,
+            source_file=str(self.project.source_manifest.get("display_name", "")),
+            source_sha256=str(self.project.source_manifest.get("sha256", "")),
+            pixel_x=evidence.pixel.x,
+            pixel_y=evidence.pixel.y,
+            local_east=local_east,
+            local_north=local_north,
+            elevation=float(evidence.elevation),
+            point_type=capture_mode,
+            symbol_type=evidence.symbol_type,
+            source_method=evidence.source_method,
+            review_status=C.UNREVIEWED,
+            detected_text=evidence.detected_text,
+            normalized_text=evidence.normalized_text,
+            text_confidence=evidence.text_confidence,
+            symbol_confidence=evidence.symbol_confidence,
+            association_confidence=evidence.association_confidence,
+            classification_confidence=evidence.classification_confidence,
+            capture_confidence=capture_confidence,
+            classification_reason=reasons,
+            description=description,
+            text_bbox=dict(evidence.text_bbox),
+            alternative_associations=[
+                dict(item) for item in evidence.alternative_associations
+            ],
+            created_at=timestamp,
+            updated_at=timestamp,
+            calibration_revision=revision,
+            capture_candidate_id=evidence.candidate_id,
+            capture_mode=capture_mode,
+            capture_audit={
+                "method": capture_method,
+                "candidate_id": evidence.candidate_id,
+                "likely_type": evidence.likely_type,
+                "click_pixel": click_pixel.to_dict(),
+                "snap_pixel": evidence.pixel.to_dict(),
+                "snap_distance_px": float(snap_distance_px),
+                "classification_confidence": evidence.classification_confidence,
+                "captured_at": timestamp,
+            },
+        )
+        self.project.points.append(point)
+        self.project.exports_stale = True
+        self._audit(
+            "ASSISTED_POINT_CAPTURED",
+            "Indexed suggestion promoted into the Point Cart for explicit review.",
+            point_id=point.id,
+            candidate_id=evidence.candidate_id,
+            capture_mode=capture_mode,
+            capture_method=capture_method,
+            snap_distance_px=float(snap_distance_px),
         )
         return point
 
