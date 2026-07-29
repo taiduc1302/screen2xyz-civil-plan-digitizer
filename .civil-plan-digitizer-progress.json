@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "current_phase": "regression_clean_sanitized_delivery_packaging",
+  "current_phase": "standalone_delivery_complete_external_validation_gates_remain",
   "completed_milestones": [
     "repository_audit",
     "feature_branch_created",
@@ -38,16 +38,15 @@
     "civil_tests_113_pass",
     "full_repository_regression_pass",
     "m2_windows_integration_16_of_16_pass",
-    "private_c03_handoff_round_trip_pass"
+    "private_c03_handoff_round_trip_pass",
+    "sanitized_delivery_package_audited"
   ],
   "pending_milestones": [
-    "sanitized_delivery_package",
     "owner_feature_branch_review",
-    "m2_windows_ocr_flake_resolution_or_clean_rerun",
-    "authorized_real_plan_validation",
+    "representative_labelled_real_plan_validation",
     "downstream_application_validation"
   ],
-  "last_successful_commit": "2a80876",
+  "last_successful_commit": "10ca393",
   "last_test_command": "full repository regression and private ignored C03 handoff round trip",
   "last_test_result": "PASS: baseline 42/42, M1 34/34, M2 deterministic 498/498, M2 Windows integration 16/16, Civil 113/113, retained evidence, compile, synthetic benchmark, private C03 handoff 19 files with round-trip PASS",
   "known_blockers": [
@@ -55,5 +54,5 @@
     "Design-oval automation remains weaker than Existing-cross capture on the checked C03 symbology",
     "AGTEK, Civil 3D, Kubla, and real LandXML imports remain external human gates"
   ],
-  "recommended_resume_action": "Build and audit the sanitized transfer ZIP without private source files, then leave the protected repositories and remotes unchanged."
+  "recommended_resume_action": "Owner reviews the local branch and audited transfer package; next technical phase is representative labelled real-plan accuracy and downstream application validation."
 }
