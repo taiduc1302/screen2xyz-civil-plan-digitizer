@@ -56,6 +56,5 @@ local-exports/
 local-screenshots/
 .ui-automation/
 .local-evaluation-results.json
-Civil IFCclean for gradeworks.pdf
 Civil_Plan_Digitizer_Evidence/private/
 *.s2c.json
