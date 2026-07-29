@@ -50,4 +50,12 @@ Thumbs.db
 .local-test-data/
 private-test-data/
 test-inputs-local/
+private-validation/
+local-civil-inputs/
+local-exports/
+local-screenshots/
+.ui-automation/
+.local-evaluation-results.json
+Civil IFCclean for gradeworks.pdf
+Civil_Plan_Digitizer_Evidence/private/
 *.s2c.json
