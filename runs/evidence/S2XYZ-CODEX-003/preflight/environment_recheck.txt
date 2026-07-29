@@ -1,0 +1,24 @@
+S2XYZ-CODEX-003 sanitized environment version recheck
+Conceptual and preliminary estimating data only.
+
+Observed 2026-07-15 before Gate G4:
+- Active Windows PowerShell host: 5.1.26100.8875
+- New NoProfile/NonInteractive child host: 5.1.26100.8875
+- powershell.exe file version: 10.0.26100.8875
+- powershell.exe product version: 10.0.26100.8875
+- OS reported to host and child: Microsoft Windows NT 10.0.26200.0
+- .NET Framework v4 Full release registry value: 533509
+- mscorlib assembly version: 4.0.0.0
+- mscorlib file/product version: 4.8.9337.0
+- Actual Windows.Media.Ocr generated-image recheck: PASS
+- Recheck raw text: LAT: 49.123456 LON: -123.654321 ELEV: -42.75 m
+- Recheck line count: 1
+- Recheck duration: 16 ms
+- Recheck exit code: 0
+
+Reconciliation:
+- The earlier long-lived execution host reported 5.1.26100.8655 and that original preflight evidence is retained.
+- The planned implementation launches a new powershell.exe child for every adapter call, so 5.1.26100.8875 is the selected and rechecked current-machine adapter version.
+- No production, general-Windows, or supported unpackaged-host claim is inferred.
+
+Privacy note: absolute executable paths and machine/user identifiers are intentionally omitted.

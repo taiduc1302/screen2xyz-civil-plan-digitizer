@@ -1,0 +1,29 @@
+S2XYZ-CODEX-003 sanitized environment preflight
+Conceptual and preliminary estimating data only.
+
+Observed 2026-07-15:
+- OS: Microsoft Windows NT 10.0.26200.0, x64
+- Windows PowerShell: 5.1.26100.8655, Desktop edition
+- Python: CPython 3.14.6, x64
+- Repository-local venv: created with --without-pip; include-system-site-packages=false
+- Venv installed distributions: 0
+- Relevant Python standard-library imports: PASS
+- .NET Framework v4 Full release registry value: 533509
+- Windows.Media.Ocr API: available
+- OCR languages: en-US and ru; selected en-US
+- OCR MaxImageDimension: 10000
+- System.Drawing/GDI+: available through the Windows PowerShell host
+- Selected font: Arial regular, used in place from the OS; not copied into the repository
+- Arial file size: 1045720 bytes
+- Arial file SHA-256: b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a
+- Tesseract: not installed and not selected
+- ImageMagick: not installed and not selected
+- .NET SDK: not installed and not selected
+- Third-party project packages or OCR models installed: none
+
+Licence/source evidence:
+- CPython source and licence evidence: https://docs.python.org/3.14/license.html (Python Software Foundation License Version 2 plus incorporated-software notices). This is dependency evidence, not selection of a repository licence or legal approval.
+- Windows.Media.Ocr reference: https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr?view=winrt-26100. Official documentation states desktop support requires package identity; the unpackaged PowerShell use is therefore experimental and current-machine-only despite the observed probe.
+- System.Drawing reference: https://learn.microsoft.com/en-us/dotnet/api/system.drawing. On Windows it uses OS-provided GDI+; no binary is redistributed.
+
+Privacy note: executable and font absolute paths were inspected locally but are intentionally omitted.

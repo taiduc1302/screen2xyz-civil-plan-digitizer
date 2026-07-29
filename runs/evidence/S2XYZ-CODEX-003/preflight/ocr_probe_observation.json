@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "task_id": "S2XYZ-CODEX-003",
+  "probe_type": "generated_image_actual_local_ocr",
+  "input": {
+    "relative_path": "runs/evidence/S2XYZ-CODEX-003/preflight/ocr_probe_generated.png",
+    "sha256": "b942a7161b65f17a745199f6a2ae0c7db13de5706fa530dd35a041a0498fd067",
+    "bytes": 10073,
+    "width_px": 1600,
+    "height_px": 260,
+    "metadata_review": {
+      "property_item_count": 5,
+      "allowed_property_ids": ["0x0301", "0x0303", "0x5110", "0x5111", "0x5112"],
+      "disallowed_identity_or_location_metadata": false
+    },
+    "synthetic_only": true,
+    "visible_text": "LAT: 49.123456   LON: -123.654321   ELEV: -42.75 m"
+  },
+  "ocr": {
+    "engine": "Windows.Media.Ocr",
+    "engine_version": "OS-managed; semantic version not exposed",
+    "os_build": "10.0.26200.0",
+    "language": "en-US",
+    "exit_code": 0,
+    "duration_ms": 11,
+    "line_count": 1,
+    "raw_text": "LAT: 49.123456 LON: -123.654321 ELEV: -42.75 m"
+  },
+  "failure_controls": {
+    "missing_input_child_exit_code": 20,
+    "timeout_wrapper": "PASS",
+    "timeout_probe_seconds": 0.1
+  },
+  "support_boundary": "Observed in an unpackaged Windows PowerShell 5.1 host on this current computer; official desktop support documentation requires package identity, so no production or general compatibility claim is made.",
+  "live_capture_status": "Not executed",
+  "output_classification": "Conceptual and preliminary estimating data only."
+}

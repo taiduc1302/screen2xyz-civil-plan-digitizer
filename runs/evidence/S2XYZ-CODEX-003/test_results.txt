@@ -1,0 +1,100 @@
+Screen2XYZ automated test results
+Task: S2XYZ-CODEX-003
+Command: .\.venv\Scripts\python.exe tests\run_all.py --output .lab_work\S2XYZ-CODEX-003-test-results.txt
+Tests executed: 41
+Passed: 41
+Failures: 0
+Errors: 0
+Skipped: 0
+Exit code: 0
+Live capture: Not executed
+Test IDs:
+T-CFG-001: PASS
+T-CFG-002: PASS
+T-DED-001: PASS
+T-DED-002: PASS
+T-EVD-001: PASS
+T-EVD-002: PASS
+T-EVD-003: PASS
+T-EXP-001: PASS
+T-EXP-002: PASS
+T-EXP-003: PASS
+T-EXP-004: PASS
+T-FIX-001: PASS
+T-FIX-002: PASS
+T-FIX-003: PASS
+T-INP-001: PASS
+T-LIVE-001: PASS
+T-MET-001: PASS
+T-MET-002: PASS
+T-OCR-001: PASS
+T-OCR-002: PASS
+T-OCR-003: PASS
+T-PAR-001: PASS
+T-PAR-002: PASS
+T-PAR-003: PASS
+T-PRI-001: PASS
+T-PRI-002: PASS
+T-PRI-003: PASS
+T-REC-001: PASS
+T-REC-002: PASS
+T-REC-003: PASS
+T-REP-001: PASS
+T-SCOPE-001: PASS
+T-SCOPE-002: PASS
+T-SCOPE-003: PASS
+T-SCOPE-004: PASS
+T-SCOPE-005: PASS
+T-TRC-001: PASS
+T-VAL-001: PASS
+T-VAL-002: PASS
+T-VAL-003: PASS
+T-VAL-004: PASS
+Transcript:
+test_T_CFG_001_canonical_config (test_config_fixture.ConfigFixtureTests.test_T_CFG_001_canonical_config) ... ok
+test_T_CFG_002_fail_closed_config (test_config_fixture.ConfigFixtureTests.test_T_CFG_002_fail_closed_config) ... ok
+test_T_FIX_001_exact_allocation (test_config_fixture.ConfigFixtureTests.test_T_FIX_001_exact_allocation) ... ok
+test_T_FIX_002_runtime_separation (test_config_fixture.ConfigFixtureTests.test_T_FIX_002_runtime_separation) ... ok
+test_T_FIX_003_coverage_and_hashes (test_config_fixture.ConfigFixtureTests.test_T_FIX_003_coverage_and_hashes) ... ok
+test_T_INP_001_image_boundaries (test_config_fixture.ConfigFixtureTests.test_T_INP_001_image_boundaries) ... ok
+test_T_EXP_001_csv_dialect (test_exports_recovery.ExportRecoveryTests.test_T_EXP_001_csv_dialect) ... ok
+test_T_EXP_002_exact_csv_schemas (test_exports_recovery.ExportRecoveryTests.test_T_EXP_002_exact_csv_schemas) ... ok
+test_T_EXP_003_xyz_schema (test_exports_recovery.ExportRecoveryTests.test_T_EXP_003_xyz_schema) ... ok
+test_T_EXP_004_sidecar_schema (test_exports_recovery.ExportRecoveryTests.test_T_EXP_004_sidecar_schema) ... ok
+test_T_REC_001_atomic_write_failure (test_exports_recovery.ExportRecoveryTests.test_T_REC_001_atomic_write_failure) ... ok
+test_T_REC_002_config_corruption_and_idempotency (test_exports_recovery.ExportRecoveryTests.test_T_REC_002_config_corruption_and_idempotency) ... ok
+test_T_REC_003_run_fatal_separation (test_exports_recovery.ExportRecoveryTests.test_T_REC_003_run_fatal_separation) ... ok
+test_T_EVD_001_required_artifact_set (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_EVD_001_required_artifact_set) ... ok
+test_T_EVD_002_manifest_hashes_and_order (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_EVD_002_manifest_hashes_and_order) ... ok
+test_T_EVD_003_sanitized_runtime_evidence (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_EVD_003_sanitized_runtime_evidence) ... ok
+test_T_PRI_001_privacy_scan (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_PRI_001_privacy_scan) ... ok
+test_T_PRI_002_copy_on_write_and_manifest (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_PRI_002_copy_on_write_and_manifest) ... ok
+test_T_PRI_003_contamination_and_no_network (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_PRI_003_contamination_and_no_network) ... ok
+test_T_SCOPE_001_no_service_presets (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_SCOPE_001_no_service_presets) ... ok
+test_T_SCOPE_002_generated_images_only (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_SCOPE_002_generated_images_only) ... ok
+test_T_SCOPE_003_local_ocr_no_cloud (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_SCOPE_003_local_ocr_no_cloud) ... ok
+test_T_SCOPE_004_deferred_interfaces (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_SCOPE_004_deferred_interfaces) ... ok
+test_T_SCOPE_005_notices_and_claim_boundaries (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_SCOPE_005_notices_and_claim_boundaries) ... ok
+test_T_TRC_001_complete_traceability (test_guardrails_traceability_evidence.GuardrailTraceabilityEvidenceTests.test_T_TRC_001_complete_traceability) ... ok
+test_T_MET_001_sixteen_formulas (test_metrics_repeatability.MetricsRepeatabilityTests.test_T_MET_001_sixteen_formulas) ... ok
+test_T_MET_002_schema_and_zero_denominator (test_metrics_repeatability.MetricsRepeatabilityTests.test_T_MET_002_schema_and_zero_denominator) ... ok
+test_T_REP_001_two_run_comparison (test_metrics_repeatability.MetricsRepeatabilityTests.test_T_REP_001_two_run_comparison) ... ok
+test_T_LIVE_001_status (test_ocr_parser.OcrParserTests.test_T_LIVE_001_status) ... ok
+test_T_OCR_001_actual_pixels (test_ocr_parser.OcrParserTests.test_T_OCR_001_actual_pixels) ... ok
+test_T_OCR_002_reversible_raw (test_ocr_parser.OcrParserTests.test_T_OCR_002_reversible_raw) ... ok
+test_T_OCR_003_timeouts_and_local_host (test_ocr_parser.OcrParserTests.test_T_OCR_003_timeouts_and_local_host) ... ok
+test_T_PAR_001_labels_variants_and_order (test_ocr_parser.OcrParserTests.test_T_PAR_001_labels_variants_and_order) ... ok
+test_T_PAR_002_precision_signs_and_controls (test_ocr_parser.OcrParserTests.test_T_PAR_002_precision_signs_and_controls) ... ok
+test_T_PAR_003_raw_immutability (test_ocr_parser.OcrParserTests.test_T_PAR_003_raw_immutability) ... ok
+test_T_DED_001_stale_sequences (test_validation_temporal.ValidationTemporalTests.test_T_DED_001_stale_sequences) ... ok
+test_T_DED_002_duplicate_sequences (test_validation_temporal.ValidationTemporalTests.test_T_DED_002_duplicate_sequences) ... ok
+test_T_VAL_001_ranges_and_metadata (test_validation_temporal.ValidationTemporalTests.test_T_VAL_001_ranges_and_metadata) ... ok
+test_T_VAL_002_complete_retention_logic (test_validation_temporal.ValidationTemporalTests.test_T_VAL_002_complete_retention_logic) ... ok
+test_T_VAL_003_vocabularies (test_validation_temporal.ValidationTemporalTests.test_T_VAL_003_vocabularies) ... ok
+test_T_VAL_004_short_circuit_and_precedence (test_validation_temporal.ValidationTemporalTests.test_T_VAL_004_short_circuit_and_precedence) ... ok
+
+----------------------------------------------------------------------
+Ran 41 tests in 14.727s
+
+OK
+Conceptual and preliminary estimating data only.

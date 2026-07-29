@@ -1,0 +1,59 @@
+{
+  "cases": [
+    {
+      "expected_codes": [],
+      "expected_elevation_m": "-42.75",
+      "expected_latitude": "49.123456",
+      "expected_longitude": "-123.654321",
+      "input": "LAT: 49.123456 LON: -123.654321 ELEV: -42.75 m",
+      "test_case_id": "P-CLEAN-001"
+    },
+    {
+      "expected_codes": [],
+      "expected_elevation_m": "3.00",
+      "expected_latitude": "1.000000",
+      "expected_longitude": "2.000000",
+      "input": "lat = 1 lon = 2 elev = 3 m",
+      "test_case_id": "P-CLEAN-002"
+    },
+    {
+      "expected_codes": [],
+      "expected_elevation_m": "4.50",
+      "expected_latitude": "1.200000",
+      "expected_longitude": "-2.300000",
+      "input": "LAT 1.2 deg | LON -2.3 deg | ELEV 4.5 m",
+      "test_case_id": "P-CLEAN-003"
+    },
+    {
+      "expected_codes": [],
+      "expected_elevation_m": "3.00",
+      "expected_latitude": "1.000000",
+      "expected_longitude": "-2.000000",
+      "input": "LAT = 1 LON = — 2 ELEV = 3",
+      "test_case_id": "P-CLEAN-004"
+    },
+    {
+      "expected_codes": ["MALFORMED_LAT"],
+      "input": "LAT: 1A.2 LON: 2 ELEV: 3",
+      "test_case_id": "P-REJECT-001"
+    },
+    {
+      "expected_codes": ["MISSING_ELEV"],
+      "input": "LAT: 1 LON: 2",
+      "test_case_id": "P-REJECT-002"
+    },
+    {
+      "expected_codes": ["EXCESS_PRECISION_LAT"],
+      "input": "LAT: 1.0000001 LON: 2 ELEV: 3",
+      "test_case_id": "P-REJECT-003"
+    },
+    {
+      "expected_codes": ["MISSING_ELEV", "MISSING_LAT", "MISSING_LON", "AMBIGUOUS_ORDER", "EXTRA_NUMERIC_FIELD"],
+      "input": "49.1 -123.2 10",
+      "test_case_id": "P-REJECT-004"
+    }
+  ],
+  "corpus_role": "Representative parser contract examples only; the frozen executable 13-case metric corpus is defined in src/screen2xyz_lab/parser.py.",
+  "output_classification": "Conceptual and preliminary estimating data only.",
+  "schema_version": "1.0"
+}

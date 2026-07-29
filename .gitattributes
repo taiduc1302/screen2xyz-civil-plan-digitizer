@@ -1,0 +1,11 @@
+# Preserve byte-level deterministic fixtures and retained evidence exactly.
+test_data/synthetic/s2xyz_fixture_v0.1/** text eol=lf
+runs/evidence/S2XYZ-CODEX-003/** text eol=lf
+
+# These schemas require CRLF; disabling text conversion preserves their hashes.
+test_data/synthetic/s2xyz_fixture_v0.1/*.csv -text -diff
+runs/evidence/S2XYZ-CODEX-003/*.csv -text -diff
+
+# Generated fixture pixels are immutable binary inputs.
+test_data/synthetic/s2xyz_fixture_v0.1/images/*.png binary
+runs/evidence/S2XYZ-CODEX-003/**/*.png binary

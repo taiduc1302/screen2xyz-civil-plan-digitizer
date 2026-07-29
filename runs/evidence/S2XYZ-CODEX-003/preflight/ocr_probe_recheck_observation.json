@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "task_id": "S2XYZ-CODEX-003",
+  "probe_type": "generated_image_actual_local_ocr_version_recheck",
+  "input": {
+    "relative_path": "runs/evidence/S2XYZ-CODEX-003/preflight/ocr_probe_generated.png",
+    "sha256": "b942a7161b65f17a745199f6a2ae0c7db13de5706fa530dd35a041a0498fd067",
+    "synthetic_only": true
+  },
+  "host": {
+    "powershell_version": "5.1.26100.8875",
+    "powershell_file_version": "10.0.26100.8875",
+    "os_build": "10.0.26200.0"
+  },
+  "ocr": {
+    "engine": "Windows.Media.Ocr",
+    "engine_version": "OS-managed; semantic version not exposed",
+    "language": "en-US",
+    "exit_code": 0,
+    "duration_ms": 16,
+    "line_count": 1,
+    "raw_text": "LAT: 49.123456 LON: -123.654321 ELEV: -42.75 m"
+  },
+  "support_boundary": "Current-machine experimental unpackaged host; official desktop support documentation requires package identity.",
+  "live_capture_status": "Not executed",
+  "output_classification": "Conceptual and preliminary estimating data only."
+}

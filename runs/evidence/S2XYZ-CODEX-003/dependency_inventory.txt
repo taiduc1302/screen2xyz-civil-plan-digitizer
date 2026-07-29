@@ -1,0 +1,12 @@
+Screen2XYZ relevant dependency inventory
+Task: S2XYZ-CODEX-003
+CPython: 3.14.6 (PSF-2.0 dependency evidence; repository licence not selected)
+Windows PowerShell: 5.1.26100.8875 (OS-provided; used in place; not redistributed)
+.NET Framework: Release 533509; mscorlib assembly 4.0.0.0; file 4.8.9337.0 (revalidated)
+System.Drawing/GDI+: OS-provided on Windows; used in place; not redistributed
+Windows.Media.Ocr: OS-managed; semantic version not_exposed; en-US; no model redistributed
+Arial regular: 1045720 bytes; sha256 b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a; used in place; not redistributed
+Repository-local .venv: --without-pip; include-system-site-packages=false; observed installed distributions=0
+Direct third-party project dependencies: none
+No legal approval or repository licence selection is claimed.
+Conceptual and preliminary estimating data only.
