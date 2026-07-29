@@ -19,8 +19,9 @@ powershell -ExecutionPolicy Bypass -File .\run_civil_plan_digitizer.ps1
 The guaranteed manual PNG workflow uses the Python standard library and
 Tkinter. PDF inspection needs the pinned `pypdf` dependency. PDF page
 rendering also needs a local `pdftoppm` executable from Poppler on `PATH`.
-Windows Media OCR is invoked locally through a bounded PowerShell adapter.
-Nothing is sent to a network service.
+When installed, Tesseract is invoked through a bounded local multi-angle
+adapter for small rotated grade labels. Windows Media OCR remains the local
+fallback. Nothing is sent to a network service.
 
 You can also choose **Civil Plan Digitizer** from
 `run_screen2xyz_menu.ps1`.
@@ -36,14 +37,19 @@ You can also choose **Civil Plan Digitizer** from
 5. Enter optional local East/North origin offsets. These remain local
    coordinates; no coordinate reference system is inferred.
 6. Use **Verify second distance** on a separate known dimension.
-7. Add manual points, or run vector PDF extraction/local OCR to create
-   candidates.
+7. Set a project-specific plausible elevation range, then add manual points or
+   run asynchronous vector PDF extraction/local OCR to index suggestions.
 8. Review each candidate. Correct the elevation, class, or marker association;
    then explicitly approve or reject it.
 9. Add reviewed boundary, exclusion, breakline, or no-cross geometry if a
    preliminary surface is needed.
 10. Run **QA summary**, save the `.s2c.json` project, and export a new
     versioned handoff folder.
+
+The canvas index never mutates the Point Cart. Clicking or pressing Enter on a
+capturable suggestion creates exactly one unreviewed cart row. The review pane
+shows the raster crop, raw/normalized text, separate confidence values, symbol
+association, alternatives, and rule explanation before approval.
 
 ## Review controls
 
@@ -93,5 +99,9 @@ revisions, decisions, QA results, and export history are retained. Export
 manifests redact the source's local path.
 
 The versioned handoff contains approved terrain points only. Existing and
-Design CSV files remain separate. See `AGTEK_WORKFLOW.md` and
-`QA_CHECKLIST.md` before importing anything.
+Design CSV files remain separate. The folder also contains an eight-sheet
+`Approved_Point_Cart.xlsx`, contour vertices, generic XYZ/NEZ, audit/QA
+reports, a round-trip report, and SHA-256 manifests. It is built in a private
+staging directory and published with one same-volume rename only after every
+artifact reopens and verifies. See `AGTEK_WORKFLOW.md` and `QA_CHECKLIST.md`
+before importing anything.

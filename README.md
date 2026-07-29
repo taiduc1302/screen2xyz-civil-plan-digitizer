@@ -6,7 +6,7 @@ screen/OCR review and preliminary civil-plan digitization.
 > **Current status:** the synthetic OCR baseline, M1 PNG review lab, and
 > M2-Live watcher are merged on private `main`. The Civil Plan Digitizer is
 > implemented and being stabilized on
-> `feature/civil-plan-digitizer-overnight`; it is not merged, released, or
+> `feature/assisted-c03-validation`; it is not merged, released, or
 > downstream-certified.
 
 All PDF/image-derived coordinates and elevations are preliminary and require
@@ -20,14 +20,17 @@ The new review-first workspace provides:
 - local PDF/PNG source intake, selected-page rendering, crop, scale, local
   origin, arbitrary East orientation, and independent second-distance check;
 - reliable manual Existing/Design/Contour point entry;
-- optional local PDF text/vector extraction and bounded Windows Media OCR with
-  word/line boxes;
+- asynchronous local PDF text/vector extraction and bounded multi-angle
+  Tesseract OCR, with Windows Media OCR as the local fallback;
 - explainable numeric filtering, symbol proposals, candidate associations,
   alternatives, confidence/reasons, and explicit approve/reject/edit/merge;
+- a persistent Point Cart with point numbering, sheet/revision metadata,
+  undo/redo, bulk review, filtering, and reviewed contour-line vertices;
 - schema-versioned atomic save/reopen with calibration and decision history;
 - duplicate/conflict QA and approved-only, separate Existing/Design exports;
-- versioned AGTEK-ready CSV handoff plus XYZ, NEZ, local GeoJSON, DXF,
-  breaklines, hashes, reports, and audit records;
+- atomically published, versioned handoffs with an eight-sheet estimator XLSX,
+  AGTEK CSV, XYZ, NEZ, local GeoJSON, DXF, contour/breakline data, hashes,
+  reports, and audit records;
 - feature-flagged, separate Existing/Design preliminary TIN previews with
   reviewed boundaries, exclusions, breakline/no-cross barriers, triangle
   flags/disabling, point-sample cut/fill, and gated preliminary LandXML.
@@ -48,8 +51,9 @@ powershell -ExecutionPolicy Bypass -File .\run_civil_plan_digitizer.ps1
 
 The manual PNG workflow remains standard-library/Tkinter only. Optional PDF
 inspection uses pinned `pypdf`; PDF rendering requires a host-installed
-Poppler `pdftoppm` on `PATH`. OCR is local Windows Media OCR. No drawing is
-uploaded.
+Poppler `pdftoppm` on `PATH`. If installed, local Tesseract is preferred for
+small rotated grade labels; Windows Media OCR remains the fallback. No drawing
+is uploaded.
 
 Read the [Civil Plan Digitizer guide](docs/civil-plan-digitizer/README.md),
 [QA checklist](docs/civil-plan-digitizer/QA_CHECKLIST.md), and
@@ -60,10 +64,10 @@ Read the [Civil Plan Digitizer guide](docs/civil-plan-digitizer/README.md),
 ```powershell
 $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe tests_civil\run_civil_tests.py
-.\.venv\Scripts\python.exe tests_civil\benchmark_civil.py
+.\.venv\Scripts\python.exe -m tests_civil.benchmark_civil
 ```
 
-The civil suite currently contains 88 deterministic tests. The benchmark uses
+The civil suite currently contains 113 deterministic tests. The benchmark uses
 synthetic rule fixtures only; its exact scores are not real-drawing OCR or
 symbol accuracy. See
 [BENCHMARK_RESULTS.md](docs/civil-plan-digitizer/BENCHMARK_RESULTS.md).
@@ -79,14 +83,14 @@ symbol accuracy. See
 | `tests/` | 42 baseline tests |
 | `tests_m1/` | 34 M1 tests |
 | `tests_m2/` | 498 deterministic M2 tests plus 16 Windows integration tests |
-| `tests_civil/` | 88 deterministic civil tests and synthetic benchmark |
+| `tests_civil/` | 113 deterministic civil tests and synthetic benchmark |
 | `runs/evidence/` | Immutable retained baseline/M1 evidence |
 | `docs/control/` | Current authorization, project state, and next action |
 
-The latest pre-civil regression recorded on 2026-07-28 passed baseline 42/42,
-M1 34/34, M2 498/498, M2 Windows integration 16/16, and retained evidence
-verification with zero errors. Final post-feature regression results belong in
-the Civil worklog and project state.
+The final standalone validation on 2026-07-29 passed baseline 42/42, M1
+34/34, M2 deterministic 498/498, M2 Windows integration 16/16, Civil
+113/113, retained-evidence verification, and compile. See the Civil worklog
+and project state for the exact scope and remaining external gates.
 
 ## Baseline commands
 

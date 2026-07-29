@@ -5,9 +5,12 @@ engineering design, legal boundary, certified terrain, or quantity system.
 
 ## Validation limits
 
-- Only deterministic synthetic fixtures and one synthetic Windows OCR
-  integration image were exercised in this feature run.
-- No proprietary or real authorized civil plan was used.
+- Deterministic synthetic fixtures, one synthetic Windows OCR image, and one
+  locally held authorized C03 drawing were exercised in this feature run.
+- The C03 check validated calibration, second-distance verification, page
+  metadata inference, asynchronous extraction, local OCR indexing, one
+  visually confirmed capture, explicit approval, save, and reopen. It was not
+  a representative accuracy study and no drawing or crop was committed.
 - No AGTEK, Civil 3D, Kubla, or other downstream import was executed.
 - No estimator productivity, real-drawing recall/precision, survey accuracy,
   or earthwork quantity accuracy was measured.
@@ -23,11 +26,21 @@ engineering design, legal boundary, certified terrain, or quantity system.
   placement accuracy.
 - PDF vector parsing handles a bounded subset of paths and first-pass
   cross/oval/leader cues. It is not a CAD entity or layer interpreter.
-- Windows Media OCR language availability and quality depend on the host.
+- Tesseract executable/language availability and Windows Media OCR quality
+  depend on the host.
+- On the authorized C03 crop, Windows Media OCR did not reliably recognize the
+  tiny rotated grades. The optional multi-angle Tesseract adapter produced
+  usable review suggestions, but its labels still require raster-crop review.
+- Some PDFs use custom embedded character maps whose extracted text can differ
+  from the visible glyph. Such PDF text is deliberately down-weighted and the
+  visible raster crop remains the approval authority.
 - OCR can confuse digits, decimal marks, minus signs, and letters; normalization
   never makes those results authoritative.
 - Rotated, curved, crowded, rasterized, low-resolution, or overlapping labels
   can require fully manual entry.
+- Automatic Design-oval recognition remains weaker than Existing-cross
+  recognition on the locally checked C03 symbology; explicit Design-mode
+  override and review are required where the marker proposal is uncertain.
 
 ## Coordinate limits
 

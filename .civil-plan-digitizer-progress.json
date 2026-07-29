@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "current_phase": "local_feature_handoff_ready_with_one_preserved_m2_flaky_gate",
+  "current_phase": "regression_clean_sanitized_delivery_packaging",
   "completed_milestones": [
     "repository_audit",
     "feature_branch_created",
@@ -25,20 +25,35 @@
     "civil_tests_88_pass",
     "post_feature_deterministic_regression",
     "retained_evidence_and_privacy_verification",
-    "local_feature_handoff"
+    "local_feature_handoff",
+    "standalone_repository_isolation",
+    "point_cart_and_contour_workflow",
+    "asynchronous_assisted_capture",
+    "sheet_revision_inference",
+    "project_elevation_range",
+    "multi_angle_local_tesseract",
+    "real_c03_single_capture_review_save",
+    "standalone_atomic_export_io",
+    "estimator_workbook_round_trip",
+    "civil_tests_113_pass",
+    "full_repository_regression_pass",
+    "m2_windows_integration_16_of_16_pass",
+    "private_c03_handoff_round_trip_pass"
   ],
   "pending_milestones": [
+    "sanitized_delivery_package",
     "owner_feature_branch_review",
     "m2_windows_ocr_flake_resolution_or_clean_rerun",
     "authorized_real_plan_validation",
     "downstream_application_validation"
   ],
-  "last_successful_commit": "6a5db6e",
-  "last_test_command": "post-feature consolidated regression, 2026-07-28T22:25:41-07:00",
-  "last_test_result": "PASS: baseline 42/42, M1 34/34, M2 deterministic 498/498, Civil 88/88, evidence, compile, privacy 11/11, UI smoke, actual civil OCR; NOT CLEAN: M2 Windows integration 15/16 twice because one host OCR case intermittently returned EMPTY_TEXT",
+  "last_successful_commit": "2a80876",
+  "last_test_command": "full repository regression and private ignored C03 handoff round trip",
+  "last_test_result": "PASS: baseline 42/42, M1 34/34, M2 deterministic 498/498, M2 Windows integration 16/16, Civil 113/113, retained evidence, compile, synthetic benchmark, private C03 handoff 19 files with round-trip PASS",
   "known_blockers": [
-    "M2 NumberTypeCoordinateHintIntegrationTests is host-OCR flaky: full suite 15/16 on two attempts; isolated test passed 5/8 and failed 3/8 without source changes",
-    "Real authorized drawing and downstream application validation were not executed"
+    "Only one visually confirmed real C03 capture was approved; this is not a representative accuracy benchmark",
+    "Design-oval automation remains weaker than Existing-cross capture on the checked C03 symbology",
+    "AGTEK, Civil 3D, Kubla, and real LandXML imports remain external human gates"
   ],
-  "recommended_resume_action": "Owner reviews the unpushed local feature branch and its documented gates before any push, merge, real-plan test, or downstream promotion."
+  "recommended_resume_action": "Build and audit the sanitized transfer ZIP without private source files, then leave the protected repositories and remotes unchanged."
 }
