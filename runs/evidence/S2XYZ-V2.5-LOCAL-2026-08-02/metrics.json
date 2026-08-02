@@ -43,7 +43,7 @@
     "plan_labels_rendered": 48,
     "plan_labels_used": 48,
     "sqlite_xlsx_exact": true,
-    "tesseract": "C:\\LocalTools\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe"
+    "tesseract": "%LOCALAPPDATA%\\Programs\\Tesseract-OCR\\tesseract.exe"
   },
   "passed": true,
   "schema_version": "1.0",
