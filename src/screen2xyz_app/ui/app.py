@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import tkinter as tk
 import queue
+import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -16,12 +18,15 @@ from screen2xyz_m2.dpi import enable_pmv2
 from ..backends import DefaultReader, ScreenOcrBackend
 from ..capture import CapturePipeline
 from ..controller import CaptureSessionController
+from ..dependencies import poppler_capability, tesseract_capability
 from ..hotkeys import GlobalHotkeys
 from ..mapping import ChannelMapping, ChannelSource, SOURCE_TYPES
 from ..operations import SessionOptions, ZoneHealthSnapshot
 from ..plan import PlanLabelBackend, plan_click_xy, render_plan_page
 from ..profiles import MappingProfileStore
 from .layout import APP_TITLE, HOME_MODES, WIZARD_STEPS
+from .dependency_dialog import DependencyDialog
+from .guide import FirstRunGuide, first_run_pending
 from .overlay import CaptureOverlay
 from .review import SessionReview
 from .zone_picker import ZonePicker
@@ -65,6 +70,8 @@ class Screen2XYZApp(ttk.Frame):
         self._hotkeys.start()
         self.after(100, self._drain_hotkeys)
         self.show_home()
+        if os.environ.get("SCREEN2XYZ_SKIP_FIRST_RUN") != "1" and first_run_pending():
+            self.after(250, self.show_quick_start)
 
     def _clear(self) -> None:
         for child in self.winfo_children():
@@ -180,6 +187,10 @@ class Screen2XYZApp(ttk.Frame):
             self._source_path = Path(value)
             self._calibration = None
             if self._source_path.suffix.lower() == ".pdf":
+                poppler = poppler_capability()
+                if not poppler.available:
+                    DependencyDialog(self.master, poppler)
+                    return
                 if self._project_dir is None:
                     raise ValueError("choose a project folder before rendering a PDF")
                 self._rendered_path = render_plan_page(
@@ -288,6 +299,15 @@ class Screen2XYZApp(ttk.Frame):
                 self._controller.close()
                 self._controller = None
             mapping = self._mapping()
+            if any(
+                source.source_type in {"screen_zone_ocr", "plan_label_ocr"}
+                for source in mapping.channels.values()
+            ):
+                tesseract = tesseract_capability()
+                if not tesseract.available:
+                    DependencyDialog(self.master, tesseract)
+                    if sys.platform != "win32":
+                        return
             if any(
                 source.source_type == "plan_click"
                 for source in mapping.channels.values()
@@ -526,6 +546,9 @@ class Screen2XYZApp(ttk.Frame):
             self._controller.close()
         self.master.destroy()
 
+    def show_quick_start(self) -> None:
+        FirstRunGuide(self.master)
+
     def _export_xlsx(self) -> None:
         self._export("xlsx")
 
@@ -577,5 +600,8 @@ def run() -> None:
         label="Advanced estimator export…", command=app.advanced_export
     )
     menu.add_cascade(label="Export", menu=export_menu)
+    help_menu = tk.Menu(menu, tearoff=False)
+    help_menu.add_command(label="5-step quick start", command=app.show_quick_start)
+    menu.add_cascade(label="Help", menu=help_menu)
     root.configure(menu=menu)
     root.mainloop()

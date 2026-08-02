@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 
@@ -19,6 +20,7 @@ def capture_window(root, output_path: Path) -> None:
 def run(output_dir: Path) -> None:
     import tkinter as tk
 
+    os.environ["SCREEN2XYZ_SKIP_FIRST_RUN"] = "1"
     from screen2xyz_app.ui.app import Screen2XYZApp
     from screen2xyz_app.capture import CapturedPoint
     from screen2xyz_app.ui.layout import APP_TITLE
@@ -59,6 +61,8 @@ def run(output_dir: Path) -> None:
         )
         capture_window(review, output_dir / "session-review.png")
         review.destroy()
+        app.show_wizard("Load image")
+        capture_window(root, output_dir / "plan-capture-wizard.png")
         if not app.winfo_exists() or len(app.winfo_children()) == 0:
             raise RuntimeError("Tk workflow did not render")
     finally:
