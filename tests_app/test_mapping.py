@@ -27,7 +27,7 @@ class MappingTests(unittest.TestCase):
     def test_m2_source_config_reuse(self) -> None:
         sources = self.mapping().m2_sources()
         self.assertEqual([source.semantic_role for source in sources], ["x", "y"])
-        self.assertEqual(sources[0].coordinate_basis, "screen")
+        self.assertEqual(sources[0].coordinate_basis, "monitor")
 
     def test_named_profile_is_project_local(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

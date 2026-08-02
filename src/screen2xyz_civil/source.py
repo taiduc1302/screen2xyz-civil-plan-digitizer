@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import struct
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from . import contracts as C
 from .io_utils import sha256_file
 from .models import CivilModelError, CropRegion
 
-PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp"}
 
 
 @dataclass(frozen=True)
@@ -40,20 +39,33 @@ class SourceInfo:
 
 
 def inspect_png(path: Path) -> SourceInfo:
+    """Backward-compatible PNG-specific entry point."""
+    if path.suffix.lower() != ".png":
+        raise CivilModelError("expected a PNG image")
+    return inspect_image(path)
+
+
+def inspect_image(path: Path) -> SourceInfo:
     candidate = path.expanduser().resolve()
     if not candidate.is_file():
         raise CivilModelError("source image does not exist")
-    if candidate.suffix.lower() != ".png":
-        raise CivilModelError("guaranteed manual core currently accepts PNG images")
+    if candidate.suffix.lower() not in SUPPORTED_IMAGE_SUFFIXES:
+        raise CivilModelError("source must be PNG, JPG, JPEG, or BMP")
     byte_size = candidate.stat().st_size
     if byte_size <= 0 or byte_size > C.MAX_SOURCE_BYTES:
         raise CivilModelError("source image size is outside the allowed boundary")
-    header = candidate.read_bytes()[:24]
-    if len(header) < 24 or header[:8] != PNG_SIGNATURE or header[12:16] != b"IHDR":
-        raise CivilModelError("source is not a valid PNG")
-    width, height = struct.unpack(">II", header[16:24])
+    try:
+        from PIL import Image
+
+        with Image.open(candidate) as image:
+            image.verify()
+        with Image.open(candidate) as image:
+            width, height = image.size
+            source_type = image.format or candidate.suffix[1:].upper()
+    except (OSError, ValueError) as exc:
+        raise CivilModelError("source is not a valid supported image") from exc
     if width <= 0 or height <= 0 or width * height > C.MAX_SOURCE_PIXELS:
-        raise CivilModelError("source PNG dimensions are outside the allowed boundary")
+        raise CivilModelError("source image dimensions are outside the allowed boundary")
     return SourceInfo(
         display_name=candidate.name,
         source_path=str(candidate),
@@ -61,6 +73,7 @@ def inspect_png(path: Path) -> SourceInfo:
         byte_size=byte_size,
         width_px=width,
         height_px=height,
+        source_type=source_type,
     )
 
 

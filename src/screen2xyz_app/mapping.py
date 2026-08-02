@@ -120,9 +120,8 @@ class ChannelMapping:
                     semantic_role=column if column in REQUIRED_COLUMNS else "none",
                     decimal_separator=source.decimal_separator,
                     rect=source.zone,
-                    coordinate_basis="screen",
+                    coordinate_basis="monitor",
                     upscale_factor=3,
                 )
             )
         return result
-
