@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import tkinter as tk
+from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Any
 
-from screen2xyz_civil.models import PixelPoint
+from screen2xyz_civil.models import Calibration, PixelPoint
+from screen2xyz_civil.transform import build_calibration
 from screen2xyz_m2.dpi import enable_pmv2
 
 from ..backends import ScreenOcrBackend
 from ..controller import CaptureSessionController
 from ..mapping import ChannelMapping, ChannelSource, SOURCE_TYPES
-from ..plan import PlanLabelBackend, render_plan_page
+from ..plan import PlanLabelBackend, plan_click_xy, render_plan_page
 from ..profiles import MappingProfileStore
 from .layout import APP_TITLE, HOME_MODES, WIZARD_STEPS
 from .zone_picker import ZonePicker
@@ -28,6 +30,9 @@ class Screen2XYZApp(ttk.Frame):
         self._project_dir: Path | None = None
         self._source_path: Path | None = None
         self._rendered_path: Path | None = None
+        self._calibration: Calibration | None = None
+        self._calibration_points: list[PixelPoint] | None = None
+        self._known_distance = 0.0
         self._controller: CaptureSessionController | None = None
         self._screen = ScreenOcrBackend()
         self._plan_ocr = PlanLabelBackend()
@@ -78,6 +83,7 @@ class Screen2XYZApp(ttk.Frame):
         if mode != "Live screen capture":
             ttk.Button(source, text="Choose plan…", command=self._choose_plan).grid(row=1, column=0, padx=4, pady=4)
             ttk.Label(source, textvariable=self._source_label).grid(row=1, column=1, sticky="w")
+            ttk.Button(source, text="Calibrate plan…", command=self._begin_calibration).grid(row=1, column=2, padx=4)
 
         mapping_frame = ttk.LabelFrame(self, text="2–3. Define zones and map columns", padding=8)
         mapping_frame.pack(fill="x", pady=5)
@@ -140,6 +146,7 @@ class Screen2XYZApp(ttk.Frame):
             return
         try:
             self._source_path = Path(value)
+            self._calibration = None
             if self._source_path.suffix.lower() == ".pdf":
                 if self._project_dir is None:
                     raise ValueError("choose a project folder before rendering a PDF")
@@ -237,8 +244,17 @@ class Screen2XYZApp(ttk.Frame):
                 self._controller.close()
                 self._controller = None
             mapping = self._mapping()
+            if any(
+                source.source_type == "plan_click"
+                for source in mapping.channels.values()
+            ) and self._calibration is None:
+                raise ValueError("calibrate the plan before starting a plan_click session")
             self._controller = CaptureSessionController(
-                self._project_dir, mapping, on_point=self._point_added
+                self._project_dir, mapping,
+                calibration=(
+                    None if self._calibration is None else self._calibration.to_dict()
+                ),
+                on_point=self._point_added,
             )
             if mapping.automatic:
                 self._controller.start_auto()
@@ -268,10 +284,13 @@ class Screen2XYZApp(ttk.Frame):
         try:
             if self._rendered_path is None:
                 raise ValueError("load a PDF or image first")
+            point = PixelPoint(event.x / self._plan_scale, event.y / self._plan_scale)
+            if self._calibration_points is not None:
+                self._calibration_click(point)
+                return
             if self._controller is None:
                 self._start()
             assert self._controller is not None
-            point = PixelPoint(event.x / self._plan_scale, event.y / self._plan_scale)
             context = self._context()
             mapping = self._controller.mapping
             if mapping.channels["z"].source_type == "plan_label_ocr":
@@ -280,13 +299,72 @@ class Screen2XYZApp(ttk.Frame):
                 context["z_confidence"] = confidence
                 self._value_vars["z"].set(raw)
             if any(mapping.channels[name].source_type == "plan_click" for name in ("x", "y")):
-                raise ValueError("plan_click X/Y requires a saved calibration profile")
+                if self._calibration is None:
+                    raise ValueError("calibrate the plan before using plan_click")
+                east, north = plan_click_xy(point, self._calibration)
+                if mapping.channels["x"].source_type == "plan_click":
+                    context["x"] = east
+                if mapping.channels["y"].source_type == "plan_click":
+                    context["y"] = north
             self._controller.capture_click(context)
         except Exception as exc:
             messagebox.showerror(APP_TITLE, str(exc))
 
     def _point_added(self, point, count: int) -> None:
         self.after(0, lambda: self._show_point(point, count))
+
+    def _begin_calibration(self) -> None:
+        if self._rendered_path is None:
+            messagebox.showinfo(APP_TITLE, "Load a PDF or image before calibration.")
+            return
+        self._calibration_points = []
+        self._status.set("Calibration: click the first endpoint of a known distance.")
+
+    def _calibration_click(self, point: PixelPoint) -> None:
+        assert self._calibration_points is not None
+        self._calibration_points.append(point)
+        count = len(self._calibration_points)
+        if count == 1:
+            self._status.set("Calibration: click the second endpoint of the known distance.")
+            return
+        if count == 2:
+            value = simpledialog.askfloat(
+                APP_TITLE, "Known distance between the two points (metres):",
+                minvalue=0.000001,
+            )
+            if value is None:
+                self._calibration_points = None
+                self._status.set("Calibration cancelled.")
+                return
+            self._known_distance = value
+            self._status.set("Calibration: click the local coordinate origin.")
+            return
+        if count == 3:
+            self._status.set("Calibration: click any point in the positive East direction.")
+            return
+        origin_east = simpledialog.askfloat(
+            APP_TITLE, "Origin Easting (metres):", initialvalue=0.0
+        )
+        origin_north = simpledialog.askfloat(
+            APP_TITLE, "Origin Northing (metres):", initialvalue=0.0
+        )
+        if origin_east is None or origin_north is None:
+            self._calibration_points = None
+            self._status.set("Calibration cancelled.")
+            return
+        points = self._calibration_points
+        self._calibration = build_calibration(
+            revision=1,
+            created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            scale_point_1=points[0], scale_point_2=points[1],
+            known_distance_m=self._known_distance,
+            origin_pixel=points[2], east_reference=points[3],
+            origin_east_m=origin_east, origin_north_m=origin_north,
+        )
+        self._calibration_points = None
+        self._status.set(
+            f"Calibration ready: {self._calibration.metres_per_pixel:g} metres/pixel."
+        )
 
     def _show_point(self, point, count: int) -> None:
         self._count.set(f"{count} rows")
