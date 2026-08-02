@@ -14,9 +14,9 @@
 | Rows containing a value absent from ground truth | **0** |
 | SQLite rows exactly reproduced in XLSX | **Yes** |
 | Plan labels rendered / exercised | 48 / 48 |
-| Harness duration | 264.792 seconds |
+| Harness duration | 274.966 seconds |
 
-Environment: Windows 11, Python 3.14.6, Tesseract 5.4.0.20240606. The same proof is configured as a separate Ubuntu/Windows CI matrix job, with its metrics written to the GitHub Actions job summary.
+Environment: Windows 11, Python 3.14.6, Tesseract 5.4.0.20240606. The retained local result includes the [metrics, summary, environment, and exact commands](../runs/evidence/S2XYZ-V2.5-LOCAL-2026-08-02/). The same proof is configured as a separate Ubuntu/Windows CI matrix job, with its metrics written to the GitHub Actions job summary and the full output retained as a workflow artifact.
 
 ## Method
 

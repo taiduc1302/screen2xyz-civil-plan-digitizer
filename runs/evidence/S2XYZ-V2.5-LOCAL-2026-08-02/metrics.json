@@ -1,0 +1,56 @@
+{
+  "failures": [
+    {
+      "error": "OCR confidence 0.410 is below 0.450",
+      "label": "L016",
+      "sequence": 112,
+      "style": "comma-dark"
+    },
+    {
+      "error": "OCR confidence 0.370 is below 0.450",
+      "label": "L028",
+      "sequence": 124,
+      "style": "comma-dark"
+    },
+    {
+      "error": "OCR retry ladder produced no parseable value: ['20545,.46', '2054546']",
+      "label": "L041",
+      "sequence": 137,
+      "style": "comma-dark"
+    },
+    {
+      "error": "OCR retry ladder produced no parseable value: ['2054792']",
+      "label": "L043",
+      "sequence": 139,
+      "style": "comma-dark"
+    },
+    {
+      "error": "OCR retry ladder produced no parseable value: ['2057744']",
+      "label": "L019",
+      "sequence": 163,
+      "style": "comma-dark"
+    }
+  ],
+  "metrics": {
+    "accuracy": 0.9772727272727273,
+    "captured_rows": 215,
+    "correctly_captured_rows": 215,
+    "duration_seconds": 274.966,
+    "false_duplicate_rows": 0,
+    "ground_truth_rows": 220,
+    "hallucinated_rows": 0,
+    "parse_or_ocr_failures": 5,
+    "plan_labels_rendered": 48,
+    "plan_labels_used": 48,
+    "sqlite_xlsx_exact": true,
+    "tesseract": "C:\\Users\\Mvu\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe"
+  },
+  "passed": true,
+  "schema_version": "1.0",
+  "thresholds": {
+    "accuracy_min": 0.95,
+    "false_duplicate_rows_max": 0,
+    "hallucinated_rows_max": 0,
+    "sqlite_xlsx_exact": true
+  }
+}
