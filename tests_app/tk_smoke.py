@@ -37,8 +37,12 @@ def run(output_dir: Path) -> None:
         capture_window(root, output_dir / "home.png")
         app.show_wizard("Live screen capture")
         capture_window(root, output_dir / "live-capture-wizard.png")
+        overlay_actions = []
         overlay = CaptureOverlay(
-            root, on_pause=lambda: None, on_stop=lambda: None, on_repick=lambda: None
+            root,
+            on_pause=lambda: overlay_actions.append("pause"),
+            on_stop=lambda: overlay_actions.append("stop"),
+            on_repick=lambda: overlay_actions.append("repick"),
         )
         overlay.show_health(ZoneHealthSnapshot(
             True, False, "Zones are reading normally.", 0,
@@ -48,6 +52,11 @@ def run(output_dir: Path) -> None:
             values={"x": 432100.25, "y": 5456789.75, "z": 49.78},
             source_methods={}, raw_texts={}, confidences={},
         ), 18)
+        overlay.pause_button.invoke()
+        overlay.repick_button.invoke()
+        overlay.stop_button.invoke()
+        if overlay_actions != ["pause", "repick", "stop"]:
+            raise RuntimeError("overlay controls did not dispatch")
         capture_window(overlay, output_dir / "capture-overlay.png")
         overlay.destroy()
 
@@ -72,9 +81,23 @@ def run(output_dir: Path) -> None:
                     },
                 ]
 
+        export_actions = []
         review = SessionReview(
-            root, ReviewStub(), export_xlsx=lambda: None, export_csv=lambda: None
+            root,
+            ReviewStub(),
+            export_xlsx=lambda: export_actions.append("xlsx"),
+            export_csv=lambda: export_actions.append("csv"),
         )
+        review.filter_text.set("Design")
+        review.refresh()
+        if len(review.tree.get_children()) != 1:
+            raise RuntimeError("review filter smoke failed")
+        review.filter_text.set("")
+        review.sort("z")
+        review.export_xlsx_button.invoke()
+        review.export_csv_button.invoke()
+        if export_actions != ["xlsx", "csv"]:
+            raise RuntimeError("review re-export controls did not dispatch")
         capture_window(review, output_dir / "session-review.png")
         review.destroy()
         app.show_wizard("Load image")

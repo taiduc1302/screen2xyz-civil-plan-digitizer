@@ -50,6 +50,25 @@ class GlobalHotkeys:
         self._thread = None
         self._thread_id = None
 
+    def register_with(self, user32) -> list[int]:
+        """Register the declared keys against a Win32-compatible API object."""
+        registered: list[int] = []
+        for hotkey_id, (modifiers, virtual_key, _name) in HOTKEYS.items():
+            if not user32.RegisterHotKey(None, hotkey_id, modifiers, virtual_key):
+                for prior_id in registered:
+                    user32.UnregisterHotKey(None, prior_id)
+                raise RuntimeError("A Screen2XYZ global hotkey is already in use.")
+            registered.append(hotkey_id)
+        return registered
+
+    def dispatch(self, hotkey_id: int) -> bool:
+        descriptor = HOTKEYS.get(hotkey_id)
+        callback = None if descriptor is None else self.callbacks.get(descriptor[2])
+        if callback is None:
+            return False
+        callback()
+        return True
+
     def _message_loop(self) -> None:
         import ctypes
         from ctypes import wintypes
@@ -59,19 +78,16 @@ class GlobalHotkeys:
         self._thread_id = int(kernel32.GetCurrentThreadId())
         registered: list[int] = []
         try:
-            for hotkey_id, (modifiers, virtual_key, _name) in HOTKEYS.items():
-                if not user32.RegisterHotKey(None, hotkey_id, modifiers, virtual_key):
-                    self.error = "A Screen2XYZ global hotkey is already in use."
-                    return
-                registered.append(hotkey_id)
+            try:
+                registered = self.register_with(user32)
+            except RuntimeError as exc:
+                self.error = str(exc)
+                return
             self._ready.set()
             message = wintypes.MSG()
             while user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
                 if message.message == 0x0312:
-                    descriptor = HOTKEYS.get(int(message.wParam))
-                    callback = None if descriptor is None else self.callbacks.get(descriptor[2])
-                    if callback is not None:
-                        callback()
+                    self.dispatch(int(message.wParam))
         finally:
             for hotkey_id in registered:
                 user32.UnregisterHotKey(None, hotkey_id)

@@ -77,6 +77,14 @@ class SessionStore:
                 after_json TEXT,
                 created_utc TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS session_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                before_json TEXT NOT NULL,
+                after_json TEXT NOT NULL,
+                created_utc TEXT NOT NULL
+            );
             """
         )
         columns = {
@@ -272,10 +280,40 @@ class SessionStore:
                 (session_id,),
             ))
 
+    def update_session_mapping(
+        self, session_id: str, mapping: ChannelMapping
+    ) -> None:
+        mapping.validate()
+        after = json.dumps(mapping.to_json(), sort_keys=True)
+        with self._lock:
+            row = self.session(session_id)
+            before = row["mapping_json"]
+            with self.connection:
+                self.connection.execute(
+                    "UPDATE sessions SET mapping_json = ? WHERE id = ?",
+                    (after, session_id),
+                )
+                self.connection.execute(
+                    """
+                    INSERT INTO session_audit
+                        (session_id, action, before_json, after_json, created_utc)
+                    VALUES (?, 'RECONFIGURE_ZONES', ?, ?, ?)
+                    """,
+                    (session_id, before, after, _utc_now()),
+                )
+
+    def session_audit_events(self, session_id: str) -> list[sqlite3.Row]:
+        with self._lock:
+            return list(self.connection.execute(
+                "SELECT * FROM session_audit WHERE session_id = ? ORDER BY id",
+                (session_id,),
+            ))
+
     def session(self, session_id: str) -> sqlite3.Row:
-        row = self.connection.execute(
-            "SELECT * FROM sessions WHERE id = ?", (session_id,)
-        ).fetchone()
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT * FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
         if row is None:
             raise KeyError(session_id)
         return row

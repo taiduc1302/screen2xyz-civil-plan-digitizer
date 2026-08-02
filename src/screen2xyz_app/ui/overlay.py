@@ -7,7 +7,7 @@ from collections.abc import Callable
 from tkinter import ttk
 
 from ..capture import CapturedPoint
-from ..operations import ZoneHealthSnapshot
+from ..operations import ZoneHealthSnapshot, zone_indicator_states
 
 
 class CaptureOverlay(tk.Toplevel):
@@ -43,9 +43,12 @@ class CaptureOverlay(tk.Toplevel):
             self._zone_labels[name] = label
         actions = ttk.Frame(body)
         actions.pack(fill="x")
-        ttk.Button(actions, text="Pause / resume", command=on_pause).pack(side="left")
-        ttk.Button(actions, text="Re-pick zones", command=on_repick).pack(side="left", padx=5)
-        ttk.Button(actions, text="Stop", command=on_stop).pack(side="right")
+        self.pause_button = ttk.Button(actions, text="Pause / resume", command=on_pause)
+        self.pause_button.pack(side="left")
+        self.repick_button = ttk.Button(actions, text="Re-pick zones", command=on_repick)
+        self.repick_button.pack(side="left", padx=5)
+        self.stop_button = ttk.Button(actions, text="Stop", command=on_stop)
+        self.stop_button.pack(side="right")
 
     def show_point(self, point: CapturedPoint, count: int) -> None:
         self._summary.set(
@@ -55,9 +58,9 @@ class CaptureOverlay(tk.Toplevel):
     def show_health(self, snapshot: ZoneHealthSnapshot) -> None:
         self._health.set(snapshot.message)
         self.health_label.configure(fg="#15803d" if snapshot.ok else "#b91c1c")
-        for name, label in self._zone_labels.items():
-            value = snapshot.readouts.get(name, "—")
+        for name, (value, ok) in zone_indicator_states(snapshot).items():
+            label = self._zone_labels[name]
             label.configure(
                 text=f"{name.upper()}: {value}",
-                fg="#15803d" if snapshot.ok and name in snapshot.readouts else "#b91c1c",
+                fg="#15803d" if ok else "#b91c1c",
             )

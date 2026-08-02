@@ -9,6 +9,7 @@ from screen2xyz_app import __version__
 from screen2xyz_app.dependencies import poppler_capability, tesseract_capability
 from screen2xyz_app.ui.layout import HOME_MODES, WIZARD_STEPS
 from screen2xyz_app.ui.guide import first_run_pending, load_steps, mark_first_run_complete
+from screen2xyz_civil.ocr import adapter_script_path
 
 
 class LauncherTests(unittest.TestCase):
@@ -45,6 +46,11 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse(poppler.available)
         self.assertIn("winget install", poppler.install_command)
         self.assertIn("disabled", poppler.detail)
+
+    def test_windows_ocr_helper_resolves_next_to_packaged_module(self) -> None:
+        path = adapter_script_path(Path("missing-repository"), "ocr_windows_boxes.ps1")
+        self.assertTrue(path.is_file())
+        self.assertEqual(path.name, "ocr_windows_boxes.ps1")
 
 
 if __name__ == "__main__":

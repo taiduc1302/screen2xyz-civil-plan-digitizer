@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import sys
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any, Callable, Iterable, Mapping
 
 
 @dataclass(frozen=True)
@@ -109,3 +109,37 @@ class ZoneHealthMonitor:
         if paused:
             message += " Capture paused; re-pick the zones."
         return ZoneHealthSnapshot(False, paused, message, self.consecutive_failures)
+
+
+def zone_indicator_states(
+    snapshot: ZoneHealthSnapshot, names: tuple[str, ...] = ("x", "y", "z")
+) -> dict[str, tuple[str, bool]]:
+    """Return display text and green/red state without depending on Tk."""
+    return {
+        name: (snapshot.readouts.get(name, "—"), snapshot.ok and name in snapshot.readouts)
+        for name in names
+    }
+
+
+def review_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    filter_text: str = "",
+    sort_by: str = "id",
+    reverse: bool = False,
+    visible_columns: tuple[str, ...] = (
+        "point_number", "x", "y", "z", "description", "created_utc"
+    ),
+) -> list[Mapping[str, Any]]:
+    """Filter and sort captured rows for UI or headless review."""
+    needle = filter_text.casefold().strip()
+    selected = [
+        row for row in rows
+        if not needle
+        or needle in " ".join(str(row.get(name, "")) for name in visible_columns).casefold()
+    ]
+    return sorted(
+        selected,
+        key=lambda row: (row.get(sort_by) is None, row.get(sort_by)),
+        reverse=reverse,
+    )

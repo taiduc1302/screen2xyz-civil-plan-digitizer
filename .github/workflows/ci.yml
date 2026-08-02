@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, "feature/**"]
   pull_request:
-    branches: [main]
+    branches: [main, feature/v2-unified-capture]
   workflow_dispatch: {}
 
 jobs:
@@ -21,6 +21,8 @@ jobs:
         run: PYTHONPATH=src python -m unittest discover -s tests_app -t . -v
       - name: Civil regression
         run: PYTHONPATH=src python tests_civil/run_civil_tests.py
+      - name: M2 regression
+        run: PYTHONPATH=src python -m unittest discover -s tests_m2 -t . -v
 
   windows:
     name: full tests (windows-latest)
@@ -37,6 +39,9 @@ jobs:
       - name: Civil regression
         shell: bash
         run: PYTHONPATH=src python tests_civil/run_civil_tests.py
+      - name: M2 regression
+        shell: bash
+        run: PYTHONPATH=src python -m unittest discover -s tests_m2 -t . -v
       - name: Scripted Tk smoke
         shell: bash
         run: PYTHONPATH=src python tests_app/tk_smoke.py --output .tk-smoke
@@ -76,3 +81,11 @@ jobs:
           else
             echo "Harness did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Retain proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: realistic-ocr-proof-${{ runner.os }}
+          path: .harness-output
+          if-no-files-found: error
+          retention-days: 30

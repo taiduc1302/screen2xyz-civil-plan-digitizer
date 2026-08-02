@@ -47,7 +47,9 @@ class StoreTests(unittest.TestCase):
                 names = {row[0] for row in store.connection.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 )}
-                self.assertTrue({"sessions", "points", "point_audit"}.issubset(names))
+                self.assertTrue(
+                    {"sessions", "points", "point_audit", "session_audit"}.issubset(names)
+                )
 
     def test_edit_and_soft_delete_are_audited(self):
         with tempfile.TemporaryDirectory() as temporary:

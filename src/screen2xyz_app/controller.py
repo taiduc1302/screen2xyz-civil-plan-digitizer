@@ -29,7 +29,8 @@ class CaptureSessionController:
         self.mapping = mapping
         self.store = SessionStore(project_dir)
         self.session_id = self.store.start_session(mapping, calibration=calibration)
-        self.pipeline = CapturePipeline(mapping, reader or DefaultReader())
+        self.reader = reader or DefaultReader()
+        self.pipeline = CapturePipeline(mapping, self.reader)
         self.on_point = on_point
         self.on_health = on_health
         self.options = options or SessionOptions()
@@ -37,6 +38,7 @@ class CaptureSessionController:
         self.last_point: CapturedPoint | None = None
         self._last_retained_xy: tuple[float, float] | None = None
         self.auto: AutoCaptureEngine | None = None
+        self.stopped = False
 
     def _retain(self, point: CapturedPoint) -> int | None:
         if not self.options.accepts(self._last_retained_xy, point.x, point.y):
@@ -54,11 +56,15 @@ class CaptureSessionController:
         return point_id
 
     def capture_click(self, context: dict[str, Any] | None = None) -> CapturedPoint:
+        if self.stopped:
+            raise RuntimeError("capture is stopped; start a new session first")
         point, _observations, _crops = self.pipeline.read(context)
         self._retain(point)
         return point
 
     def start_auto(self, *, interval_ms: int = 500, confirmations: int = 2) -> None:
+        if self.stopped:
+            raise RuntimeError("capture is stopped; start a new session first")
         if self.auto is not None:
             raise RuntimeError("automatic capture is already running")
         self.auto = AutoCaptureEngine(
@@ -90,6 +96,8 @@ class CaptureSessionController:
             self.auto.pause()
 
     def force_capture(self) -> CapturedPoint:
+        if self.stopped:
+            raise RuntimeError("capture is stopped; force capture is unavailable")
         if self.auto is not None:
             return self.auto.force_capture()
         return self.capture_click()
@@ -102,6 +110,21 @@ class CaptureSessionController:
         if self.auto is not None:
             self.auto.stop()
             self.auto = None
+        self.stopped = True
+
+    def reconfigure(self, mapping: ChannelMapping) -> None:
+        """Replace zones in the active session without abandoning retained rows."""
+        if self.stopped:
+            raise RuntimeError("a stopped session cannot be reconfigured")
+        was_automatic = self.auto is not None
+        if self.auto is not None:
+            self.auto.stop()
+            self.auto = None
+        self.store.update_session_mapping(self.session_id, mapping)
+        self.mapping = mapping
+        self.pipeline = CapturePipeline(mapping, self.reader)
+        if was_automatic and mapping.automatic:
+            self.start_auto()
 
     def export_xlsx(self, path: Path) -> Path:
         return export_xlsx(self.store, self.session_id, path)

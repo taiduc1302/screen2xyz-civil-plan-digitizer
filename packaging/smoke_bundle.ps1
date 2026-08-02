@@ -5,6 +5,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $resolved = Resolve-Path -LiteralPath $Executable
+$bundleRoot = Split-Path -Parent $resolved
+foreach ($helper in @("ocr_windows_boxes.ps1", "ocr_tesseract_rotated.ps1")) {
+    $helperPath = Join-Path $bundleRoot "_internal\screen2xyz_civil\adapters\$helper"
+    if (-not (Test-Path -LiteralPath $helperPath)) {
+        throw "Packaged OCR fallback helper is missing: $helperPath"
+    }
+}
 $env:SCREEN2XYZ_SKIP_FIRST_RUN = "1"
 $process = Start-Process -FilePath $resolved -PassThru -WindowStyle Hidden
 try {

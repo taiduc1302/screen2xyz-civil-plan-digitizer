@@ -46,6 +46,7 @@ class Screen2XYZApp(ttk.Frame):
         self._known_distance = 0.0
         self._controller: CaptureSessionController | None = None
         self._overlay: CaptureOverlay | None = None
+        self._review: SessionReview | None = None
         self._screen = ScreenOcrBackend()
         self._plan_ocr = PlanLabelBackend()
         self._zones: dict[str, tuple[int, int, int, int]] = {}
@@ -78,6 +79,9 @@ class Screen2XYZApp(ttk.Frame):
             child.destroy()
 
     def show_home(self) -> None:
+        if self._review is not None and self._review.winfo_exists():
+            self._review.destroy()
+            self._review = None
         if self._controller is not None:
             self._controller.close()
             self._controller = None
@@ -295,6 +299,9 @@ class Screen2XYZApp(ttk.Frame):
         try:
             if self._project_dir is None:
                 raise ValueError("choose a project folder first")
+            if self._review is not None and self._review.winfo_exists():
+                self._review.destroy()
+                self._review = None
             if self._controller is not None:
                 self._controller.close()
                 self._controller = None
@@ -460,7 +467,7 @@ class Screen2XYZApp(ttk.Frame):
 
     def _hotkey_toggle(self) -> None:
         try:
-            if self._controller is None:
+            if self._controller is None or self._controller.stopped:
                 self._start()
             elif self._controller.auto is not None:
                 self._controller.toggle_pause()
@@ -504,10 +511,11 @@ class Screen2XYZApp(ttk.Frame):
 
         def pick(index: int) -> None:
             if index >= len(columns):
-                if self._controller is not None:
-                    self._controller.close()
-                    self._controller = None
-                self._start()
+                if self._controller is None:
+                    self._start()
+                else:
+                    self._controller.reconfigure(self._mapping())
+                    self._status.set("Zones updated; capture resumed in the same session.")
                 return
             column = columns[index]
 
@@ -527,13 +535,15 @@ class Screen2XYZApp(ttk.Frame):
         pick(0)
 
     def _stop(self) -> None:
-        if self._controller is not None:
+        if self._controller is not None and not self._controller.stopped:
             self._controller.stop()
             self._status.set("Capture stopped.")
             if self._overlay is not None and self._overlay.winfo_exists():
                 self._overlay.destroy()
                 self._overlay = None
-            SessionReview(
+            if self._review is not None and self._review.winfo_exists():
+                self._review.destroy()
+            self._review = SessionReview(
                 self.master,
                 self._controller,
                 export_xlsx=self._export_xlsx,

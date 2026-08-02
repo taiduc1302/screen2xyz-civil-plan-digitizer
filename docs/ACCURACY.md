@@ -26,7 +26,7 @@ The self-contained harness in [`tests_app/harness/`](../tests_app/harness/) does
 2. The 220 unique X/Y pairs cover light and dark backgrounds, point and comma decimal separators, grouped and ungrouped thousands, negative values, and a value change on every scripted frame.
 3. A synthetic plan renders 48 known elevation labels. Labels include 15–25° rotation, design-grade ovals, and existing-grade cross markers.
 4. The harness crops the real image bytes where screen capture would, then uses the production Tesseract backend with padding, scale/binarization variants, numeric whitelist, locale-aware parsing, confidence/range/precision gates, and consensus across deskew retries.
-5. Production `CapturePipeline`, M2 `StabilityEngine`, journal-first `SessionStore`, SQLite, and XLSX export process the readings.
+5. Every coordinate change is presented for the production default of two stability confirmations. Production `CapturePipeline`, M2 `StabilityEngine`, journal-first `SessionStore`, SQLite, and XLSX export process the readings.
 6. The scorer compares retained `(X, Y, Z)` tuples with ground truth, counts duplicates and out-of-ground-truth values, and opens every XLSX to compare it field-for-field with SQLite.
 
 The acceptance gate is machine-enforced:
@@ -36,7 +36,7 @@ The acceptance gate is machine-enforced:
 - zero accepted hallucinations; and
 - exact SQLite/XLSX parity.
 
-The five misses in the latest run were rejected OCR attempts for the difficult rotated-label fixture. No guessed replacement was written to the database. This fail-closed behavior is why `captured rows` can be below 220 while accepted hallucinations remain zero.
+The five misses in the latest run were all rejected reads in the 12-pixel comma-decimal dark status-bar style: two fell below the 0.45 confidence gate and three produced malformed coordinate tokens. No rotated plan-label error or guessed coordinate was written to the database. This fail-closed behavior is why `captured rows` can be below 220 while accepted hallucinations remain zero.
 
 ## Reproduce it
 

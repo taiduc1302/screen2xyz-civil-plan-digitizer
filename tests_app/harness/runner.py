@@ -169,10 +169,10 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
             engine = AutoCaptureEngine(
                 CapturePipeline(mapping, reader),
                 lambda point, sid=session_id: store.append_point(sid, point),
-                confirmations=1,
             )
             reader.select(primer, 0)
             try:
+                engine.poll()
                 engine.poll()
             except (ValueError, RuntimeError) as exc:
                 raise RuntimeError(f"primer OCR failed for {style.name}: {exc}") from exc
@@ -182,6 +182,7 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
                 expected.append((frame.x, frame.y, label.value))
                 reader.select(frame, label_index)
                 try:
+                    engine.poll()
                     engine.poll()
                 except (ValueError, RuntimeError) as exc:
                     failures.append({
@@ -200,16 +201,18 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
     finally:
         store.close()
 
-    expected_counter = collections.Counter(expected)
-    captured_counter = collections.Counter(captured)
-    correct = sum((expected_counter & captured_counter).values())
+    expected_by_xy = {(x, y): z for x, y, z in expected}
+    captured_xy = collections.Counter((x, y) for x, y, _z in captured)
+    correct = sum(
+        1 for x, y, z in captured if expected_by_xy.get((x, y)) == z
+    )
     false_duplicates = sum(
-        max(0, count - expected_counter.get(point, 0))
-        for point, count in captured_counter.items()
-        if point in expected_counter
+        max(0, count - 1)
+        for xy, count in captured_xy.items()
+        if xy in expected_by_xy
     )
     hallucinated = sum(
-        count for point, count in captured_counter.items() if point not in expected_counter
+        1 for x, y, z in captured if expected_by_xy.get((x, y)) != z
     )
     metrics = HarnessMetrics(
         ground_truth_rows=len(expected),
