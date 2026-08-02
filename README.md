@@ -12,7 +12,7 @@ Screen2XYZ turns coordinate and elevation readouts already visible on your scree
 - Watch the always-on-top zone-health overlay; Screen2XYZ pauses if OCR repeatedly fails or display/DPI settings change.
 - Review, filter, edit, or soft-delete rows with an audit trail, then export one XLSX or CSV.
 
-The v2.5 realistic proof drives rendered image bytes through real Tesseract OCR, parsing, stability, SQLite, and XLSX. Its current Windows result is **215/220 exact rows (97.73%)**, with **zero duplicates, zero accepted hallucinations, and exact SQLite/XLSX parity**. See [Accuracy and validation](docs/ACCURACY.md).
+The v2.5 realistic proof drives rendered image bytes through real Tesseract OCR, parsing, stability, SQLite, and XLSX. Its current Windows result is **220/220 exact rows (100.00%)**, with **zero duplicates, zero accepted hallucinations, and exact SQLite/XLSX parity**. See [Accuracy and validation](docs/ACCURACY.md).
 
 ## See the workflow
 
@@ -101,7 +101,7 @@ No. It reads only the screen rectangles, local files, clipboard, or manual value
 
 No. Capture, OCR, journaling, SQLite storage, review, and export run locally.
 
-**Is 97.73% a guarantee on my drawings?**
+**Is 100% a guarantee on my drawings?**
 
 No. It is a reproducible result for the published synthetic-but-realistic harness. Fonts, scale, contrast, rotation, compression, and display settings affect OCR. Bad reads are designed to be rejected rather than silently stored, but every output still requires authoritative validation.
 

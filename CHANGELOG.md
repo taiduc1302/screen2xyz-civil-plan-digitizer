@@ -21,8 +21,8 @@ All notable public changes are recorded here.
 
 ### Validation
 
-- Realistic proof: 215/220 exact rows (97.73%), zero false duplicates, zero accepted hallucinations, exact SQLite/XLSX parity.
-- Local Windows regression: tests_app 28/28, tests_civil 113/113, tests_m2 498/498, scripted Tk smoke pass, packaged executable launch pass.
+- Realistic proof: 220/220 exact rows (100.00%), zero false duplicates, zero accepted hallucinations, zero OCR/parse failures, exact SQLite/XLSX parity.
+- Local Windows regression: tests_app 36/36, tests_civil 113/113, tests_m2 498/498, scripted Tk smoke pass, packaged executable launch pass.
 - Local Windows bundle: 44.63 MiB folder; 22.01 MiB ZIP.
 
 ## [2.0.0] - 2026-08-02
