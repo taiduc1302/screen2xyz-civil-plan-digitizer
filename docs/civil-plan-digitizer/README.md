@@ -1,7 +1,6 @@
 # Civil Plan Digitizer User Guide
 
-Status: local feature-branch implementation; preliminary estimator workflow;
-not merged, released, or downstream-certified.
+Status: retained Civil engine reference for the Screen2XYZ v2 advanced workflow.
 
 > All PDF/image-derived coordinates and elevations are preliminary and require
 > estimator or survey review. They are not certified survey data.
@@ -11,9 +10,9 @@ not merged, released, or downstream-certified.
 From the repository root on Windows:
 
 ```powershell
-py -3.14 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-civil.txt
-powershell -ExecutionPolicy Bypass -File .\run_civil_plan_digitizer.ps1
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\run_screen2xyz.ps1
 ```
 
 The guaranteed manual PNG workflow uses the Python standard library and
@@ -23,8 +22,7 @@ When installed, Tesseract is invoked through a bounded local multi-angle
 adapter for small rotated grade labels. Windows Media OCR remains the local
 fallback. Nothing is sent to a network service.
 
-You can also choose **Civil Plan Digitizer** from
-`run_screen2xyz_menu.ps1`.
+The current public UI is the unified Screen2XYZ v2 wizard. This document describes the retained Civil processing and advanced-export behavior.
 
 ## Recommended first project
 

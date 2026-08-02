@@ -1,7 +1,7 @@
 # M2-Live Product Specification — Live Screen-Region Watcher
 
 Status: M2-000 planning baseline. Supersedes the preliminary M2 sketch that
-previously lived in `docs/control/NEXT_ACTION.md`. Cross-references:
+was recorded in the predecessor project controls. Cross-references:
 [architecture](../architecture/M2_LIVE_ARCHITECTURE.md),
 [data contracts](M2_LIVE_DATA_CONTRACTS.md),
 [UX flow](../ux/M2_LIVE_USER_FLOW_AND_WIREFRAMES.md),

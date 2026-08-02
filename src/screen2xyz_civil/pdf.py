@@ -420,7 +420,7 @@ def _pdf_reader():
     if not pypdf_available():
         raise PdfAdapterError(
             "optional pypdf dependency is unavailable; "
-            "install requirements-civil.txt or use the manual PNG workflow"
+            "install requirements.txt or use an image source"
         )
     from pypdf import PdfReader
 

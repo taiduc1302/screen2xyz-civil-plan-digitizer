@@ -53,7 +53,7 @@
       "test_case_id": "P-REJECT-004"
     }
   ],
-  "corpus_role": "Representative parser contract examples only; the frozen executable 13-case metric corpus is defined in src/screen2xyz_lab/parser.py.",
+  "corpus_role": "Representative parser contract examples only; the retired executable corpus is retained in legacy/src/screen2xyz_lab/parser.py.",
   "output_classification": "Conceptual and preliminary estimating data only.",
   "schema_version": "1.0"
 }

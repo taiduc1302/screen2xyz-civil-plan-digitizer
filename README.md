@@ -1,119 +1,74 @@
-# Screen2XYZ
+# Screen2XYZ v2
 
-Screen2XYZ is a controlled Windows research/product repository for local
-screen/OCR review and preliminary civil-plan digitization.
+> **Preliminary data only.** Screen2XYZ produces conceptual estimating data, not certified survey data. Validate every output against an authoritative source before relying on it.
 
-> **Current status:** the synthetic OCR baseline, M1 PNG review lab, and
-> M2-Live watcher are merged on private `main`. The Civil Plan Digitizer is
-> implemented and being stabilized on
-> `feature/assisted-c03-validation`; it is not merged, released, or
-> downstream-certified.
+Screen2XYZ is a local Windows-first capture tool that turns visible coordinate and elevation readouts into reviewable point rows. It has one launcher and three modes:
 
-All PDF/image-derived coordinates and elevations are preliminary and require
-estimator or survey review. They are not certified survey data. The repository
-has no selected public licence and is not authorized for public release.
+1. **Live screen capture** — watch mapped rectangles and retain stable changed values.
+2. **Load PDF** — render a plan page locally, then capture against it.
+3. **Load image** — open PNG, JPG, JPEG, or BMP plans directly.
 
-## Civil Plan Digitizer
+Before a session, map X, Y, Z and optional Description/Point number columns to screen-zone OCR, a calibrated plan click, the nearest plan elevation label, clipboard text, or a manual value. Named profiles keep those mappings in the project folder.
 
-The new review-first workspace provides:
+Captured points are journaled before being written to the project-local SQLite database. The default exports are a single XLSX workbook or CSV; the existing multi-artifact estimator handoff remains under **Export → Advanced estimator export**.
 
-- local PDF/PNG source intake, selected-page rendering, crop, scale, local
-  origin, arbitrary East orientation, and independent second-distance check;
-- reliable manual Existing/Design/Contour point entry;
-- asynchronous local PDF text/vector extraction and bounded multi-angle
-  Tesseract OCR, with Windows Media OCR as the local fallback;
-- explainable numeric filtering, symbol proposals, candidate associations,
-  alternatives, confidence/reasons, and explicit approve/reject/edit/merge;
-- a persistent Point Cart with point numbering, sheet/revision metadata,
-  undo/redo, bulk review, filtering, and reviewed contour-line vertices;
-- schema-versioned atomic save/reopen with calibration and decision history;
-- duplicate/conflict QA and approved-only, separate Existing/Design exports;
-- atomically published, versioned handoffs with an eight-sheet estimator XLSX,
-  AGTEK CSV, XYZ, NEZ, local GeoJSON, DXF, contour/breakline data, hashes,
-  reports, and audit records;
-- feature-flagged, separate Existing/Design preliminary TIN previews with
-  reviewed boundaries, exclusions, breakline/no-cross barriers, triangle
-  flags/disabling, point-sample cut/fill, and gated preliminary LandXML.
+## Quickstart
 
-Automatic candidates are never approved silently. Editing or recalibrating
-invalidates approval/export freshness. Utility, slab, slope, and drawing
-metadata records are excluded from terrain exports by default.
+This sequence is intentionally short enough to record as a quickstart GIF:
 
-### Install and launch
+1. Run `run_screen2xyz.ps1` and choose one of the three modes.
+2. Choose a project folder and, for plan modes, a PDF or image.
+3. Map X/Y/Z. Use **Pick** to draw each screen OCR zone and confirm its live preview.
+4. Select **Start**. Automatic mappings retain stable changes; plan-label mappings retain a row when you click the plan.
+5. Watch the row counter and last X/Y/Z values, then choose **Export XLSX**.
 
-From the repository root on Windows:
+## Install
+
+Requirements: Python 3.11 or newer and Windows 10/11.
 
 ```powershell
-py -3.14 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-civil.txt
-powershell -ExecutionPolicy Bypass -File .\run_civil_plan_digitizer.ps1
+py -3.11 -m venv .venv
+.\.venv\Scripts\python -m pip install --upgrade pip
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\run_screen2xyz.ps1
 ```
 
-The manual PNG workflow remains standard-library/Tkinter only. Optional PDF
-inspection uses pinned `pypdf`; PDF rendering requires a host-installed
-Poppler `pdftoppm` on `PATH`. If installed, local Tesseract is preferred for
-small rotated grade labels; Windows Media OCR remains the fallback. No drawing
-is uploaded.
+Optional local tools:
 
-Read the [Civil Plan Digitizer guide](docs/civil-plan-digitizer/README.md),
-[QA checklist](docs/civil-plan-digitizer/QA_CHECKLIST.md), and
-[limitations](docs/civil-plan-digitizer/LIMITATIONS.md) before project use.
+- **Tesseract OCR** improves cross-platform OCR and is preferred when found.
+- **Poppler `pdftoppm`** on `PATH` enables PDF page rendering.
+- On Windows, Windows Media OCR is used when Tesseract is unavailable.
 
-### Civil validation
+Screen capture and OCR stay local. The application does not upload plans or captured values.
 
-```powershell
-$env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe tests_civil\run_civil_tests.py
-.\.venv\Scripts\python.exe -m tests_civil.benchmark_civil
-```
+## Channel mapping
 
-The civil suite currently contains 113 deterministic tests. The benchmark uses
-synthetic rule fixtures only; its exact scores are not real-drawing OCR or
-symbol accuracy. See
-[BENCHMARK_RESULTS.md](docs/civil-plan-digitizer/BENCHMARK_RESULTS.md).
-
-## Preserved product lines
-
-| Area | Current scope |
+| Output | Supported sources |
 |---|---|
-| `src/screen2xyz_lab/` | Sealed synthetic OCR baseline, evidence, metrics, and CLI |
-| `src/screen2xyz_m1/` | Explicit local PNG review/correction/approval and approved-only export |
-| `src/screen2xyz_m2/` | Merged M2-Live local region watcher with owner-machine gate evidence |
-| `src/screen2xyz_civil/` | Feature-branch Civil Plan Digitizer described above |
-| `tests/` | 42 baseline tests |
-| `tests_m1/` | 34 M1 tests |
-| `tests_m2/` | 498 deterministic M2 tests plus 16 Windows integration tests |
-| `tests_civil/` | 113 deterministic civil tests and synthetic benchmark |
-| `runs/evidence/` | Immutable retained baseline/M1 evidence |
-| `docs/control/` | Current authorization, project state, and next action |
+| X / Y / Z | `screen_zone_ocr`, `plan_click`, `plan_label_ocr`, `clipboard`, `manual` |
+| Description / Point number | The same source choices, with text parsing for extras |
 
-The final standalone validation on 2026-07-29 passed baseline 42/42, M1
-34/34, M2 deterministic 498/498, M2 Windows integration 16/16, Civil
-113/113, retained-evidence verification, and compile. See the Civil worklog
-and project state for the exact scope and remaining external gates.
+Automatic Start/Stop is available when all mapped sources are screen zones or clipboard. A plan-derived Z makes capture click-driven, allowing the current screen-zone X/Y and the nearest recognized plan elevation to be retained together.
 
-## Baseline commands
+## Storage and export
 
-The baseline setup and commands remain documented in
-`docs/public/Screen2XYZ_Local_Run_Guide_v0.2.md`.
+Each project folder contains `.screen2xyz/screen2xyz.sqlite3`, mapping profiles, rendered PDF pages, and per-session M2 journals. The journal is the crash-safety source used to replay any point not yet committed to SQLite.
+
+The default XLSX contains:
+
+- **Points** — PointNumber, X, Y, Z, Description, source methods, confidence, and timestamp.
+- **Session** — mapping, calibration metadata when available, app version, and the preliminary-data warning.
+
+## Tests
 
 ```powershell
 $env:PYTHONPATH = "src"
-py -3.14 tests\run_all.py
-py -3.14 tests_m1\run_m1_tests.py
-py -3.14 tests_m2\run_m2_tests.py
-py -3.14 -m screen2xyz_lab.cli verify-evidence
+.\.venv\Scripts\python -m unittest discover -s tests_app -t . -v
+.\.venv\Scripts\python tests_civil\run_civil_tests.py
 ```
 
-## Claims and release boundary
+The automated acceptance test uses injected, synthetic readings. It verifies the X/Y screen-zone plus plan-label Z flow through SQLite and XLSX; it is not evidence of OCR accuracy on a particular viewer or drawing.
 
-- Synthetic tests and a synthetic OCR integration image are not evidence of
-  real-plan accuracy.
-- Local East/North values are not geodetic coordinates.
-- The preliminary TIN is not an engineering surface; cut/fill samples are not
-  volumes or quantities.
-- AGTEK/Civil 3D/Kubla/LandXML compatibility is not certified.
-- Real drawing validation, default-branch merge, licence selection, and public
-  release require separate owner decisions.
+## Licence
 
-Conceptual and preliminary estimating data only.
+Screen2XYZ is available under the [MIT License](LICENSE). Third-party components remain subject to their own licences; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

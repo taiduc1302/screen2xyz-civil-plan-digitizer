@@ -23,7 +23,7 @@ S2XYZ-CODEX-003 is stricter than the Charter's possible future source classes: o
 - Parsed, accepted, rejected, metrics, test, and environment evidence derived only from the registered fixture.
 - Sanitized tool and dependency identity evidence necessary to reproduce the private lab.
 
-Every fixture set and derived evidence family MUST be registered. Generated status does not create public-release authorization; the repository remains private and no repository licence is selected.
+Every fixture set and derived evidence family MUST be registered. Generated status alone does not establish permission to redistribute the underlying data.
 
 ## 3. Prohibited data and conduct
 

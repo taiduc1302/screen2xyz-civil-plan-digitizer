@@ -16,7 +16,7 @@
 | Approved by | Project Owner |
 | Gate result | G0 Passed |
 | Scope authorized | Controlled planning, project-control documents, administrative repository scaffolding, and repository review. |
-| Scope not authorized at decision time | Functional coding, dependencies, prototype implementation, architecture selection, real-source data collection, public release, and unsupported claims. |
+| Historical scope boundary | Functional coding, dependencies, prototype implementation, architecture selection, real-source data collection, and unsupported claims were outside that task. |
 
 ## DEC-002 - Repository bootstrap acceptance
 
@@ -48,7 +48,7 @@
 | Governance baseline commit | `b6cd2198722bd53e291354d2c02eaad33b4b3bb1` |
 | Audit result | Verified completed; no material governance, scope, prohibited-content, or repository-integrity finding. |
 | Integration result | Local `main` was fast-forwarded from `a89701b5ef18d7aa8ef7f68c29fa23f421669474` to the governance baseline commit without rewriting history. |
-| GitHub connection result | The private repository was configured as `origin`; controlled baseline branches were pushed and matched local refs. |
+| GitHub connection result | The predecessor repository was configured as `origin`; controlled baseline branches were pushed and matched local refs. |
 
 ## DEC-004 - Repository-based parent-agent orchestration
 
@@ -135,4 +135,4 @@
 | Planning handoff | Draft PR #4 opened against `main` after four logical planning commits and passing independent/automated closeout; it remains Draft and unmerged for owner review. |
 | Gates not granted | UX approval G-D, target compatibility G-E, capture/data-use permission G-F, and scope/defaults/roadmap gate G-G remain pending. S7 has not run against the intended target. |
 | Prohibited | Production M2 code, implementation-branch creation, unauthorized or confidential capture content, gate inference, merge, and production/readiness claims. |
-| Detailed decisions | `docs/control/M2_LIVE_OWNER_DECISIONS.md`; implementation remains blocked until its ordering conditions are satisfied. |
+| Detailed decisions | Historical M2 decisions were completed before the v2 unification work. |
