@@ -45,8 +45,8 @@ class OcrPolicy:
             raise ValueError("OCR confidence gate must be between 0 and 1")
         if self.upscale < 1 or self.upscale > 6:
             raise ValueError("OCR upscale must be between 1 and 6")
-        if self.precision_min is not None and self.precision_min < 0:
-            raise ValueError("OCR minimum precision cannot be negative")
+        if self.precision_min is not None and self.precision_min < 1:
+            raise ValueError("OCR minimum precision must be positive")
         if self.consensus_min < 1:
             raise ValueError("OCR consensus minimum must be at least one")
         if not self.psm_modes:
@@ -105,8 +105,12 @@ class ScreenOcrBackend:
             variants.append((f"color-{angle}", padded))
             if policy.binarize:
                 gray = ImageOps.autocontrast(padded.convert("L"))
-                threshold = gray.point(lambda pixel: 255 if pixel >= 155 else 0)
-                variants.append((f"binary-{angle}", threshold))
+                variants.append((f"gray-{angle}", gray))
+                for cutoff in (125, 155, 185):
+                    threshold = gray.point(
+                        lambda pixel, value=cutoff: 255 if pixel >= value else 0
+                    )
+                    variants.append((f"binary-{cutoff}-{angle}", threshold))
         return variants
 
     def read_zone(
@@ -223,14 +227,6 @@ class ScreenOcrBackend:
                         # substitute the visually similar decimal glyph; only
                         # repair a single-separator token, never mixed/grouped
                         # punctuation where the interpretation is ambiguous.
-                        if policy.separator_mode == "comma":
-                            candidate_text = candidate_text.replace(
-                                ".,", ","
-                            ).replace(",.", ",")
-                        elif policy.separator_mode == "point":
-                            candidate_text = candidate_text.replace(
-                                ".,", "."
-                            ).replace(",.", ".")
                         if (
                             policy.separator_mode == "comma"
                             and "." in candidate_text
@@ -248,26 +244,6 @@ class ScreenOcrBackend:
                             separator_mode=policy.separator_mode,
                             numeric_range=policy.numeric_range,
                         )
-                    if (
-                        outcome.parse_status != "OK"
-                        and policy.precision_min is not None
-                    ):
-                        compact = candidate_text.strip()
-                        sign = "-" if compact.startswith("-") else ""
-                        digits = compact[len(sign):]
-                        if digits.isdigit() and len(digits) > policy.precision_min:
-                            separator = "," if policy.separator_mode == "comma" else "."
-                            candidate_text = (
-                                sign
-                                + digits[:-policy.precision_min]
-                                + separator
-                                + digits[-policy.precision_min:]
-                            )
-                            outcome = parse_number(
-                                candidate_text,
-                                separator_mode=policy.separator_mode,
-                                numeric_range=policy.numeric_range,
-                            )
                     valid = outcome.parse_status == "OK"
                     if valid and policy.precision_min is not None:
                         fraction = (outcome.normalized_value or "").partition(".")[2]

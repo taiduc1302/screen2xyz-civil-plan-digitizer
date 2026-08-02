@@ -90,4 +90,5 @@ jobs:
           name: realistic-ocr-proof-${{ runner.os }}
           path: harness-output
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
