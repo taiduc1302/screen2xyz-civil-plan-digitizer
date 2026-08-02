@@ -97,4 +97,3 @@ def write_manifest(
         raise
     except Exception as exc:
         raise ManifestEvidenceError("manifest could not be published") from exc
-

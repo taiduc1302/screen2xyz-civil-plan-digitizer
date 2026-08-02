@@ -9,4 +9,3 @@ WIZARD_STEPS = (
     "4. Capture",
     "5. Export",
 )
-

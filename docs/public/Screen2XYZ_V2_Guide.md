@@ -17,4 +17,3 @@ For an all-screen mapping, Start polls continuously and retains a row only after
 Mapping profiles and the SQLite database live under `.screen2xyz` in the selected project folder. Keep that folder out of source control when it contains project information.
 
 > Screen2XYZ output is preliminary data for conceptual estimating. It is not certified survey data and must be checked against an authoritative source.
-

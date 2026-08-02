@@ -164,4 +164,3 @@ class AutoCaptureEngine:
 
     def stop(self) -> None:
         self.scheduler.stop()
-

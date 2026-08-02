@@ -193,4 +193,3 @@ class SessionStore:
 
     def __exit__(self, *_args: object) -> None:
         self.close()
-

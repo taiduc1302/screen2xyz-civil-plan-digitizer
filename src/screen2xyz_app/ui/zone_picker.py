@@ -80,4 +80,3 @@ class ZonePicker(tk.Toplevel):
         if self._zone is not None:
             self.on_accept(self._zone)
             self.destroy()
-

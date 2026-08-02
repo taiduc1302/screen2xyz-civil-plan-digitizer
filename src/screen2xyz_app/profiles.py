@@ -50,4 +50,3 @@ class MappingProfileStore:
             except (OSError, KeyError, ValueError, json.JSONDecodeError):
                 continue
         return names
-
