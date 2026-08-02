@@ -7,16 +7,16 @@
 | Metric | Windows result, 2026-08-02 |
 |---|---:|
 | Scripted coordinate changes | 220 |
-| Exact rows retained | 218 |
-| Accuracy (`exact / ground truth`) | **99.09%** |
-| Safely rejected OCR/parse attempts | 2 |
+| Exact rows retained | 220 |
+| Accuracy (`exact / ground truth`) | **100.00%** |
+| Safely rejected OCR/parse attempts | 0 |
 | False duplicate rows | **0** |
 | Rows containing a value absent from ground truth | **0** |
 | SQLite rows exactly reproduced in XLSX | **Yes** |
 | Plan labels rendered / exercised | 48 / 48 |
-| Harness duration | 275.488 seconds |
+| Harness duration | 610.002 seconds |
 
-Environment: Windows 11, Python 3.14.6, Tesseract 5.4.0.20240606. The latest retained local result includes the [metrics, summary, environment, and exact commands](../runs/evidence/S2XYZ-V2.5-LOCAL-2026-08-02-CI-FIX/); the [earlier run](../runs/evidence/S2XYZ-V2.5-LOCAL-2026-08-02/) remains preserved. The same proof is configured as a separate Ubuntu/Windows CI matrix job, with its metrics written to the GitHub Actions job summary and the full output retained as a workflow artifact.
+Environment: Windows 11, Python 3.14.6, Tesseract 5.4.0.20240606. The latest retained local result includes the [metrics, summary, environment, and exact commands](../runs/evidence/S2XYZ-V2.5-LOCAL-2026-08-02-FAIL-CLOSED/); [prior measurements](../runs/evidence/) remain preserved. The same proof is configured as a separate Ubuntu/Windows CI matrix job, with its metrics written to the GitHub Actions job summary and the full output retained as a workflow artifact.
 
 ## Method
 
@@ -36,7 +36,7 @@ The acceptance gate is machine-enforced:
 - zero accepted hallucinations; and
 - exact SQLite/XLSX parity.
 
-The two misses in the latest run were both rejected reads in the 12-pixel comma-decimal dark status-bar style that remained below the 0.35 confidence gate. No rotated plan-label error or guessed coordinate was written to the database. This fail-closed behavior is why `captured rows` can be below 220 while accepted hallucinations remain zero.
+The latest run captured every scripted change. The retry ladder uses image-only dark-background normalization, grayscale, and fixed threshold variants; it does not reconstruct missing punctuation or otherwise change an OCR token's numeric magnitude. No guessed coordinate was written to the database.
 
 ## Reproduce it
 
