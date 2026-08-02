@@ -39,6 +39,11 @@ class HarnessContractTests(unittest.TestCase):
             self.assertEqual({label.marker for label in labels}, {"existing_cross", "design_oval"})
             self.assertTrue(path.is_file())
 
+    def test_dark_status_surfaces_are_normalized_before_ocr(self):
+        image = Image.new("RGB", (20, 20), (50, 55, 60))
+        variants = ScreenOcrBackend._prepare_variants(image, OcrPolicy())
+        self.assertGreater(sum(variants[0][1].getpixel((0, 0))) / 3, 128)
+
     @unittest.skipUnless(TesseractOcrAdapter.find_executable(), "Tesseract unavailable")
     def test_real_backend_reads_small_status_text(self):
         with tempfile.TemporaryDirectory() as temporary:
