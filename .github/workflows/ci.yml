@@ -37,6 +37,13 @@ jobs:
       - name: Civil regression
         shell: bash
         run: PYTHONPATH=src python tests_civil/run_civil_tests.py
+      - name: Scripted Tk smoke
+        shell: bash
+        run: PYTHONPATH=src python tests_app/tk_smoke.py --output .tk-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-tk-smoke
+          path: .tk-smoke/*.png
 
   realistic-ocr-proof:
     name: realistic OCR proof (${{ matrix.os }})

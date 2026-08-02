@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import secrets
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,8 @@ class SessionStore:
         self.db_path = self.root / "screen2xyz.sqlite3"
         self.journal_root = self.root / "journal"
         self.journal_root.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.db_path)
+        self._lock = threading.RLock()
+        self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self._create_schema()
         self._journals: dict[str, RunJournal] = {}
@@ -63,10 +65,25 @@ class SessionStore:
                 confidence_y REAL,
                 confidence_z REAL,
                 created_utc TEXT NOT NULL,
-                journal_event_id TEXT NOT NULL UNIQUE
+                journal_event_id TEXT NOT NULL UNIQUE,
+                deleted_utc TEXT
+            );
+            CREATE TABLE IF NOT EXISTS point_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                point_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                before_json TEXT NOT NULL,
+                after_json TEXT,
+                created_utc TEXT NOT NULL
             );
             """
         )
+        columns = {
+            row[1] for row in self.connection.execute("PRAGMA table_info(points)")
+        }
+        if "deleted_utc" not in columns:
+            self.connection.execute("ALTER TABLE points ADD COLUMN deleted_utc TEXT")
         self.connection.commit()
 
     def start_session(
@@ -109,21 +126,22 @@ class SessionStore:
         }
 
     def append_point(self, session_id: str, point: CapturedPoint) -> int:
-        journal = self._journals.get(session_id)
-        if journal is None:
-            raise ValueError("session is not active in this process")
-        event = journal.append_event(
-            {
-                "session_id": session_id,
-                "event_status": "RETAINED_CHANGE",
-                "timestamp_utc": point.created_utc,
-                "point": self._point_payload(point),
-                "observations": [],
-            },
-            crops={},
-            retention_mode="values_only",
-        )
-        return self._insert_event(event)
+        with self._lock:
+            journal = self._journals.get(session_id)
+            if journal is None:
+                raise ValueError("session is not active in this process")
+            event = journal.append_event(
+                {
+                    "session_id": session_id,
+                    "event_status": "RETAINED_CHANGE",
+                    "timestamp_utc": point.created_utc,
+                    "point": self._point_payload(point),
+                    "observations": [],
+                },
+                crops={},
+                retention_mode="values_only",
+            )
+            return self._insert_event(event)
 
     def _insert_event(self, event: dict[str, Any]) -> int:
         point = event["point"]
@@ -172,10 +190,87 @@ class SessionStore:
                 replayed += self.connection.total_changes - before
         return replayed
 
-    def points(self, session_id: str) -> list[sqlite3.Row]:
-        return list(self.connection.execute(
-            "SELECT * FROM points WHERE session_id = ? ORDER BY id", (session_id,)
-        ))
+    def points(
+        self, session_id: str, *, include_deleted: bool = False
+    ) -> list[sqlite3.Row]:
+        deleted_clause = "" if include_deleted else " AND deleted_utc IS NULL"
+        with self._lock:
+            return list(self.connection.execute(
+                "SELECT * FROM points WHERE session_id = ?" + deleted_clause + " ORDER BY id",
+                (session_id,),
+            ))
+
+    def edit_point(self, session_id: str, point_id: int, changes: dict[str, Any]) -> None:
+        allowed = {"x", "y", "z", "description", "point_number"}
+        unknown = set(changes) - allowed
+        if unknown or not changes:
+            raise ValueError(f"unsupported point edits: {sorted(unknown)}")
+        with self._lock:
+            before = self.connection.execute(
+                "SELECT * FROM points WHERE id = ? AND session_id = ? AND deleted_utc IS NULL",
+                (point_id, session_id),
+            ).fetchone()
+            if before is None:
+                raise KeyError(point_id)
+            normalized = dict(changes)
+            for name in ("x", "y", "z"):
+                if name in normalized:
+                    normalized[name] = float(normalized[name])
+            assignments = ", ".join(f"{name} = ?" for name in sorted(normalized))
+            values = [normalized[name] for name in sorted(normalized)]
+            now = _utc_now()
+            with self.connection:
+                self.connection.execute(
+                    f"UPDATE points SET {assignments} WHERE id = ? AND session_id = ?",
+                    (*values, point_id, session_id),
+                )
+                after = self.connection.execute(
+                    "SELECT * FROM points WHERE id = ?", (point_id,)
+                ).fetchone()
+                self.connection.execute(
+                """
+                INSERT INTO point_audit
+                    (point_id, session_id, action, before_json, after_json, created_utc)
+                VALUES (?, ?, 'EDIT', ?, ?, ?)
+                """,
+                    (
+                        point_id,
+                        session_id,
+                        json.dumps(dict(before), sort_keys=True),
+                        json.dumps(dict(after), sort_keys=True),
+                        now,
+                    ),
+                )
+
+    def delete_point(self, session_id: str, point_id: int) -> None:
+        with self._lock:
+            before = self.connection.execute(
+                "SELECT * FROM points WHERE id = ? AND session_id = ? AND deleted_utc IS NULL",
+                (point_id, session_id),
+            ).fetchone()
+            if before is None:
+                raise KeyError(point_id)
+            now = _utc_now()
+            with self.connection:
+                self.connection.execute(
+                    "UPDATE points SET deleted_utc = ? WHERE id = ? AND session_id = ?",
+                    (now, point_id, session_id),
+                )
+                self.connection.execute(
+                """
+                INSERT INTO point_audit
+                    (point_id, session_id, action, before_json, after_json, created_utc)
+                VALUES (?, ?, 'DELETE', ?, NULL, ?)
+                """,
+                    (point_id, session_id, json.dumps(dict(before), sort_keys=True), now),
+                )
+
+    def audit_events(self, session_id: str) -> list[sqlite3.Row]:
+        with self._lock:
+            return list(self.connection.execute(
+                "SELECT * FROM point_audit WHERE session_id = ? ORDER BY id",
+                (session_id,),
+            ))
 
     def session(self, session_id: str) -> sqlite3.Row:
         row = self.connection.execute(
