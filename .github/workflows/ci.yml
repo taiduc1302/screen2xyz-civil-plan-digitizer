@@ -44,11 +44,12 @@ jobs:
         run: PYTHONPATH=src python -m unittest discover -s tests_m2 -t . -v
       - name: Scripted Tk smoke
         shell: bash
-        run: PYTHONPATH=src python tests_app/tk_smoke.py --output .tk-smoke
+        run: PYTHONPATH=src python tests_app/tk_smoke.py --output tk-smoke
       - uses: actions/upload-artifact@v4
         with:
           name: windows-tk-smoke
-          path: .tk-smoke/*.png
+          path: tk-smoke/*.png
+          if-no-files-found: error
 
   realistic-ocr-proof:
     name: realistic OCR proof (${{ matrix.os }})
@@ -71,13 +72,14 @@ jobs:
         run: choco install tesseract -y --no-progress
       - name: Run real image-to-XLSX harness
         shell: bash
-        run: PYTHONPATH=src python -m tests_app.harness --output .harness-output
+        run: PYTHONPATH=src python -m tests_app.harness --output harness-output
       - name: Publish proof metrics
         if: always()
         shell: bash
         run: |
-          if [ -f .harness-output/summary.md ]; then
-            cat .harness-output/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f harness-output/summary.md ]; then
+            cat harness-output/summary.md >> "$GITHUB_STEP_SUMMARY"
+            cat harness-output/metrics.json
           else
             echo "Harness did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -86,6 +88,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: realistic-ocr-proof-${{ runner.os }}
-          path: .harness-output
+          path: harness-output
           if-no-files-found: error
           retention-days: 30

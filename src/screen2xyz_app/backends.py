@@ -79,6 +79,12 @@ class ScreenOcrBackend:
 
         source = image.convert("RGB")
         fill = source.getpixel((0, 0))
+        # Tesseract versions differ in how reliably they auto-invert small
+        # light-on-dark text. Normalize a dark background before building the
+        # retry ladder so every platform sees dark glyphs on a light field.
+        if sum(fill) / 3 < 128:
+            source = ImageOps.invert(source)
+            fill = source.getpixel((0, 0))
         variants = []
         for angle in policy.rotation_angles:
             rgb = (
@@ -217,6 +223,14 @@ class ScreenOcrBackend:
                         # substitute the visually similar decimal glyph; only
                         # repair a single-separator token, never mixed/grouped
                         # punctuation where the interpretation is ambiguous.
+                        if policy.separator_mode == "comma":
+                            candidate_text = candidate_text.replace(
+                                ".,", ","
+                            ).replace(",.", ",")
+                        elif policy.separator_mode == "point":
+                            candidate_text = candidate_text.replace(
+                                ".,", "."
+                            ).replace(",.", ".")
                         if (
                             policy.separator_mode == "comma"
                             and "." in candidate_text
@@ -234,6 +248,26 @@ class ScreenOcrBackend:
                             separator_mode=policy.separator_mode,
                             numeric_range=policy.numeric_range,
                         )
+                    if (
+                        outcome.parse_status != "OK"
+                        and policy.precision_min is not None
+                    ):
+                        compact = candidate_text.strip()
+                        sign = "-" if compact.startswith("-") else ""
+                        digits = compact[len(sign):]
+                        if digits.isdigit() and len(digits) > policy.precision_min:
+                            separator = "," if policy.separator_mode == "comma" else "."
+                            candidate_text = (
+                                sign
+                                + digits[:-policy.precision_min]
+                                + separator
+                                + digits[-policy.precision_min:]
+                            )
+                            outcome = parse_number(
+                                candidate_text,
+                                separator_mode=policy.separator_mode,
+                                numeric_range=policy.numeric_range,
+                            )
                     valid = outcome.parse_status == "OK"
                     if valid and policy.precision_min is not None:
                         fraction = (outcome.normalized_value or "").partition(".")[2]

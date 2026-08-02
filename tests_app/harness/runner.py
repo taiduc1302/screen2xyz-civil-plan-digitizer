@@ -84,7 +84,8 @@ class RealFrameReader:
                 policy=OcrPolicy(
                     separator_mode=source.decimal_separator,
                     numeric_range=ranges[self.frame.style][column],
-                    confidence_min=0.45,
+                    precision_min=2,
+                    confidence_min=0.35,
                     psm_modes=(7, 8, 13),
                     upscale=4,
                 ),

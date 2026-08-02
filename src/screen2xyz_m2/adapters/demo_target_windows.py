@@ -58,7 +58,8 @@ KNOWN_COMMANDS = frozenset({
 # event-loop-safe mechanism; the cost of an empty poll is negligible.)
 PUMP_INTERVAL_MS = 10
 
-ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+if sys.platform == "win32":
+    ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
 
 CLIENT_W, CLIENT_H = 900, 320
 FIELD_X = 30

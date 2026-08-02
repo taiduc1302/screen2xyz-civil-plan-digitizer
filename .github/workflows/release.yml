@@ -39,23 +39,24 @@ jobs:
       - name: Windows Tk smoke
         if: runner.os == 'Windows'
         shell: bash
-        run: PYTHONPATH=src python tests_app/tk_smoke.py --output .tk-smoke
+        run: PYTHONPATH=src python tests_app/tk_smoke.py --output tk-smoke
       - name: Real OCR proof
         shell: bash
-        run: PYTHONPATH=src python -m tests_app.harness --output .harness-output
+        run: PYTHONPATH=src python -m tests_app.harness --output harness-output
       - name: Publish proof metrics
         if: always()
         shell: bash
         run: |
-          if [ -f .harness-output/summary.md ]; then
-            cat .harness-output/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f harness-output/summary.md ]; then
+            cat harness-output/summary.md >> "$GITHUB_STEP_SUMMARY"
+            cat harness-output/metrics.json
           fi
       - name: Retain release proof evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-proof-${{ runner.os }}
-          path: .harness-output
+          path: harness-output
           if-no-files-found: error
           retention-days: 90
 
