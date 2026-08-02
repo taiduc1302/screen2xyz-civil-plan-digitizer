@@ -37,3 +37,35 @@ jobs:
       - name: Civil regression
         shell: bash
         run: PYTHONPATH=src python tests_civil/run_civil_tests.py
+
+  realistic-ocr-proof:
+    name: realistic OCR proof (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt
+      - name: Install Tesseract (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+      - name: Install Tesseract (Windows)
+        if: runner.os == 'Windows'
+        run: choco install tesseract -y --no-progress
+      - name: Run real image-to-XLSX harness
+        shell: bash
+        run: PYTHONPATH=src python -m tests_app.harness --output .harness-output
+      - name: Publish proof metrics
+        if: always()
+        shell: bash
+        run: |
+          if [ -f .harness-output/summary.md ]; then
+            cat .harness-output/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Harness did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
+          fi

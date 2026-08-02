@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -158,8 +159,13 @@ class TesseractOcrAdapter:
     @staticmethod
     def find_executable() -> Path | None:
         command = shutil.which("tesseract")
+        local_app_data = os.environ.get("LOCALAPPDATA")
         candidates = [
             Path(command) if command else None,
+            (
+                Path(local_app_data) / "Programs/Tesseract-OCR/tesseract.exe"
+                if local_app_data else None
+            ),
             Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
             Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
         ]
