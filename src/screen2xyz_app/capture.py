@@ -14,6 +14,7 @@ from screen2xyz_m2.scheduler import TickScheduler
 from screen2xyz_m2.stability import StabilityEngine
 
 from .mapping import ChannelMapping, ChannelSource
+from .operations import ZoneHealthMonitor, ZoneHealthSnapshot
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,9 @@ class AutoCaptureEngine:
         *,
         interval_ms: int = 500,
         confirmations: int = 2,
+        zone_failure_limit: int = 3,
+        on_health: Callable[[ZoneHealthSnapshot], None] | None = None,
+        health_monitor: ZoneHealthMonitor | None = None,
     ) -> None:
         if not pipeline.mapping.automatic:
             raise ValueError("automatic capture only supports screen zones and clipboard")
@@ -144,9 +148,29 @@ class AutoCaptureEngine:
         )
         self.scheduler = TickScheduler(interval_ms, self.poll, lambda: None)
         self._frame = 0
+        self.on_health = on_health
+        self.health = health_monitor or ZoneHealthMonitor(zone_failure_limit)
+        self.paused = False
 
     def poll(self) -> CapturedPoint | None:
-        point, observations, crops = self.pipeline.read()
+        display_event = self.health.check_display()
+        if display_event is not None:
+            self.pause()
+            if self.on_health is not None:
+                self.on_health(display_event)
+            return None
+        try:
+            point, observations, crops = self.pipeline.read()
+        except (ValueError, RuntimeError) as exc:
+            if self.on_health is None:
+                raise
+            snapshot = self.health.failure(exc)
+            if snapshot.paused:
+                self.pause()
+            self.on_health(snapshot)
+            return None
+        if self.on_health is not None:
+            self.on_health(self.health.success(dict(point.raw_texts)))
         self._frame += 1
         decision = self.stability.process_tick(
             observations,
@@ -160,7 +184,22 @@ class AutoCaptureEngine:
         return None
 
     def start(self) -> None:
+        self.paused = False
         self.scheduler.start()
 
+    def pause(self) -> None:
+        self.paused = True
+        self.scheduler.pause()
+
+    def resume(self) -> None:
+        self.paused = False
+        self.scheduler.resume()
+
+    def force_capture(self) -> CapturedPoint:
+        point, _observations, _crops = self.pipeline.read()
+        self.on_point(point)
+        return point
+
     def stop(self) -> None:
+        self.paused = False
         self.scheduler.stop()

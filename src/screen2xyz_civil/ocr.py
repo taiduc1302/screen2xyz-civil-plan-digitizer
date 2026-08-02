@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -80,6 +81,17 @@ class OcrAdapter(Protocol):
         ...
 
 
+def adapter_script_path(repository_root: Path, name: str) -> Path:
+    """Resolve an OCR helper in source checkouts and PyInstaller bundles."""
+    packaged = Path(__file__).resolve().parent / "adapters" / name
+    if packaged.is_file():
+        return packaged
+    source_checkout = repository_root.resolve() / "src" / "screen2xyz_civil" / "adapters" / name
+    if source_checkout.is_file():
+        return source_checkout
+    raise OcrAdapterError(f"bundled OCR helper is unavailable: {name}")
+
+
 class WindowsOcrAdapter:
     def __init__(self, repository_root: Path, *, timeout_seconds: float = 30.0) -> None:
         self.repository_root = repository_root.resolve()
@@ -94,10 +106,7 @@ class WindowsOcrAdapter:
             or candidate.stat().st_size > C.MAX_SOURCE_BYTES
         ):
             raise OcrAdapterError("OCR input must be a bounded local PNG")
-        script = (
-            self.repository_root
-            / "src/screen2xyz_civil/adapters/ocr_windows_boxes.ps1"
-        )
+        script = adapter_script_path(self.repository_root, "ocr_windows_boxes.ps1")
         command = [
             "powershell.exe",
             "-NoProfile",
@@ -158,8 +167,13 @@ class TesseractOcrAdapter:
     @staticmethod
     def find_executable() -> Path | None:
         command = shutil.which("tesseract")
+        local_app_data = os.environ.get("LOCALAPPDATA")
         candidates = [
             Path(command) if command else None,
+            (
+                Path(local_app_data) / "Programs/Tesseract-OCR/tesseract.exe"
+                if local_app_data else None
+            ),
             Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
             Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
         ]
@@ -189,10 +203,7 @@ class TesseractOcrAdapter:
             raise OcrAdapterError("local Tesseract executable is unavailable")
         if not self.angles or any(abs(angle) > 45 for angle in self.angles):
             raise OcrAdapterError("Tesseract OCR angles must stay within 45 degrees")
-        script = (
-            self.repository_root
-            / "src/screen2xyz_civil/adapters/ocr_tesseract_rotated.ps1"
-        )
+        script = adapter_script_path(self.repository_root, "ocr_tesseract_rotated.ps1")
         command = [
             "powershell.exe",
             "-NoProfile",

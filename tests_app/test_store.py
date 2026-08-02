@@ -47,7 +47,22 @@ class StoreTests(unittest.TestCase):
                 names = {row[0] for row in store.connection.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 )}
-                self.assertTrue({"sessions", "points"}.issubset(names))
+                self.assertTrue(
+                    {"sessions", "points", "point_audit", "session_audit"}.issubset(names)
+                )
+
+    def test_edit_and_soft_delete_are_audited(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with SessionStore(Path(temporary)) as store:
+                session_id = store.start_session(self.mapping(), session_id="session-review")
+                point_id = store.append_point(session_id, self.point())
+                store.edit_point(session_id, point_id, {"z": 50.25, "description": "reviewed"})
+                self.assertEqual(store.points(session_id)[0]["z"], 50.25)
+                store.delete_point(session_id, point_id)
+                self.assertEqual(store.points(session_id), [])
+                self.assertEqual(len(store.points(session_id, include_deleted=True)), 1)
+                events = store.audit_events(session_id)
+                self.assertEqual([event["action"] for event in events], ["EDIT", "DELETE"])
 
 
 if __name__ == "__main__":
