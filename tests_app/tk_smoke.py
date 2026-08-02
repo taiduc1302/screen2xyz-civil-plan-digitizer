@@ -54,7 +54,23 @@ def run(output_dir: Path) -> None:
         class ReviewStub:
             @staticmethod
             def points():
-                return []
+                return [
+                    {
+                        "id": 1, "point_number": "TP-20", "x": 432100.25,
+                        "y": 5456789.75, "z": 49.78, "description": "Existing",
+                        "created_utc": "2026-08-02T09:30:00Z",
+                    },
+                    {
+                        "id": 2, "point_number": "TP-21", "x": 432101.42,
+                        "y": 5456788.84, "z": 49.92, "description": "Design",
+                        "created_utc": "2026-08-02T09:30:01Z",
+                    },
+                    {
+                        "id": 3, "point_number": "TP-22", "x": 432102.59,
+                        "y": 5456787.93, "z": 50.11, "description": "Review",
+                        "created_utc": "2026-08-02T09:30:02Z",
+                    },
+                ]
 
         review = SessionReview(
             root, ReviewStub(), export_xlsx=lambda: None, export_csv=lambda: None
