@@ -58,6 +58,7 @@ jobs:
           name: release-proof-${{ runner.os }}
           path: harness-output
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 90
 
   build-windows:

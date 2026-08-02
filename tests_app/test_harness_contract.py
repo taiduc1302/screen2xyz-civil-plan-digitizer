@@ -21,6 +21,10 @@ class HarnessContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "consensus"):
             OcrPolicy(consensus_min=0)
 
+    def test_ocr_policy_rejects_zero_precision(self):
+        with self.assertRaisesRegex(ValueError, "precision"):
+            OcrPolicy(precision_min=0)
+
     def test_script_contains_at_least_200_unique_pairs_and_required_styles(self):
         scenarios = scripted_coordinates()
         rows = [point for _style, _primer, values in scenarios for point in values]
