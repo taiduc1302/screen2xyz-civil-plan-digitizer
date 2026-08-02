@@ -167,7 +167,7 @@ class WideCsvRowEquivalenceTests(unittest.TestCase):
         full = wide_csv(events, self.sources, False)
         header = wide_csv_header(self.sources, False)
         rows = [wide_csv_row(e, self.sources, False) for e in events]
-        from screen2xyz_lab.exporters import csv_bytes
+        from screen2xyz_m2.io_utils import csv_bytes
         rebuilt = csv_bytes(rows, header)
         self.assertEqual(full, rebuilt)
 

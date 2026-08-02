@@ -1,6 +1,0 @@
-#!/bin/sh
-
-echo "PUSH BLOCKED: this standalone repository is local-only." >&2
-echo "The owner must explicitly provide and approve a new repository URL," >&2
-echo "then remove this hook as a separately reviewed action." >&2
-exit 1

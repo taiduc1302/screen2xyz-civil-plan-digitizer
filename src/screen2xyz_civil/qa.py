@@ -46,12 +46,22 @@ def duplicate_pairs(
 def qa_summary(project: CivilProject) -> dict[str, Any]:
     pairs = duplicate_pairs(project)
     issues: list[dict[str, Any]] = []
-    if project.calibration is None:
+    if project.calibration is None and not project.feature_flags.get(
+        "external_coordinate_channels", False
+    ):
         issues.append(
             {
                 "severity": "CRITICAL",
                 "code": "CALIBRATION_MISSING",
                 "detail": "Scale, origin, and orientation are required.",
+            }
+        )
+    elif project.calibration is None:
+        issues.append(
+            {
+                "severity": "INFO",
+                "code": "EXTERNAL_COORDINATE_CHANNELS",
+                "detail": "Coordinates came from mapped capture channels; no plan transform was applied.",
             }
         )
     elif (

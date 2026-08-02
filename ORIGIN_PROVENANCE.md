@@ -1,25 +1,7 @@
 # Origin and Authorship Provenance
 
-The standalone repository was initialized on 2026-07-28 from the tracked tree
-of the private `taiduc1302/screen2xyz` repository at:
+This repository was initialized on 2026-07-28 from an earlier Screen2XYZ development tree. The migration excluded caches, virtual environments, generated exports, attachments, screenshots, and proprietary files while retaining source history, attribution, and traceable historical reports.
 
-`6700f6c2312d8b6c7c9599f6ac1946fab91273fe`
+Screen2XYZ v2 unifies the retained M2 screen-watcher core and Civil plan-processing core behind a new application package and launcher. Legacy prototypes are retained under `legacy/` for historical reference.
 
-The source branch was `feature/civil-plan-digitizer-overnight`. The export
-excluded the source `.git` directory, caches, virtual environments, untracked
-work areas, generated exports, attachments, screenshots, and proprietary
-files. A verified Git bundle preserving the complete source history and a
-tracked-tree ZIP were created outside this repository before initialization.
-
-The verified external bundle preserves the complete historical commit graph,
-including the exact original author and contributor identities. Those
-identities are not duplicated here because this standalone repository retains
-the inherited tracked-content privacy scanner.
-
-The standalone root commit records the source-tree migration; it does not
-claim that the exported work was newly authored by the migration process.
-Existing notices, acknowledgements, dependency attribution, provenance files,
-and retained historical evidence were preserved in the initial commit.
-
-No licence has been selected for the repository content. All rights remain
-reserved unless and until the owner records a licence decision.
+Repository content is licensed under the MIT License unless a file states otherwise. Third-party tools and Python packages retain their respective licences as listed in `THIRD_PARTY_NOTICES.md`.

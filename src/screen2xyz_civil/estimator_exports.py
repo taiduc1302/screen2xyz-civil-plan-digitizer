@@ -101,7 +101,7 @@ def write_estimator_workbook(
         from openpyxl.utils import get_column_letter
     except ImportError as exc:
         raise EstimatorExportError(
-            "XLSX export requires openpyxl==3.1.5 from requirements-civil.txt"
+            "XLSX export requires openpyxl from requirements.txt"
         ) from exc
 
     approved = list(points)

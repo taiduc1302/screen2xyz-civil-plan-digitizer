@@ -38,7 +38,7 @@ ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 HELPER = HERE / "spike_s3_capture.ps1"
-OCR = ROOT / "src/screen2xyz_lab/adapters/ocr_windows.ps1"
+OCR = ROOT / "legacy/src/screen2xyz_lab/adapters/ocr_windows.ps1"
 REPORT_DIR = ROOT / ".lab_work" / "m2_research"
 BACKENDS = ("printwindow_clientonly", "copyfromscreen")
 TRIALS = ("present", "absent", "occluded")

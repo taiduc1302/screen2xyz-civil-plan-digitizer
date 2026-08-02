@@ -161,7 +161,7 @@ def run_evaluation() -> dict[str, Any]:
 
 
 def write_evidence(root: Path) -> Path:
-    from screen2xyz_lab.evidence import atomic_write_json, write_manifest
+    from .io_utils import atomic_write_json, write_manifest
     metrics = run_evaluation()
     evidence_dir = root / "runs" / "evidence" / EVAL_TASK_ID
     if evidence_dir.exists():

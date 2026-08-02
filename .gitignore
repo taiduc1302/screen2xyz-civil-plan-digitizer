@@ -48,6 +48,7 @@ work/
 *staging-*/
 
 # Local civil drawings, project state, and estimator exports
+.screen2xyz/
 .local-test-data/
 private-test-data/
 test-inputs-local/

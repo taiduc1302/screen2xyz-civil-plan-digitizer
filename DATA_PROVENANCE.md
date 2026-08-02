@@ -19,8 +19,8 @@ present, and automated tests enforce this boundary.
 ## How the fixture is produced
 
 `test_data/synthetic/s2xyz_fixture_v0.1/` is generated deterministically from
-seed `20260715` by `src/screen2xyz_lab/fixture.py` plus the Windows renderer
-adapter. `python -m screen2xyz_lab.cli generate` verifies an existing fixture
+seed `20260715` by `legacy/src/screen2xyz_lab/fixture.py` plus the Windows renderer
+adapter. The retired legacy CLI can verify an existing fixture
 byte-for-byte against the deterministic generation (ground truth, render
 jobs, manifest, and every PNG hash) instead of regenerating it. Images
 contain only the allowlisted PNG chunk types (`IHDR`, `sRGB`, `gAMA`,

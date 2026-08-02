@@ -28,7 +28,7 @@ Official documentation states `Windows.Media.Ocr` desktop support requires packa
 ## 3. Planned repository components
 
 ```text
-src/screen2xyz_lab/
+legacy/src/screen2xyz_lab/
   __init__.py
   config.py
   fixture.py
@@ -41,7 +41,7 @@ src/screen2xyz_lab/
   evidence.py
   pipeline.py
   cli.py
-src/screen2xyz_lab/adapters/
+legacy/src/screen2xyz_lab/adapters/
   render_windows.ps1
   ocr_windows.ps1
 tests/
@@ -161,4 +161,4 @@ The CLI returns `0` only when its requested operation completes and required art
 - OS OCR engine semantics may vary by Windows build and is not versioned independently.
 - No coordinate transformation or authoritative comparison.
 - No downstream import, terrain, or earthwork test.
-- No repository licence or public release.
+- Repository licensing and distribution follow the root `LICENSE` and current public documentation.
