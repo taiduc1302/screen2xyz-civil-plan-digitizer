@@ -1,5 +1,7 @@
 # M1 Implementation Report — Opt-In Still-Image Capture Review Lab
 
+> Historical process record from the private predecessor repository; retained for provenance only.
+
 Date: 2026-07-17. Branch `feat/m1-opt-in-capture-review-lab`, based on
 baseline merge commit `d740fad` (PR #2 → `main`).
 

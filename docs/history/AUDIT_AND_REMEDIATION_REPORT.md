@@ -1,5 +1,7 @@
 # Audit and Remediation Report — 2026-07-17
 
+> Historical process record from the private predecessor repository; retained for provenance only.
+
 Branch `feat/overnight-v0.2-planning-ocr-lab` (draft PR #2 → `main`).
 Independent senior-engineer audit, verification, and remediation pass,
 followed by a same-day second verification pass (§17).

@@ -2,61 +2,38 @@ name: ci
 
 on:
   push:
-    branches: [feat/m2-live-region-watch-impl]
+    branches: [main, "feature/**"]
   pull_request:
     branches: [main]
   workflow_dispatch: {}
 
-# No secrets are used. No capture artifacts are uploaded. Windows-only
-# integration/acceptance/performance tests and real-target validation are
-# NOT run in CI; they are reported as skipped with a reason.
-#
-# Screen2XYZ targets Windows only (Windows.Media.Ocr, PrintWindow). The
-# baseline and M1 OCR suites invoke powershell.exe, so the whole deterministic
-# suite runs on windows-latest — the product's only supported platform — not a
-# Linux runner where those tests would error on a missing powershell.exe.
-
 jobs:
-  deterministic:
-    name: deterministic tests (windows-latest)
+  headless:
+    name: headless tests (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt
+      - name: Screen2XYZ v2 core
+        run: PYTHONPATH=src python -m unittest discover -s tests_app -t . -v
+      - name: Civil regression
+        run: PYTHONPATH=src python tests_civil/run_civil_tests.py
+
+  windows:
+    name: full tests (windows-latest)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.14'
-      - name: Baseline suite
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt
+      - name: Screen2XYZ v2 core
         shell: bash
-        run: PYTHONPATH=src python tests/run_all.py
-      - name: M1 suite
-        shell: bash
-        run: PYTHONPATH=src python tests_m1/run_m1_tests.py
-      - name: M2 deterministic suite (incl. worker-contract mock)
-        shell: bash
-        run: PYTHONPATH=src python tests_m2/run_m2_tests.py
-      - name: Install Civil Plan Digitizer optional PDF dependency
-        shell: bash
-        run: python -m pip install -r requirements-civil.txt
-      - name: Civil Plan Digitizer deterministic suite
+        run: PYTHONPATH=src python -m unittest discover -s tests_app -t . -v
+      - name: Civil regression
         shell: bash
         run: PYTHONPATH=src python tests_civil/run_civil_tests.py
-      - name: Retained evidence verification
-        shell: bash
-        run: PYTHONPATH=src python -m screen2xyz_lab.cli verify-evidence
-      - name: Repository sanitization + privacy scans
-        shell: bash
-        run: |
-          PYTHONPATH="src;tests" python -m unittest tests.test_repository_sanitization
-          PYTHONPATH=src python -m unittest tests_m2.test_profiles_privacy
-
-  windows-integration:
-    name: windows integration (real worker)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-      - name: M2 Windows integration (skips headless with reason)
-        shell: bash
-        run: PYTHONPATH=src python tests_m2/run_m2_integration.py

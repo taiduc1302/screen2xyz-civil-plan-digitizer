@@ -1,5 +1,7 @@
 # M2-Live Implementation Report
 
+> Historical process record from the private predecessor repository; retained for provenance only.
+
 Date: 2026-07-19 (updated 2026-07-21; implementation dated 2026-07-18).
 Branch `feat/m2-live-region-watch-impl` (Draft PR #5), based on planning
 merge `4726d0e` (PR #4). **Draft — not yet merged.** **G-E-REAL has
