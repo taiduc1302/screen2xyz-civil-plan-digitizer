@@ -7,7 +7,7 @@
 - Operating system: Microsoft Windows 11 Pro
 - Python: 3.14.6
 - Tesseract: 5.4.0.20240606
-- Tesseract executable: `C:\Users\Mvu\AppData\Local\Programs\Tesseract-OCR\tesseract.exe`
+- Tesseract executable: `%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe`
 
 ## Commands executed
 

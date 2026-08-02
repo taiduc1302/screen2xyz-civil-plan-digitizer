@@ -56,7 +56,7 @@ CI runs the same command on Ubuntu and Windows after installing real Tesseract. 
 
 - The generated PNG → real OCR → numeric parser → stability/dedup → journal/SQLite → XLSX path works end to end on the documented fixtures.
 - The fixture includes small status text, locale separators, grouping, negatives, rotation, and two plan marker conventions.
-- Bad rotated-label reads in the measured run were rejected instead of accepted as different values.
+- All malformed or low-confidence status-bar reads in the measured run were rejected instead of accepted as different values.
 - XLSX reflects the retained SQLite rows exactly for the tested fields.
 
 ## What is not validated
