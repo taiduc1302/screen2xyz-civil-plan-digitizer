@@ -10,8 +10,10 @@ from typing import Iterable
 from screen2xyz_civil.estimator_exports import (
     _safe_text,
     _style_key_value_sheet,
-    write_estimator_workbook,
 )
+from screen2xyz_civil.exports import export_handoff
+from screen2xyz_civil import contracts as civil_contracts
+from screen2xyz_civil.models import CivilPoint, CivilProject
 
 from .store import SessionStore
 
@@ -99,7 +101,37 @@ def export_csv(store: SessionStore, session_id: str, output_path: Path) -> Path:
     return output_path
 
 
-def advanced_estimator_export(project, points, output_path: Path, **options):
-    """Delegate the advanced workflow to the existing Civil exporter."""
-    return write_estimator_workbook(project, points, output_path, **options)
-
+def advanced_estimator_export(
+    store: SessionStore, session_id: str, output_root: Path
+) -> dict[str, object]:
+    """Build the retained multi-artifact Civil estimator handoff."""
+    session = store.session(session_id)
+    points = []
+    for sequence, row in enumerate(store.points(session_id), start=1):
+        points.append(CivilPoint(
+            id=f"PT-{sequence:06d}", page_index=0, page_label="1",
+            source_file="Screen2XYZ v2 session", source_sha256="",
+            pixel_x=0.0, pixel_y=0.0, elevation=float(row["z"]),
+            local_east=float(row["x"]), local_north=float(row["y"]),
+            point_type=civil_contracts.EXISTING_GROUND, symbol_type="MANUAL_POINT",
+            source_method=civil_contracts.MANUAL,
+            review_status=civil_contracts.APPROVED,
+            created_at=row["created_utc"], updated_at=row["created_utc"],
+            description=row["description"] or "",
+            point_number=row["point_number"] or str(sequence),
+        ))
+    project = CivilProject(
+        project_id=f"CPD-V2-{session_id}", name="Screen2XYZ-v2",
+        created_at=session["created_utc"], updated_at=session["created_utc"],
+        source_manifest={"display_name": "Screen2XYZ v2 session"},
+        points=points,
+        feature_flags={
+            "preliminary_surface": False,
+            "landxml": False,
+            "external_coordinate_channels": True,
+        },
+    )
+    return export_handoff(
+        project, output_root,
+        now=lambda: session["created_utc"],
+    )

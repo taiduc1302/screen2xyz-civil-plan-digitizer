@@ -8,7 +8,9 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from screen2xyz_app.capture import CapturedPoint
-from screen2xyz_app.export import POINT_HEADERS, export_csv, export_xlsx
+from screen2xyz_app.export import (
+    POINT_HEADERS, advanced_estimator_export, export_csv, export_xlsx,
+)
 from screen2xyz_app.mapping import ChannelMapping, ChannelSource
 from screen2xyz_app.store import SessionStore
 
@@ -51,6 +53,14 @@ class ExportTests(unittest.TestCase):
             rows = list(csv.DictReader(handle))
         self.assertEqual(tuple(rows[0]), POINT_HEADERS)
         self.assertEqual(rows[0]["Description"], "'=unsafe")
+
+    def test_advanced_estimator_handoff_remains_available(self):
+        result = advanced_estimator_export(
+            self.store, self.session_id, self.root / "advanced"
+        )
+        export_dir = Path(result["export_dir"])
+        self.assertTrue((export_dir / "Approved_Point_Cart.xlsx").is_file())
+        self.assertTrue((export_dir / "Project_Audit.json").is_file())
 
 
 if __name__ == "__main__":
