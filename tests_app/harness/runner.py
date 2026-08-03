@@ -32,7 +32,6 @@ class HarnessMetrics:
     hallucinated_rows: int
     parse_or_ocr_failures: int
     plan_labels_rendered: int
-    plan_labels_used: int
     sqlite_xlsx_exact: bool
     duration_seconds: float
     tesseract: str
@@ -100,12 +99,17 @@ class RealFrameReader:
                 numeric_range=(30.0, 100.0),
                 precision_min=2,
                 consensus_min=2,
-                confidence_min=0.25,
+                confidence_min=0.85,
                 psm_modes=(6, 7),
                 rotation_angles=(0, -15, 15, -20, 20, -25, 25),
                 upscale=2,
             ),
         )
+
+
+def create_harness_backend(executable: Path) -> ScreenOcrBackend:
+    """Force every confirmation to perform OCR against rendered pixels."""
+    return ScreenOcrBackend(executable=executable, cache_enabled=False)
 
 
 def _tuple(row) -> tuple[float, float, float]:
@@ -149,7 +153,7 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
     scenarios = render_status_scenarios(output_dir / "status_frames", count_per_style)
     plan_path = output_dir / "fake_plan" / "synthetic_grading_plan.png"
     labels = render_plan(plan_path)
-    backend = ScreenOcrBackend(executable=executable)
+    backend = create_harness_backend(executable)
     reader = RealFrameReader(backend, plan_path, labels)
 
     expected: list[tuple[float, float, float]] = []
@@ -164,7 +168,7 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
             mapping = ChannelMapping({
                 "x": ChannelSource("screen_zone_ocr", primer.x_zone, style.decimal_separator),
                 "y": ChannelSource("screen_zone_ocr", primer.y_zone, style.decimal_separator),
-                "z": ChannelSource("screen_zone_ocr", (0, 0, 120, 60), "point"),
+                "z": ChannelSource("screen_zone_ocr", (0, 0, 120, 28), "point"),
             })
             session_id = store.start_session(mapping)
             engine = AutoCaptureEngine(
@@ -224,7 +228,6 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
         hallucinated_rows=hallucinated,
         parse_or_ocr_failures=len(failures),
         plan_labels_rendered=len(labels),
-        plan_labels_used=len({index % len(labels) for index in range(len(expected))}),
         sqlite_xlsx_exact=xlsx_exact,
         duration_seconds=round(time.perf_counter() - started, 3),
         tesseract=str(executable),

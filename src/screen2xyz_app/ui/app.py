@@ -5,7 +5,6 @@ from __future__ import annotations
 import tkinter as tk
 import queue
 import os
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -53,6 +52,10 @@ class Screen2XYZApp(ttk.Frame):
         self._source_vars: dict[str, tk.StringVar] = {}
         self._value_vars: dict[str, tk.StringVar] = {}
         self._zone_labels: dict[str, tk.StringVar] = {}
+        self._min_vars: dict[str, tk.StringVar] = {}
+        self._max_vars: dict[str, tk.StringVar] = {}
+        self._cursor_width_vars: dict[str, tk.StringVar] = {}
+        self._cursor_height_vars: dict[str, tk.StringVar] = {}
         self._photo = None
         self._plan_scale = 1.0
         self._status = tk.StringVar(value="X: —   Y: —   Z: —")
@@ -119,10 +122,12 @@ class Screen2XYZApp(ttk.Frame):
 
         mapping_frame = ttk.LabelFrame(self, text="2–3. Define zones and map columns", padding=8)
         mapping_frame.pack(fill="x", pady=5)
-        for index, title in enumerate(("Column", "Source", "Zone", "Capture-time value")):
+        for index, title in enumerate((
+            "Column", "Source", "Zone / cursor box", "Value", "Minimum", "Maximum"
+        )):
             ttk.Label(mapping_frame, text=title, font=("Segoe UI", 9, "bold")).grid(row=0, column=index, sticky="w", padx=5)
         defaults = (
-            {"x": "screen_zone_ocr", "y": "screen_zone_ocr", "z": "screen_zone_ocr"}
+            {"x": "screen_zone_ocr", "y": "screen_zone_ocr", "z": "screen_cursor_ocr"}
             if mode == "Live screen capture"
             else {"x": "screen_zone_ocr", "y": "screen_zone_ocr", "z": "plan_label_ocr"}
         )
@@ -138,17 +143,30 @@ class Screen2XYZApp(ttk.Frame):
             zone_box.grid(row=row, column=2, sticky="w")
             ttk.Button(zone_box, text="Pick", command=lambda name=column: self._pick_zone(name)).pack(side="left")
             ttk.Label(zone_box, textvariable=zone_label, width=20).pack(side="left", padx=4)
+            cursor_width = tk.StringVar(value="160")
+            cursor_height = tk.StringVar(value="60")
+            self._cursor_width_vars[column] = cursor_width
+            self._cursor_height_vars[column] = cursor_height
+            ttk.Entry(zone_box, textvariable=cursor_width, width=4).pack(side="left")
+            ttk.Label(zone_box, text="×").pack(side="left")
+            ttk.Entry(zone_box, textvariable=cursor_height, width=4).pack(side="left")
             value = tk.StringVar()
             self._value_vars[column] = value
             ttk.Entry(mapping_frame, textvariable=value, width=24).grid(row=row, column=3, padx=5)
+            minimum = tk.StringVar()
+            maximum = tk.StringVar()
+            self._min_vars[column] = minimum
+            self._max_vars[column] = maximum
+            ttk.Entry(mapping_frame, textvariable=minimum, width=12).grid(row=row, column=4, padx=3)
+            ttk.Entry(mapping_frame, textvariable=maximum, width=12).grid(row=row, column=5, padx=3)
         profile_bar = ttk.Frame(mapping_frame)
-        profile_bar.grid(row=6, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        profile_bar.grid(row=6, column=0, columnspan=6, sticky="w", pady=(8, 0))
         ttk.Button(profile_bar, text="Save profile…", command=self._save_profile).pack(side="left", padx=4)
         ttk.Button(profile_bar, text="Load profile…", command=self._load_profile).pack(side="left", padx=4)
         ttk.Button(profile_bar, text="Test mapping", command=self._test_mapping).pack(side="left", padx=4)
 
         policy_bar = ttk.Frame(mapping_frame)
-        policy_bar.grid(row=7, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        policy_bar.grid(row=7, column=0, columnspan=6, sticky="w", pady=(8, 0))
         ttk.Label(policy_bar, text="Minimum XY delta (m):").pack(side="left")
         ttk.Entry(policy_bar, textvariable=self._delta, width=8).pack(side="left", padx=(3, 12))
         ttk.Label(policy_bar, text="Point prefix:").pack(side="left")
@@ -224,8 +242,16 @@ class Screen2XYZApp(ttk.Frame):
         self._plan_canvas.create_image(0, 0, anchor="nw", image=self._photo)
 
     def _pick_zone(self, column: str) -> None:
-        if self._source_vars[column].get() != "screen_zone_ocr":
-            messagebox.showinfo(APP_TITLE, "Choose screen_zone_ocr for this column first.")
+        source_type = self._source_vars[column].get()
+        if source_type == "screen_cursor_ocr":
+            messagebox.showinfo(
+                APP_TITLE,
+                "Cursor OCR follows the current Windows cursor. Adjust the width and height beside Pick.",
+            )
+            self._zone_labels[column].set("follows cursor")
+            return
+        if source_type != "screen_zone_ocr":
+            messagebox.showinfo(APP_TITLE, "Choose a screen OCR source for this column first.")
             return
         def accept(zone):
             self._zones[column] = zone
@@ -243,10 +269,22 @@ class Screen2XYZApp(ttk.Frame):
             if source_type == "(not used)":
                 continue
             data_type = "text" if column in {"description", "point_number"} else "number"
+            minimum = self._min_vars[column].get().strip()
+            maximum = self._max_vars[column].get().strip()
+            if bool(minimum) != bool(maximum):
+                raise ValueError(f"{column} numeric range requires both minimum and maximum")
+            numeric_range = (
+                (float(minimum), float(maximum)) if minimum and data_type == "number" else None
+            )
             channels[column] = ChannelSource(
                 source_type,
                 self._zones.get(column) if source_type == "screen_zone_ocr" else None,
                 data_type=data_type,
+                numeric_range=numeric_range,
+                cursor_box_size=(
+                    int(self._cursor_width_vars[column].get()),
+                    int(self._cursor_height_vars[column].get()),
+                ),
             )
         mapping = ChannelMapping(channels)
         mapping.validate()
@@ -287,6 +325,15 @@ class Screen2XYZApp(ttk.Frame):
             for column in self._source_vars:
                 source = mapping.channels.get(column)
                 self._source_vars[column].set("(not used)" if source is None else source.source_type)
+                self._min_vars[column].set(
+                    "" if source is None or source.numeric_range is None else f"{source.numeric_range[0]:g}"
+                )
+                self._max_vars[column].set(
+                    "" if source is None or source.numeric_range is None else f"{source.numeric_range[1]:g}"
+                )
+                if source is not None:
+                    self._cursor_width_vars[column].set(str(source.cursor_box_size[0]))
+                    self._cursor_height_vars[column].set(str(source.cursor_box_size[1]))
                 if source is not None and source.zone is not None:
                     self._zones[column] = source.zone
                     self._zone_labels[column].set(
@@ -307,13 +354,16 @@ class Screen2XYZApp(ttk.Frame):
                 self._controller = None
             mapping = self._mapping()
             if any(
-                source.source_type in {"screen_zone_ocr", "plan_label_ocr"}
+                source.source_type in {"screen_zone_ocr", "screen_cursor_ocr", "plan_label_ocr"}
                 for source in mapping.channels.values()
             ):
                 tesseract = tesseract_capability()
                 if not tesseract.available:
                     DependencyDialog(self.master, tesseract)
-                    if sys.platform != "win32":
+                    if mapping.automatic or any(
+                        source.source_type == "screen_cursor_ocr"
+                        for source in mapping.channels.values()
+                    ):
                         return
             if any(
                 source.source_type == "plan_click"
