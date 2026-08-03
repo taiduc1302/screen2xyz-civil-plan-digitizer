@@ -3,9 +3,77 @@
 from __future__ import annotations
 
 import math
+import re
 import sys
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Mapping
+
+
+@dataclass(frozen=True)
+class VirtualDesktopBounds:
+    left: int
+    top: int
+    width: int
+    height: int
+
+
+def format_virtual_geometry(bounds: VirtualDesktopBounds) -> str:
+    x = f"+{bounds.left}" if bounds.left >= 0 else str(bounds.left)
+    y = f"+{bounds.top}" if bounds.top >= 0 else str(bounds.top)
+    return f"{bounds.width}x{bounds.height}{x}{y}"
+
+
+def current_virtual_desktop_bounds() -> VirtualDesktopBounds:
+    try:
+        import mss
+
+        with mss.MSS() as capture:
+            monitor = capture.monitors[0]
+            return VirtualDesktopBounds(
+                int(monitor["left"]), int(monitor["top"]),
+                int(monitor["width"]), int(monitor["height"]),
+            )
+    except Exception:
+        return VirtualDesktopBounds(0, 0, 0, 0)
+
+
+def preview_without_overlay(*, hide, flush, preview, restore):
+    hide()
+    try:
+        flush()
+        return preview()
+    finally:
+        restore()
+
+
+@dataclass(frozen=True)
+class ZonePreviewAssessment:
+    warnings: tuple[str, ...]
+    blocking: bool = False
+
+
+_NUMBER_TOKEN = re.compile(
+    r"(?<![\w.])[-+]?(?:\d{1,3}(?:[ ,.']\d{3})+|\d+)(?:[.,]\d+)?(?![\w.])"
+)
+
+
+def zone_preview_assessment(
+    zone: tuple[int, int, int, int], preview_text: str
+) -> ZonePreviewAssessment:
+    _left, _top, _width, height = zone
+    warnings: list[str] = []
+    blocking = height > 48
+    if blocking:
+        warnings.append(
+            f"Selection is {height} px tall; pick one numeric line no taller than 48 px."
+        )
+    numbers = _NUMBER_TOKEN.findall(preview_text)
+    remainder = _NUMBER_TOKEN.sub("", preview_text)
+    if re.search(r"[A-Za-z]", remainder):
+        warnings.append("Selection includes label text; tighten it around the number when practical.")
+    if len(numbers) > 1:
+        warnings.append("Selection contains more than one number; pick a single numeric value.")
+    return ZonePreviewAssessment(tuple(warnings), blocking)
 
 
 @dataclass(frozen=True)

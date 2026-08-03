@@ -14,6 +14,7 @@ from tests_app.harness.renderers import (
     render_status_frame,
     scripted_coordinates,
 )
+from tests_app.harness.runner import HarnessMetrics
 
 
 class HarnessContractTests(unittest.TestCase):
@@ -47,6 +48,15 @@ class HarnessContractTests(unittest.TestCase):
         image = Image.new("RGB", (20, 20), (50, 55, 60))
         variants = ScreenOcrBackend._prepare_variants(image, OcrPolicy())
         self.assertGreater(sum(variants[0][1].getpixel((0, 0))) / 3, 128)
+
+    def test_harness_metrics_do_not_include_tautological_plan_labels_used(self):
+        self.assertNotIn("plan_labels_used", HarnessMetrics.__dataclass_fields__)
+
+    def test_harness_backend_disables_ocr_cache(self):
+        from tests_app.harness import runner
+
+        backend = runner.create_harness_backend(Path("tesseract"))
+        self.assertFalse(backend.cache_enabled)
 
     @unittest.skipUnless(TesseractOcrAdapter.find_executable(), "Tesseract unavailable")
     def test_real_backend_reads_small_status_text(self):

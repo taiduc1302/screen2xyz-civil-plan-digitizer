@@ -66,6 +66,21 @@ class CaptureTests(unittest.TestCase):
         )
         self.assertEqual(plan_click_xy(PixelPoint(2, -3), calibration), (20, 30))
 
+    def test_automatic_ocr_without_confidence_cannot_be_retained(self):
+        captured = []
+
+        def reader(column, source, context):
+            del column, source, context
+            return Reading("1.0", None, ocr_executed=True)
+
+        engine = AutoCaptureEngine(
+            CapturePipeline(self.mapping(), reader), captured.append,
+            confirmations=1,
+        )
+        with self.assertRaisesRegex(ValueError, "confidence"):
+            engine.force_capture()
+        self.assertEqual(captured, [])
+
 
 if __name__ == "__main__":
     unittest.main()

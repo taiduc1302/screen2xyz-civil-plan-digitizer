@@ -73,6 +73,7 @@ class CapturePipeline:
                 raw,
                 source.data_type,
                 separator_mode=source.decimal_separator,
+                numeric_range=source.numeric_range,
             )
             if parsed.parse_status != "OK":
                 raise ValueError(f"{column} could not be parsed: {parsed.parse_status}")
@@ -125,7 +126,7 @@ class AutoCaptureEngine:
         health_monitor: ZoneHealthMonitor | None = None,
     ) -> None:
         if not pipeline.mapping.automatic:
-            raise ValueError("automatic capture only supports screen zones and clipboard")
+            raise ValueError("automatic capture only supports screen OCR and clipboard")
         self.pipeline = pipeline
         self.on_point = on_point
         configs = []
@@ -136,6 +137,7 @@ class AutoCaptureEngine:
                 data_type=source.data_type,
                 semantic_role=column if column in {"x", "y", "z"} else "none",
                 decimal_separator=source.decimal_separator,
+                numeric_range=source.numeric_range,
                 rect=source.zone or (0, 0, 8, 8),
                 coordinate_basis="monitor",
             ))
@@ -161,6 +163,7 @@ class AutoCaptureEngine:
             return None
         try:
             point, observations, crops = self.pipeline.read()
+            self._require_automatic_ocr_confidence(point)
         except (ValueError, RuntimeError) as exc:
             if self.on_health is None:
                 raise
@@ -197,8 +200,20 @@ class AutoCaptureEngine:
 
     def force_capture(self) -> CapturedPoint:
         point, _observations, _crops = self.pipeline.read()
+        self._require_automatic_ocr_confidence(point)
         self.on_point(point)
         return point
+
+    def _require_automatic_ocr_confidence(self, point: CapturedPoint) -> None:
+        for column, source in self.pipeline.mapping.channels.items():
+            if (
+                source.source_type in {"screen_zone_ocr", "screen_cursor_ocr"}
+                and point.confidences[column] is None
+            ):
+                raise ValueError(
+                    f"{column} automatic OCR confidence is unavailable; "
+                    "automatic capture requires Tesseract confidence"
+                )
 
     def stop(self) -> None:
         self.paused = False

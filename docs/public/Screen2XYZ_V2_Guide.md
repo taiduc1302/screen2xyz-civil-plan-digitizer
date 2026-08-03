@@ -1,6 +1,8 @@
 # Screen2XYZ v2 guide
 
-Screen2XYZ captures X/Y/Z point rows from live screen zones, a local PDF, or a local image. Start with the root README for installation.
+Screen2XYZ captures X/Y/Z point rows from fixed live screen zones, the numeric label nearest the current cursor, a local PDF, or a local image. Start with the root README for installation.
+
+For live viewer capture, map fixed X/Y readouts to `screen_zone_ocr` and Z to `screen_cursor_ocr`. The cursor box defaults to 160×60 pixels and is adjustable. Configure project-specific minimum and maximum values for numeric columns; out-of-range values are rejected and shown as a health reason. Automatic screen and cursor OCR require Tesseract so confidence can be enforced.
 
 ## A typical mixed capture
 
@@ -12,7 +14,7 @@ Screen2XYZ captures X/Y/Z point rows from live screen zones, a local PDF, or a l
 6. Confirm the live X/Y/Z status and row count.
 7. Choose **Export XLSX** and inspect both workbook sheets.
 
-For an all-screen mapping, Start polls continuously and retains a row only after the combined mapped value stabilizes and changes. Stop ends polling without deleting prior rows.
+For an all-screen mapping, Start polls continuously and retains a row only after the combined mapped value stabilizes and changes. `Ctrl+Shift+F11` forces one gated capture attempt. Stop ends polling without deleting prior rows.
 
 Mapping profiles and the SQLite database live under `.screen2xyz` in the selected project folder. Keep that folder out of source control when it contains project information.
 
