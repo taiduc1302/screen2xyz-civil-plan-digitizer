@@ -1,4 +1,4 @@
-# Screen2XYZ v2.5
+# Screen2XYZ v2.6
 
 > **Preliminary data only.** Screen2XYZ produces conceptual estimating data, not certified survey data. Validate every output against an authoritative source before relying on it.
 
@@ -7,12 +7,12 @@ Screen2XYZ turns coordinate and elevation readouts already visible on your scree
 ## The 60-second pitch
 
 - Choose **Live screen capture**, **Load PDF**, or **Load image**.
-- Map X, Y, Z, Description, and Point number to screen OCR zones, plan clicks, plan-label OCR, the clipboard, or manual input.
+- Map X, Y, Z, Description, and Point number to fixed screen OCR zones, OCR nearest the live cursor, plan clicks, plan-label OCR, the clipboard, or manual input.
 - Test the mapping, then capture stable changes automatically or click labels on a plan.
 - Watch the always-on-top zone-health overlay; Screen2XYZ pauses if OCR repeatedly fails or display/DPI settings change.
 - Review, filter, edit, or soft-delete rows with an audit trail, then export one XLSX or CSV.
 
-The v2.5 realistic proof drives rendered image bytes through real Tesseract OCR, parsing, stability, SQLite, and XLSX. Its current Windows result is **220/220 exact rows (100.00%)**, with **zero duplicates, zero accepted hallucinations, and exact SQLite/XLSX parity**. See [Accuracy and validation](docs/ACCURACY.md).
+The prior v2.5 controlled harness range was **97.3%–100.0% exact rows**. The stricter v2.6 cache-disabled verification produced **209/220 exact rows (95.0%) in each of three complete runs**, with 11 safe rejections, zero false duplicates, zero accepted hallucinations, and exact SQLite/XLSX parity every time. These are fixture-specific results, not a promise for an arbitrary viewer or drawing. See [Accuracy and validation](docs/ACCURACY.md).
 
 ## See the workflow
 
@@ -46,7 +46,7 @@ Optional system tools:
 - [Tesseract OCR](https://tesseract-ocr.github.io/tessdoc/Installation.html): `winget install --id UB-Mannheim.TesseractOCR --exact`
 - [Poppler](https://poppler.freedesktop.org/): `winget install --id oschwartz10612.Poppler --exact`
 
-The app detects both tools. Without Tesseract on Windows, enhanced OCR is disabled and the Windows OCR fallback remains available. Without Poppler, PDF loading is disabled but image and live capture remain available. The in-app dialog includes the same install command and a clickable help link.
+The app detects both tools. Automatic screen OCR and cursor OCR require Tesseract because a real confidence value must pass the configured gate; the app refuses to start those modes without it. Windows OCR may still support non-automatic preview or assisted workflows. Without Poppler, PDF loading is disabled but image and live capture remain available. The in-app dialog includes the same install command and a clickable help link.
 
 ## Quick starts
 
@@ -54,8 +54,8 @@ The app detects both tools. Without Tesseract on Windows, enhanced OCR is disabl
 
 1. Open the drawing and show its live coordinate/status readout.
 2. Start **Live screen capture**, choose a project folder, and map X and Y to tight OCR zones.
-3. Map Z to another screen zone, or load the plan and use `plan_label_ocr` for click-driven elevation capture.
-4. Set the XY dedup distance and point-number prefix/start, then select **Test mapping**.
+3. Map Z to `screen_cursor_ocr` so the nearest numeric label in the adjustable cursor box follows your pointer, or use another tight fixed zone.
+4. Set project-specific minimum/maximum values, the XY dedup distance, and point numbering, then select **Test mapping**.
 5. Start capture. Keep working in the viewer while the mini overlay shows live values. Stop, review, and export XLSX.
 
 ### Plan-only user
@@ -78,14 +78,14 @@ Global Windows hotkeys work while another application has focus:
 | Stop | `Ctrl+Shift+F10` |
 | Force one capture attempt | `Ctrl+Shift+F11` |
 
-Automatic capture is available when every mapped source is a screen zone or clipboard. A plan-derived channel makes the session click-driven. All retained points are journaled before SQLite insertion. Edits and soft deletions add audit records; they do not rewrite the original run journal.
+Automatic capture is available when every mapped source is a fixed screen zone, cursor OCR, or clipboard. Cursor OCR defaults to a 160×60 pixel box centred on the current Windows cursor, chooses the numeric candidate whose bounding-box centre is nearest the cursor, and supports rotated labels. A plan-derived channel makes the session click-driven. All retained points are journaled before SQLite insertion. Edits and soft deletions add audit records; they do not rewrite the original run journal.
 
 ## Troubleshooting
 
 | Problem | What Screen2XYZ does | Fix |
 |---|---|---|
 | Poppler missing | PDF loading is disabled; no crash or traceback is shown. | Run `winget install --id oschwartz10612.Poppler --exact`, restart, or use **Load image**. |
-| Tesseract missing | Enhanced OCR is disabled. Windows uses its OCR fallback; other systems cannot start OCR capture. | Run `winget install --id UB-Mannheim.TesseractOCR --exact`, then restart. |
+| Tesseract missing | Automatic screen/cursor OCR does not start because confidence cannot be enforced. | Run `winget install --id UB-Mannheim.TesseractOCR --exact`, then restart. |
 | Zone stopped reading | After the configured consecutive-failure limit, capture pauses and marks the zone unhealthy. | Select **Re-pick zones**, redraw each zone tightly, and test again. |
 | Resolution or DPI changed | Capture pauses before accepting another row. | Restore the display setup or re-pick zones at the new scale. |
 | Values are skipped | They may be inside the configured minimum XY delta. | Reduce the dedup distance if the points are intentionally close. |
@@ -101,9 +101,9 @@ No. It reads only the screen rectangles, local files, clipboard, or manual value
 
 No. Capture, OCR, journaling, SQLite storage, review, and export run locally.
 
-**Is 100% a guarantee on my drawings?**
+**Is the measured 97.3%–100.0% range a guarantee on my drawings?**
 
-No. It is a reproducible result for the published synthetic-but-realistic harness. Fonts, scale, contrast, rotation, compression, and display settings affect OCR. Bad reads are designed to be rejected rather than silently stored, but every output still requires authoritative validation.
+No. It is a reproducible range for retained synthetic-but-realistic harness runs. Fonts, scale, contrast, rotation, compression, and display settings affect OCR. Bad reads are designed to be rejected rather than silently stored, but every output still requires authoritative validation.
 
 **Can I recover after a crash?**
 
@@ -124,7 +124,7 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python -m unittest discover -s tests_app -t . -v
 .\.venv\Scripts\python tests_civil\run_civil_tests.py
 .\.venv\Scripts\python -m unittest discover -s tests_m2 -t . -v
-.\.venv\Scripts\python -m tests_app.harness --output .lab_work\v2_5_harness
+.\.venv\Scripts\python -m tests_app.harness --output .lab_work\v2_6_harness
 ```
 
 The realistic harness requires a local Tesseract executable and fails the job unless accuracy is at least 95%, false duplicates are zero, accepted hallucinations are zero, and XLSX exactly matches SQLite.

@@ -1,0 +1,13 @@
+{
+  "accuracy": 0.95,
+  "captured_rows": 209,
+  "correctly_captured_rows": 209,
+  "duration_seconds": 1738.821,
+  "false_duplicate_rows": 0,
+  "ground_truth_rows": 220,
+  "hallucinated_rows": 0,
+  "parse_or_ocr_failures": 11,
+  "plan_labels_rendered": 48,
+  "sqlite_xlsx_exact": true,
+  "tesseract": "C:\\LocalTools\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe"
+}
