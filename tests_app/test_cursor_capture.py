@@ -32,11 +32,15 @@ class CursorCaptureTests(unittest.TestCase):
 
     def test_cursor_box_is_centred_and_nearest_candidate_wins(self):
         grabbed = []
-        candidates = (
-            CursorOcrCandidate("49.47", 49.47, 0.91, Rect(8, 20, 38, 40), 0, "gray@0", 6),
-            CursorOcrCandidate("49.47", 49.47, 0.90, Rect(8, 20, 38, 40), 0, "binary@0", 7),
-            CursorOcrCandidate("49.78", 49.78, 0.94, Rect(66, 20, 96, 40), 0, "gray@0", 6),
-            CursorOcrCandidate("49.78", 49.78, 0.93, Rect(66, 20, 96, 40), 0, "binary@0", 7),
+        candidates = tuple(
+            CursorOcrCandidate(
+                text, value, confidence, bbox, 0, f"variant-{index}", 6
+            )
+            for text, value, confidence, bbox in (
+                ("49.47", 49.47, 0.91, Rect(8, 20, 38, 40)),
+                ("49.78", 49.78, 0.94, Rect(66, 20, 96, 40)),
+            )
+            for index in range(7)
         )
         reader = DefaultReader(
             self._backend(candidates, grabbed),

@@ -25,10 +25,10 @@ formal regression remains in `tests_app/test_agtek_cursor_ocr.py`.
 ## Implemented policy
 
 - PSM modes `(6, 7)`, upscale 2.
-- Rotation angles `(0, -12, 12, -15, 15, -20, 20, -25, 25)`.
+- Rotation angles `(0, ±8, ±10, ±12, ±15, ±20, ±25)`.
 - Confidence floor 0.60, numeric range supplied by the column, and minimum
   decimal count supplied by the column (default 2).
-- At least two distinct angle/preprocessing variants must agree on a parsed
+- At least seven distinct angle/preprocessing variants must agree on a parsed
   value.
 - Competing interpretations whose centers overlap are treated as the same
   rendered label; the value with the most distinct-variant support wins.
@@ -61,3 +61,15 @@ Fast/regression suites after the compatibility correction:
 
 No OCR cache was used for either real-cursor measurement. This is synthetic
 evidence, not validation against a live AGTEK GradeWork window.
+
+## Final-round correction
+
+The first full final-round harness exposed a second path that returned the first
+two-variant consensus before measuring stronger alternatives. It produced
+173/220 exact, 44 wrong accepted, and 3 safe failures. Across the ten recurring
+wrong labels, wrong interpretations had support of 1–6 variants while correct
+interpretations had 9–19. The shared boundary was therefore raised to seven and
+±8°/±10° angles were added. Direct general-image measurement then produced
+47/48 correct, 0 wrong accepted, and 1 safe rejection; the focused ten-label
+regression accepted no wrong values. AGTEK 12/12, grey 3/3, and the combined
+fixture remained green under the stricter policy.
