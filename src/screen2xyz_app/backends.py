@@ -393,8 +393,8 @@ class ScreenOcrBackend:
         zone = (cursor[0] - width // 2, cursor[1] - height // 2, width, height)
         image = self.capture_provider(zone)
         candidates = self.cursor_candidate_provider(image, policy)
-        evidence = []
-        for index, candidate in enumerate(candidates):
+        usable = []
+        for candidate in candidates:
             if candidate.confidence < policy.confidence_min:
                 continue
             if (
@@ -402,7 +402,56 @@ class ScreenOcrBackend:
                 and not policy.numeric_range[0] <= candidate.normalized_value <= policy.numeric_range[1]
             ):
                 continue
-            evidence.append(candidate.as_evidence(index))
+            usable.append(candidate)
+        if policy.consensus_min > 1 and any(item.variant_name for item in usable):
+            grouped: dict[float, list[CursorOcrCandidate]] = {}
+            for candidate in usable:
+                grouped.setdefault(candidate.normalized_value, []).append(candidate)
+            agreed: list[tuple[CursorOcrCandidate, int]] = []
+            center = PixelPoint(width / 2, height / 2)
+            for group in grouped.values():
+                if len({item.variant_name for item in group}) < policy.consensus_min:
+                    continue
+                nearest = min(
+                    group,
+                    key=lambda item: (
+                        (item.bbox.center.x - center.x) ** 2
+                        + (item.bbox.center.y - center.y) ** 2,
+                        -item.confidence,
+                    ),
+                )
+                support = len({item.variant_name for item in group})
+                agreed.append((
+                    CursorOcrCandidate(
+                        nearest.raw_text,
+                        nearest.normalized_value,
+                        max(item.confidence for item in group),
+                        nearest.bbox,
+                        nearest.rotation_angle,
+                        "consensus",
+                        nearest.psm,
+                    ),
+                    support,
+                ))
+            # Competing reads whose centers overlap are interpretations of the
+            # same rendered label. Keep the one supported by the most distinct
+            # preprocessing variants; retain separate labels for nearest-pick.
+            selected: list[CursorOcrCandidate] = []
+            for candidate, _support in sorted(
+                agreed, key=lambda item: (-item[1], -item[0].confidence)
+            ):
+                if any(
+                    (candidate.bbox.center.x - prior.bbox.center.x) ** 2
+                    + (candidate.bbox.center.y - prior.bbox.center.y) ** 2
+                    <= 12.0 ** 2
+                    for prior in selected
+                ):
+                    continue
+                selected.append(candidate)
+            usable = selected
+        evidence = [
+            candidate.as_evidence(index) for index, candidate in enumerate(usable)
+        ]
         service = ElevationUnderCursorService(
             SpatialCandidateIndex(evidence), snap_radius_px=snap_radius_px
         )
@@ -439,41 +488,58 @@ class ScreenOcrBackend:
             source = ImageOps.invert(source)
         candidates: list[CursorOcrCandidate] = []
         for angle in policy.rotation_angles:
-            rotated = source if angle == 0 else source.rotate(angle, expand=False, fillcolor="white")
-            factor = policy.upscale
-            prepared = rotated.resize(
-                (rotated.width * factor, rotated.height * factor),
-                resample=Image.Resampling.LANCZOS,
+            fill = source.getpixel((0, 0))
+            rotated = source if angle == 0 else source.rotate(
+                angle, expand=False, fillcolor=fill
             )
-            for psm in policy.psm_modes:
-                whitelist = (
-                    f" -c tessedit_char_whitelist={policy.whitelist}"
-                    if policy.whitelist else ""
-                )
-                data = pytesseract.image_to_data(
-                    prepared,
-                    config=f"--psm {psm}{whitelist}",
-                    output_type=Output.DICT,
-                )
-                for index, text in enumerate(data["text"]):
-                    raw = str(text).strip()
-                    if not raw:
-                        continue
-                    confidence = float(data["conf"][index]) / 100.0
-                    valid, normalized_text, normalized = self._parse_candidate(raw, policy)
-                    if not valid or normalized is None or confidence < 0:
-                        continue
-                    left = float(data["left"][index]) / factor
-                    top = float(data["top"][index]) / factor
-                    width = float(data["width"][index]) / factor
-                    height = float(data["height"][index]) / factor
-                    candidates.append(CursorOcrCandidate(
-                        normalized_text,
-                        float(normalized),
-                        confidence,
-                        Rect(left, top, left + width, top + height),
-                        angle,
+            variants = [(f"color@{angle}", rotated)]
+            if policy.binarize:
+                gray = ImageOps.autocontrast(rotated.convert("L"))
+                variants.append((f"gray@{angle}", gray))
+                for cutoff in (125, 155, 185):
+                    variants.append((
+                        f"binary-{cutoff}@{angle}",
+                        gray.point(
+                            lambda pixel, value=cutoff: 255 if pixel >= value else 0
+                        ),
                     ))
+            factor = policy.upscale
+            for variant_name, variant in variants:
+                prepared = variant.resize(
+                    (variant.width * factor, variant.height * factor),
+                    resample=Image.Resampling.LANCZOS,
+                )
+                for psm in policy.psm_modes:
+                    whitelist = (
+                        f" -c tessedit_char_whitelist={policy.whitelist}"
+                        if policy.whitelist else ""
+                    )
+                    data = pytesseract.image_to_data(
+                        prepared,
+                        config=f"--psm {psm}{whitelist}",
+                        output_type=Output.DICT,
+                    )
+                    for index, text in enumerate(data["text"]):
+                        raw = str(text).strip()
+                        if not raw:
+                            continue
+                        confidence = float(data["conf"][index]) / 100.0
+                        valid, normalized_text, normalized = self._parse_candidate(raw, policy)
+                        if not valid or normalized is None or confidence < 0:
+                            continue
+                        left = float(data["left"][index]) / factor
+                        top = float(data["top"][index]) / factor
+                        width = float(data["width"][index]) / factor
+                        height = float(data["height"][index]) / factor
+                        candidates.append(CursorOcrCandidate(
+                            normalized_text,
+                            float(normalized),
+                            confidence,
+                            Rect(left, top, left + width, top + height),
+                            angle,
+                            variant_name,
+                            psm,
+                        ))
         return tuple(candidates)
 
     def _ocr_windows(self, image, digest: str, png: bytes) -> Reading:
@@ -503,6 +569,8 @@ class CursorOcrCandidate:
     confidence: float
     bbox: Rect
     rotation_angle: int
+    variant_name: str = ""
+    psm: int = 0
 
     def as_evidence(self, index: int) -> CandidateEvidence:
         return CandidateEvidence(
@@ -570,14 +638,7 @@ class DefaultReader:
             return self.screen.read_cursor(
                 self.cursor_position_provider(),
                 source.cursor_box_size,
-                policy=OcrPolicy(
-                    separator_mode=source.decimal_separator,
-                    numeric=True,
-                    numeric_range=source.numeric_range,
-                    declared_format=source.declared_format,
-                    psm_modes=(6, 11),
-                    rotation_angles=(0, -15, 15, -20, 20, -25, 25),
-                ),
+                policy=cursor_ocr_policy(source),
                 snap_radius_px=source.cursor_snap_radius_px,
             )
         if source.source_type in {"manual", "plan_click", "plan_label_ocr"}:
@@ -599,3 +660,19 @@ class DefaultReader:
             finally:
                 root.destroy()
         raise ValueError(f"unsupported source type {source.source_type}")
+
+
+def cursor_ocr_policy(source: ChannelSource) -> OcrPolicy:
+    """The measured elevation policy shared by production and proof harnesses."""
+    return OcrPolicy(
+        separator_mode=source.decimal_separator,
+        numeric=True,
+        numeric_range=source.numeric_range,
+        declared_format=source.declared_format,
+        precision_min=source.precision_min,
+        consensus_min=2,
+        confidence_min=0.60,
+        psm_modes=(6, 7),
+        rotation_angles=(0, -12, 12, -15, 15, -20, 20, -25, 25),
+        upscale=2,
+    )
