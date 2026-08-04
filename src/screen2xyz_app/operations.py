@@ -37,6 +37,15 @@ def current_virtual_desktop_bounds() -> VirtualDesktopBounds:
         return VirtualDesktopBounds(0, 0, 0, 0)
 
 
+def screen_zone_from_drag(
+    start: tuple[int, int], end: tuple[int, int]
+) -> tuple[int, int, int, int]:
+    """Convert root-screen drag coordinates without losing negative origins."""
+    x0, y0 = start
+    x1, y1 = end
+    return min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0)
+
+
 def preview_without_overlay(*, hide, flush, preview, restore):
     hide()
     try:
@@ -63,6 +72,11 @@ def zone_preview_assessment(
     _left, _top, _width, height = zone
     warnings: list[str] = []
     blocking = height > 48
+    if 18 <= height < 24:
+        warnings.append(
+            f"Selection is only {height} px tall and may clip ascenders or descenders; "
+            "include a little vertical margin."
+        )
     if blocking:
         warnings.append(
             f"Selection is {height} px tall; pick one numeric line no taller than 48 px."

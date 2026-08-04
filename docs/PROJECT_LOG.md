@@ -85,6 +85,12 @@ Append new entries at the end. Each entry must state the date, decision, reason,
 - **Why:** The prior v2.6 build still identified itself as v2.5, so operator reports could not establish which build was running.
 - **Evidence:** Red/green launcher contract in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT4_VERSION.md`.
 
+### 2026-08-04 — Retain field geometry as source-agnostic regression fixtures
+
+- **Decision:** Preserve negative virtual-desktop coordinates, warn rather than block tight 18–23 px single-line zones, and prove cursor OCR on multiple grey contrast levels, markers, neighbouring labels, and the combined observed geometry.
+- **Why:** Each condition occurred in the first field session and was absent or weaker in the earlier white-background fixtures.
+- **Evidence:** Seven-check matrix in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/ADDITIONAL_FIELD_CHECKS.md`.
+
 ## Measurement log
 
 Append every new measured number at the end with exact configuration and retained evidence path.
@@ -146,6 +152,12 @@ Append every new measured number at the end with exact configuration and retaine
 
 - **Result:** Runtime `2.7.0`, title `Screen2XYZ v2.7`, quick-start v2.7; launcher 6/6, application 71/71, Civil 113/113, M2 498/498.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT4_VERSION.md`.
+
+### 2026-08-04 — Additional field-check measurement
+
+- **Result:** Negative coordinate capture passed; all heights 18–30 behaved as specified; grey contrasts 96/68/44 were 3/3 correct with zero wrong or rejected; markers were excluded in 12/12; nearest of two consensus-backed labels won; the combined AGTEK-geometry fixture read 51.53 and 2768.313 exactly; five label-text regressions remained green.
+- **Suites:** application 75/75, Civil 113/113, M2 498/498.
+- **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/ADDITIONAL_FIELD_CHECKS.md`.
 
 ## Known traps
 
