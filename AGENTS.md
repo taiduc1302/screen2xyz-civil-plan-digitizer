@@ -1,5 +1,13 @@
 # Repository Working Rules
 
+## READ THIS FIRST
+Before any work in this repository, read `docs/PROJECT_LOG.md` in full.
+It records where the work lives (NOT on `main`), every decision taken, every measurement
+made, and the traps that have already cost sessions of wasted effort.
+After any significant change, append to its Decision log and Measurement log in the same
+commit. A change that alters behavior or produces a number, without a log entry, is
+incomplete.
+
 - Preserve previous evidence and never delete or overwrite retained run evidence.
 - Use copy-on-write development and task-specific branches.
 - Keep changes limited to the approved task and follow current requirements and architecture.
