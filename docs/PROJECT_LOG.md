@@ -79,6 +79,12 @@ Append new entries at the end. Each entry must state the date, decision, reason,
 - **Why:** A globally healthy message concealed a continuously failing Z channel and allowed an entire session to finish with no retained rows. Partial data must be useful without ever looking complete.
 - **Evidence:** Red/green tests, schema migration, and export checks in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT3_CHANNEL_HEALTH_PARTIAL.md`.
 
+### 2026-08-04 — Identify v2.7 consistently at runtime
+
+- **Decision:** Set the application runtime version to `2.7.0` and show `Screen2XYZ v2.7` in the window and bundled quick-start.
+- **Why:** The prior v2.6 build still identified itself as v2.5, so operator reports could not establish which build was running.
+- **Evidence:** Red/green launcher contract in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT4_VERSION.md`.
+
 ## Measurement log
 
 Append every new measured number at the end with exact configuration and retained evidence path.
@@ -135,6 +141,11 @@ Append every new measured number at the end with exact configuration and retaine
 - **Migration:** A v2.6 `z NOT NULL` database migrated to nullable Z without losing its existing point, which remained `COMPLETE`.
 - **Suites:** application 71/71, Civil 113/113, M2 498/498, Tk functional smoke passed.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT3_CHANNEL_HEALTH_PARTIAL.md`.
+
+### 2026-08-04 — Defect 4 version verification
+
+- **Result:** Runtime `2.7.0`, title `Screen2XYZ v2.7`, quick-start v2.7; launcher 6/6, application 71/71, Civil 113/113, M2 498/498.
+- **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT4_VERSION.md`.
 
 ## Known traps
 
