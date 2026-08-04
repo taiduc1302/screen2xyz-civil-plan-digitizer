@@ -147,6 +147,7 @@ Append every new measured number at the end with exact configuration and retaine
 - **Migration:** A v2.6 `z NOT NULL` database migrated to nullable Z without losing its existing point, which remained `COMPLETE`.
 - **Suites:** application 71/71, Civil 113/113, M2 498/498, Tk functional smoke passed.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT3_CHANNEL_HEALTH_PARTIAL.md`.
+- **Parity follow-up:** The full harness parity comparator now includes `capture_status`; a focused regression proves the 11-column SQLite/XLSX tuple before final rounds.
 
 ### 2026-08-04 — Defect 4 version verification
 

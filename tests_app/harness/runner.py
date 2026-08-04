@@ -132,7 +132,8 @@ def _verify_xlsx(store: SessionStore, session_id: str, path: Path) -> bool:
         ]
         expected = (
             db["point_number"] or str(sequence),
-            db["x"], db["y"], db["z"], db["description"] or None,
+            db["x"], db["y"], db["z"], db["capture_status"],
+            db["description"] or None,
             db["source_method_x"], db["source_method_y"], db["source_method_z"],
             None if not confidences else sum(confidences) / len(confidences),
             db["created_utc"],
