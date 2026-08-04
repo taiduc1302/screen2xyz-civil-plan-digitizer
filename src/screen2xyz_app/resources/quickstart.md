@@ -1,4 +1,4 @@
-# Screen2XYZ v2.5 quick start
+# Screen2XYZ v2.7 quick start
 
 ## 1. Choose a capture mode
 

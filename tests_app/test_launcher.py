@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from screen2xyz_app import __version__
+from screen2xyz_app.ui.layout import APP_TITLE
 from screen2xyz_app.dependencies import poppler_capability, tesseract_capability
 from screen2xyz_app.ui.layout import HOME_MODES, WIZARD_STEPS
 from screen2xyz_app.ui.guide import first_run_pending, load_steps, mark_first_run_complete
@@ -21,7 +22,8 @@ class LauncherTests(unittest.TestCase):
 
     def test_wizard_has_five_steps(self) -> None:
         self.assertEqual(len(WIZARD_STEPS), 5)
-        self.assertEqual(__version__, "2.5.0")
+        self.assertEqual(__version__, "2.7.0")
+        self.assertEqual(APP_TITLE, "Screen2XYZ v2.7")
 
     def test_bundled_quick_start_has_five_illustrated_steps(self) -> None:
         steps = load_steps()
