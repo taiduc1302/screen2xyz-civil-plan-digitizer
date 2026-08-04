@@ -9,6 +9,7 @@ from ..operations import (
     current_virtual_desktop_bounds,
     format_virtual_geometry,
     preview_without_overlay,
+    screen_zone_from_drag,
     zone_preview_assessment,
 )
 
@@ -77,8 +78,7 @@ class ZonePicker(tk.Toplevel):
         if self._start is None:
             return
         x0, y0 = self._start
-        left, top = min(x0, event.x_root), min(y0, event.y_root)
-        self._zone = (left, top, abs(event.x_root - x0), abs(event.y_root - y0))
+        self._zone = screen_zone_from_drag((x0, y0), (event.x_root, event.y_root))
         if self._zone[2] < 8 or self._zone[3] < 8:
             self.canvas.itemconfigure(self.message, text="Zone is too small; drag again.")
             self._zone = None
