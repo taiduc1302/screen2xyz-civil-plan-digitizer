@@ -46,6 +46,7 @@ class OcrPolicy:
     rotation_angles: tuple[int, ...] = (0,)
     upscale: int = 4
     binarize: bool = True
+    declared_format: str | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.confidence_min <= 1.0:
@@ -292,6 +293,23 @@ class ScreenOcrBackend:
         valid_candidates = [item for item in candidates if item[0]]
         if not valid_candidates:
             observed = sorted({item[2] for item in candidates if item[2]})
+            if policy.declared_format is not None:
+                numeric_fragments = [
+                    value for value in observed if any(ch.isdigit() for ch in value)
+                ]
+                if numeric_fragments:
+                    value = max(
+                        numeric_fragments,
+                        key=lambda item: (
+                            sum(ch.isdigit() for ch in item),
+                            -len(item),
+                        ),
+                    )
+                    raise OcrConfidenceError(
+                        f"the value reads as {value}, which is not valid for "
+                        f"the declared format {policy.declared_format}; check "
+                        "the zone edges or the format setting"
+                    )
             raise OcrConfidenceError(
                 "OCR retry ladder produced no parseable value"
                 + (f": {observed}" if observed else "")
@@ -336,8 +354,9 @@ class ScreenOcrBackend:
             candidate_text,
             separator_mode=policy.separator_mode,
             numeric_range=policy.numeric_range,
+            declared_format=policy.declared_format,
         )
-        if outcome.parse_status != "OK":
+        if outcome.parse_status != "OK" and policy.declared_format is None:
             if (
                 policy.separator_mode == "comma"
                 and "." in candidate_text
@@ -354,6 +373,7 @@ class ScreenOcrBackend:
                 candidate_text,
                 separator_mode=policy.separator_mode,
                 numeric_range=policy.numeric_range,
+                declared_format=policy.declared_format,
             )
         valid = outcome.parse_status == "OK"
         if valid and policy.precision_min is not None:
@@ -543,6 +563,7 @@ class DefaultReader:
                     separator_mode=source.decimal_separator,
                     numeric=source.data_type != "text",
                     numeric_range=source.numeric_range,
+                    declared_format=source.declared_format,
                 ),
             )
         if source.source_type == "screen_cursor_ocr":
@@ -553,6 +574,7 @@ class DefaultReader:
                     separator_mode=source.decimal_separator,
                     numeric=True,
                     numeric_range=source.numeric_range,
+                    declared_format=source.declared_format,
                     psm_modes=(6, 11),
                     rotation_angles=(0, -15, 15, -20, 20, -25, 25),
                 ),

@@ -74,6 +74,7 @@ class CapturePipeline:
                 source.data_type,
                 separator_mode=source.decimal_separator,
                 numeric_range=source.numeric_range,
+                declared_format=source.declared_format,
             )
             if parsed.parse_status != "OK":
                 raise ValueError(f"{column} could not be parsed: {parsed.parse_status}")
