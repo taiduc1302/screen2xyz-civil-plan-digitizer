@@ -32,6 +32,8 @@ class CapturedPoint:
     source_methods: dict[str, str]
     raw_texts: dict[str, str]
     confidences: dict[str, float | None]
+    capture_status: str = "COMPLETE"
+    channel_failures: dict[str, str] = field(default_factory=dict)
     created_utc: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     )
@@ -45,18 +47,40 @@ class CapturedPoint:
         return float(self.values["y"])
 
     @property
-    def z(self) -> float:
-        return float(self.values["z"])
+    def z(self) -> float | None:
+        value = self.values["z"]
+        return None if value is None else float(value)
 
 
 Reader = Callable[[str, ChannelSource, dict[str, Any]], Reading]
 
 
+class ChannelReadError(ValueError):
+    """One or more mapped channels failed during the same capture attempt."""
+
+    def __init__(
+        self,
+        failures: dict[str, str],
+        successful_readouts: dict[str, str],
+    ) -> None:
+        self.failures = dict(failures)
+        self.successful_readouts = dict(successful_readouts)
+        details = "; ".join(f"{name}: {reason}" for name, reason in failures.items())
+        super().__init__(f"mapped channel read failed — {details}")
+
+
 class CapturePipeline:
-    def __init__(self, mapping: ChannelMapping, reader: Reader) -> None:
+    def __init__(
+        self,
+        mapping: ChannelMapping,
+        reader: Reader,
+        *,
+        allow_partial_z: bool = False,
+    ) -> None:
         mapping.validate()
         self.mapping = mapping
         self.reader = reader
+        self.allow_partial_z = allow_partial_z
 
     def read(self, context: dict[str, Any] | None = None) -> tuple[CapturedPoint, dict[str, Observation], dict[str, bytes]]:
         context = context or {}
@@ -66,50 +90,72 @@ class CapturePipeline:
         confidences: dict[str, float | None] = {}
         observations: dict[str, Observation] = {}
         crops: dict[str, bytes] = {}
+        failures: dict[str, str] = {}
         for column, source in self.mapping.channels.items():
-            reading = self.reader(column, source, context)
-            raw = bound_raw(reading.raw_text)
-            parsed = parse_for_source(
-                raw,
-                source.data_type,
-                separator_mode=source.decimal_separator,
-                numeric_range=source.numeric_range,
-                declared_format=source.declared_format,
-            )
-            if parsed.parse_status != "OK":
-                raise ValueError(f"{column} could not be parsed: {parsed.parse_status}")
-            normalized: float | str | None
-            if source.data_type == "text":
-                normalized = parsed.normalized_value
-            elif parsed.normalized_value is None:
-                normalized = None
-            else:
-                normalized = float(parsed.normalized_value)
-            values[column] = normalized
-            methods[column] = source.source_type
-            raw_texts[column] = raw.raw_text
-            confidences[column] = reading.confidence
-            source_id = f"src-v2-{column.replace('_', '-')}"
-            observations[source_id] = Observation(
-                source_id=source_id,
-                capture_status="OK",
-                crop_content_status="CONTENT",
-                ocr_status="OK",
-                parse_status="OK",
-                stability_status="NOT_EVALUATED",
-                value_status="OK",
-                raw_text=raw.raw_text,
-                raw_truncated=raw.raw_truncated,
-                raw_original_utf8_bytes=raw.raw_original_utf8_bytes,
-                normalized_value=parsed.normalized_value,
-                value_kind=parsed.value_kind,
-                pixel_sha256=reading.pixel_sha256,
-                ocr_executed=reading.ocr_executed,
-                confirmation="new_ocr" if reading.ocr_executed else "pixel_hash_cache",
-            )
-            if reading.crop_png is not None:
-                crops[source_id] = reading.crop_png
-        return CapturedPoint(values, methods, raw_texts, confidences), observations, crops
+            try:
+                reading = self.reader(column, source, context)
+                raw = bound_raw(reading.raw_text)
+                parsed = parse_for_source(
+                    raw,
+                    source.data_type,
+                    separator_mode=source.decimal_separator,
+                    numeric_range=source.numeric_range,
+                    declared_format=source.declared_format,
+                )
+                if parsed.parse_status != "OK":
+                    raise ValueError(f"could not be parsed: {parsed.parse_status}")
+                normalized: float | str | None
+                if source.data_type == "text":
+                    normalized = parsed.normalized_value
+                elif parsed.normalized_value is None:
+                    normalized = None
+                else:
+                    normalized = float(parsed.normalized_value)
+                values[column] = normalized
+                methods[column] = source.source_type
+                raw_texts[column] = raw.raw_text
+                confidences[column] = reading.confidence
+                source_id = f"src-v2-{column.replace('_', '-')}"
+                observations[source_id] = Observation(
+                    source_id=source_id,
+                    capture_status="OK",
+                    crop_content_status="CONTENT",
+                    ocr_status="OK",
+                    parse_status="OK",
+                    stability_status="NOT_EVALUATED",
+                    value_status="OK",
+                    raw_text=raw.raw_text,
+                    raw_truncated=raw.raw_truncated,
+                    raw_original_utf8_bytes=raw.raw_original_utf8_bytes,
+                    normalized_value=parsed.normalized_value,
+                    value_kind=parsed.value_kind,
+                    pixel_sha256=reading.pixel_sha256,
+                    ocr_executed=reading.ocr_executed,
+                    confirmation="new_ocr" if reading.ocr_executed else "pixel_hash_cache",
+                )
+                if reading.crop_png is not None:
+                    crops[source_id] = reading.crop_png
+            except (ValueError, RuntimeError) as exc:
+                failures[column] = str(exc)
+        if failures and not (
+            self.allow_partial_z and set(failures) == {"z"}
+        ):
+            raise ChannelReadError(failures, raw_texts)
+        if "z" in failures:
+            source = self.mapping.channels["z"]
+            values["z"] = None
+            methods["z"] = source.source_type
+            raw_texts["z"] = ""
+            confidences["z"] = None
+        status = "PARTIAL_MISSING_Z" if failures else "COMPLETE"
+        return CapturedPoint(
+            values,
+            methods,
+            raw_texts,
+            confidences,
+            status,
+            failures,
+        ), observations, crops
 
 
 class AutoCaptureEngine:
@@ -122,7 +168,7 @@ class AutoCaptureEngine:
         *,
         interval_ms: int = 500,
         confirmations: int = 2,
-        zone_failure_limit: int = 3,
+        zone_failure_limit: int = 10,
         on_health: Callable[[ZoneHealthSnapshot], None] | None = None,
         health_monitor: ZoneHealthMonitor | None = None,
     ) -> None:
@@ -150,10 +196,18 @@ class AutoCaptureEngine:
             retention_mode="changed_only",
         )
         self.scheduler = TickScheduler(interval_ms, self.poll, lambda: None)
+        self.confirmations = confirmations
         self._frame = 0
         self.on_health = on_health
-        self.health = health_monitor or ZoneHealthMonitor(zone_failure_limit)
+        self.health = health_monitor or ZoneHealthMonitor(
+            zone_failure_limit,
+            channel_names=pipeline.mapping.channels,
+        )
+        self.health.bind_channels(pipeline.mapping.channels)
         self.paused = False
+        self._partial_candidate: tuple[float, float] | None = None
+        self._partial_confirmations = 0
+        self._last_partial_emitted: tuple[float, float] | None = None
 
     def poll(self) -> CapturedPoint | None:
         display_event = self.health.check_display()
@@ -174,7 +228,27 @@ class AutoCaptureEngine:
             self.on_health(snapshot)
             return None
         if self.on_health is not None:
-            self.on_health(self.health.success(dict(point.raw_texts)))
+            snapshot = self.health.success(
+                dict(point.raw_texts), dict(point.channel_failures)
+            )
+            if snapshot.paused:
+                self.pause()
+            self.on_health(snapshot)
+        if point.capture_status == "PARTIAL_MISSING_Z":
+            signature = (point.x, point.y)
+            if signature == self._partial_candidate:
+                self._partial_confirmations += 1
+            else:
+                self._partial_candidate = signature
+                self._partial_confirmations = 1
+            if (
+                self._partial_confirmations >= self.confirmations
+                and signature != self._last_partial_emitted
+            ):
+                self.on_point(point)
+                self._last_partial_emitted = signature
+                return point
+            return None
         self._frame += 1
         decision = self.stability.process_tick(
             observations,
@@ -209,6 +283,7 @@ class AutoCaptureEngine:
         for column, source in self.pipeline.mapping.channels.items():
             if (
                 source.source_type in {"screen_zone_ocr", "screen_cursor_ocr"}
+                and point.values.get(column) is not None
                 and point.confidences[column] is None
             ):
                 raise ValueError(

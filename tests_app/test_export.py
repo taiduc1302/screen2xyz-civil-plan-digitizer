@@ -44,7 +44,8 @@ class ExportTests(unittest.TestCase):
         points = workbook["Points"]
         self.assertEqual(tuple(cell.value for cell in points[1]), POINT_HEADERS)
         self.assertEqual(points["B2"].value, 1.25)
-        self.assertEqual(points["E2"].value, "'=unsafe")
+        self.assertEqual(points["E2"].value, "COMPLETE")
+        self.assertEqual(points["F2"].value, "'=unsafe")
         self.assertIn("conceptual estimating", workbook["Session"]["B2"].value)
 
     def test_csv_uses_same_columns_and_escapes_formula_text(self):

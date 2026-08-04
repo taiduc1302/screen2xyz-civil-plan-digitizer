@@ -72,6 +72,7 @@ class Screen2XYZApp(ttk.Frame):
         self._delta = tk.DoubleVar(value=0.0)
         self._point_prefix = tk.StringVar(value="")
         self._point_start = tk.IntVar(value=1)
+        self._allow_partial_z = tk.BooleanVar(value=False)
         self._hotkey_actions: queue.SimpleQueue[str] = queue.SimpleQueue()
         self._hotkeys = GlobalHotkeys({
             "start/pause": lambda: self._hotkey_actions.put("toggle"),
@@ -194,6 +195,11 @@ class Screen2XYZApp(ttk.Frame):
         ttk.Entry(policy_bar, textvariable=self._point_prefix, width=8).pack(side="left", padx=(3, 12))
         ttk.Label(policy_bar, text="Start:").pack(side="left")
         ttk.Entry(policy_bar, textvariable=self._point_start, width=7).pack(side="left", padx=3)
+        ttk.Checkbutton(
+            policy_bar,
+            text="Allow partial rows with missing Z (flagged)",
+            variable=self._allow_partial_z,
+        ).pack(side="left", padx=(12, 3))
 
         self._plan_canvas = tk.Canvas(self, height=210, bg="#e8edf2", highlightthickness=1)
         if mode != "Live screen capture":
@@ -211,7 +217,7 @@ class Screen2XYZApp(ttk.Frame):
         ttk.Button(controls, text="Export XLSX", command=self._export_xlsx).pack(side="right", padx=4)
         ttk.Button(controls, text="Export CSV", command=self._export_csv).pack(side="right", padx=4)
         ttk.Separator(self).pack(fill="x", pady=(5, 2))
-        ttk.Label(self, textvariable=self._status).pack(anchor="w")
+        ttk.Label(self, textvariable=self._status, wraplength=1100).pack(anchor="w")
 
     def _choose_project(self) -> None:
         value = filedialog.askdirectory(title="Choose Screen2XYZ project folder")
@@ -415,6 +421,7 @@ class Screen2XYZApp(ttk.Frame):
                     min_xy_delta=self._delta.get(),
                     point_prefix=self._point_prefix.get(),
                     point_start=self._point_start.get(),
+                    allow_partial_z=self._allow_partial_z.get(),
                 ),
             )
             if mapping.automatic:
@@ -545,7 +552,8 @@ class Screen2XYZApp(ttk.Frame):
 
     def _show_point(self, point, count: int) -> None:
         self._count.set(f"{count} rows")
-        self._status.set(f"X: {point.x:g}   Y: {point.y:g}   Z: {point.z:g}")
+        z_text = "MISSING (PARTIAL)" if point.z is None else f"{point.z:g}"
+        self._status.set(f"X: {point.x:g}   Y: {point.y:g}   Z: {z_text}")
         if self._overlay is not None and self._overlay.winfo_exists():
             self._overlay.show_point(point, count)
 

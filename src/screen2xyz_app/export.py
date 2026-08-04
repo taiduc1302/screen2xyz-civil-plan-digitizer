@@ -18,7 +18,7 @@ from screen2xyz_civil.models import CivilPoint, CivilProject
 from .store import SessionStore
 
 POINT_HEADERS = (
-    "PointNumber", "X", "Y", "Z", "Description", "SourceX", "SourceY",
+    "PointNumber", "X", "Y", "Z", "Status", "Description", "SourceX", "SourceY",
     "SourceZ", "Confidence", "Timestamp",
 )
 PRELIMINARY_WARNING = (
@@ -35,7 +35,7 @@ def _rows(store: SessionStore, session_id: str) -> Iterable[list[object]]:
         ]
         yield [
             _safe_text(point["point_number"] or str(sequence)),
-            point["x"], point["y"], point["z"],
+            point["x"], point["y"], point["z"], point["capture_status"],
             _safe_text(point["description"]),
             _safe_text(point["source_method_x"]),
             _safe_text(point["source_method_y"]),
@@ -65,7 +65,9 @@ def export_xlsx(store: SessionStore, session_id: str, output_path: Path) -> Path
         cell.font = header_font
     points.freeze_panes = "A2"
     points.auto_filter.ref = points.dimensions
-    for index, width in enumerate((14, 16, 16, 14, 34, 20, 20, 20, 14, 28), start=1):
+    for index, width in enumerate(
+        (14, 16, 16, 14, 24, 34, 20, 20, 20, 14, 28), start=1
+    ):
         points.column_dimensions[get_column_letter(index)].width = width
     for row in points.iter_rows():
         for cell in row:
@@ -108,6 +110,11 @@ def advanced_estimator_export(
     session = store.session(session_id)
     points = []
     for sequence, row in enumerate(store.points(session_id), start=1):
+        if row["z"] is None:
+            raise ValueError(
+                "advanced estimator export requires complete rows; "
+                "review PARTIAL_MISSING_Z rows first"
+            )
         points.append(CivilPoint(
             id=f"PT-{sequence:06d}", page_index=0, page_label="1",
             source_file="Screen2XYZ v2 session", source_sha256="",

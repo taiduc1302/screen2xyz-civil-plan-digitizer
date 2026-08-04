@@ -73,6 +73,12 @@ Append new entries at the end. Each entry must state the date, decision, reason,
 - **Why:** A confidence threshold alone both accepted wrong values and rejected valid low-contrast reads. The combined policy recovered the supplied geometry without accepting a wrong elevation.
 - **Evidence:** Red/green tests and cache-disabled measurements in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT2_CURSOR_OCR.md`.
 
+### 2026-08-04 — Make channel failures visible and partial Z explicit
+
+- **Decision:** Track health independently for every mapped channel and pause after 10 never-successful or consecutive failed attempts by default. Missing Z remains strict unless the operator explicitly enables flagged partial capture for the session.
+- **Why:** A globally healthy message concealed a continuously failing Z channel and allowed an entire session to finish with no retained rows. Partial data must be useful without ever looking complete.
+- **Evidence:** Red/green tests, schema migration, and export checks in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT3_CHANNEL_HEALTH_PARTIAL.md`.
+
 ## Measurement log
 
 Append every new measured number at the end with exact configuration and retained evidence path.
@@ -122,6 +128,13 @@ Append every new measured number at the end with exact configuration and retaine
 - **Policy:** Real Tesseract, cache disabled, PSM `(6,7)`, upscale 2, confidence 0.60, consensus 2 distinct variants, precision 2, bounded elevation range, rotations 0/±12/±15/±20/±25, overlapping-read support resolution.
 - **Suites:** application 66/66, Civil 113/113, M2 498/498.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT2_CURSOR_OCR.md`.
+
+### 2026-08-04 — Defect 3 channel-health and partial-row verification
+
+- **Result:** Per-channel counters and last-success/failure details passed; a never-successful Z paused at attempt 10 with the channel and OCR reason named; strict mode retained zero rows; opt-in partial mode stored SQL NULL Z plus `PARTIAL_MISSING_Z` and exported an empty Z with a visible Status column.
+- **Migration:** A v2.6 `z NOT NULL` database migrated to nullable Z without losing its existing point, which remained `COMPLETE`.
+- **Suites:** application 71/71, Civil 113/113, M2 498/498, Tk functional smoke passed.
+- **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT3_CHANNEL_HEALTH_PARTIAL.md`.
 
 ## Known traps
 
