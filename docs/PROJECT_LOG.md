@@ -69,7 +69,7 @@ Append new entries at the end. Each entry must state the date, decision, reason,
 
 ### 2026-08-04 — Require measured multi-variant consensus for cursor elevations
 
-- **Decision:** Production cursor OCR and the proof harness use one policy factory. Elevations default to two decimal places, require two distinct angle/preprocessing variants to agree, and resolve overlapping competing reads by independent-variant support while retaining spatially separate labels for nearest-cursor selection.
+- **Decision:** Production cursor OCR and the proof harness use one policy factory. Elevations default to two decimal places, require seven distinct angle/preprocessing variants to agree, and resolve overlapping competing reads by independent-variant support while retaining spatially separate labels for nearest-cursor selection.
 - **Why:** A confidence threshold alone both accepted wrong values and rejected valid low-contrast reads. The combined policy recovered the supplied geometry without accepting a wrong elevation.
 - **Evidence:** Red/green tests and cache-disabled measurements in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT2_CURSOR_OCR.md`.
 
@@ -137,7 +137,7 @@ Append every new measured number at the end with exact configuration and retaine
 
 - **Local RED result:** v2.6 shipped policy produced 6/12 correct, 6 wrong accepted, 0 rejected on the AGTEK-style set, and 36/48 correct, 12 wrong accepted, 0 rejected on the existing rotated-label set. These independently reproduced counts differ from the controlling prompt's supplied 10/12 and 29/48 baselines and are therefore reported separately.
 - **GREEN result:** Current production policy produced 12/12 correct, 0 wrong accepted, 0 rejected on the AGTEK-style set and 48/48 correct, 0 wrong accepted, 0 rejected on the existing rotated-label set. The 48-label run took 560.2 seconds.
-- **Policy:** Real Tesseract, cache disabled, PSM `(6,7)`, upscale 2, confidence 0.60, consensus 2 distinct variants, precision 2, bounded elevation range, rotations 0/±12/±15/±20/±25, overlapping-read support resolution.
+- **Policy:** Real Tesseract, cache disabled, PSM `(6,7)`, upscale 2, confidence 0.60, consensus 7 distinct variants, precision 2, bounded elevation range, rotations 0/±8/±10/±12/±15/±20/±25, overlapping-read support resolution.
 - **Suites:** application 66/66, Civil 113/113, M2 498/498.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT2_CURSOR_OCR.md`.
 
@@ -160,6 +160,13 @@ Append every new measured number at the end with exact configuration and retaine
 - **Result:** Negative coordinate capture passed; all heights 18–30 behaved as specified; grey contrasts 96/68/44 were 3/3 correct with zero wrong or rejected; markers were excluded in 12/12; nearest of two consensus-backed labels won; the combined AGTEK-geometry fixture read 51.53 and 2768.313 exactly; five label-text regressions remained green.
 - **Suites:** application 75/75, Civil 113/113, M2 498/498.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/ADDITIONAL_FIELD_CHECKS.md`.
+
+### 2026-08-04 — Failed final harness exposed weak-consensus early return
+
+- **FAILED result:** At commit `2fc4375`, the cache-disabled harness produced 173/220 exact (78.636%), 44 wrong accepted, 3 safe failures, 0 duplicates, and exact SQLite/XLSX parity in 1277.325 seconds.
+- **Cause:** The general-image path returned the first value to reach two variants instead of measuring competing support. Ten labels repeated across styles; wrong alternatives had 1–6 variants versus 9–19 for the correct values.
+- **Correction measurement:** Consensus raised to seven and ±8°/±10° added. General 48-label path: 47/48 correct, 0 wrong accepted, 1 safe rejection. AGTEK 12/12, grey 3/3, combined geometry and drift guards remained green.
+- **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/FAILED_FINAL_ROUND_1.md` and updated `DEFECT2_CURSOR_OCR.md`.
 
 ## Known traps
 

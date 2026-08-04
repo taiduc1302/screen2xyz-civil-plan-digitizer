@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from screen2xyz_app.backends import DefaultReader, ScreenOcrBackend
+from screen2xyz_app.backends import DefaultReader, ScreenOcrBackend, cursor_ocr_policy
 from screen2xyz_app.mapping import ChannelSource
 from screen2xyz_civil.ocr import TesseractOcrAdapter
 from screen2xyz_m2.parsing import parse_number
@@ -14,6 +14,7 @@ from tests_app.harness.agtek_renderers import (
     render_agtek_cursor_fixtures,
     render_agtek_screen_fixture,
 )
+from tests_app.harness.renderers import render_plan
 
 
 @unittest.skipUnless(TesseractOcrAdapter.find_executable(), "Tesseract unavailable")
@@ -145,6 +146,36 @@ class AgtekRealCursorOcrTests(unittest.TestCase):
             self.assertNotIn("x", cursor.raw_text.lower())
             self.assertEqual(parsed.parse_status, "OK", status.raw_text)
             self.assertEqual(float(parsed.normalized_value), fixture.northing)
+
+    def test_general_plan_ocr_never_accepts_the_ten_weak_consensus_errors(self) -> None:
+        formerly_wrong = {
+            42.22, 43.70, 45.18, 48.14, 49.99,
+            52.21, 53.32, 55.54, 56.28, 56.65,
+        }
+        correct = wrong = rejected = 0
+        with tempfile.TemporaryDirectory() as temporary:
+            plan_path = Path(temporary) / "plan.png"
+            labels = render_plan(plan_path)
+            backend = ScreenOcrBackend(cache_enabled=False)
+            policy = cursor_ocr_policy(
+                ChannelSource("screen_cursor_ocr", numeric_range=(30.0, 100.0))
+            )
+            for label in labels:
+                if label.value not in formerly_wrong:
+                    continue
+                try:
+                    reading = backend.read_image_region(
+                        plan_path, label.ocr_region, policy=policy
+                    )
+                    if float(reading.raw_text) == label.value:
+                        correct += 1
+                    else:
+                        wrong += 1
+                except (ValueError, RuntimeError):
+                    rejected += 1
+        detail = f"correct={correct} wrong={wrong} rejected={rejected}"
+        self.assertEqual(wrong, 0, detail)
+        self.assertEqual(correct + rejected, 10, detail)
 
 
 if __name__ == "__main__":

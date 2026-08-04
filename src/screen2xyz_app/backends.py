@@ -670,9 +670,9 @@ def cursor_ocr_policy(source: ChannelSource) -> OcrPolicy:
         numeric_range=source.numeric_range,
         declared_format=source.declared_format,
         precision_min=source.precision_min,
-        consensus_min=2,
+        consensus_min=7,
         confidence_min=0.60,
         psm_modes=(6, 7),
-        rotation_angles=(0, -12, 12, -15, 15, -20, 20, -25, 25),
+        rotation_angles=(0, -8, 8, -10, 10, -12, 12, -15, 15, -20, 20, -25, 25),
         upscale=2,
     )
