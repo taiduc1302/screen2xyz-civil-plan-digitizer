@@ -148,6 +148,7 @@ Append every new measured number at the end with exact configuration and retaine
 - **Suites:** application 71/71, Civil 113/113, M2 498/498, Tk functional smoke passed.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT3_CHANNEL_HEALTH_PARTIAL.md`.
 - **Parity follow-up:** The full harness parity comparator now includes `capture_status`; a focused regression proves the 11-column SQLite/XLSX tuple before final rounds.
+- **Windows cleanup follow-up:** The first focused parity run exposed `WinError 32` because the read-only workbook was not closed. `_verify_xlsx` now closes it in `finally`; the failure is retained rather than hidden.
 
 ### 2026-08-04 — Defect 4 version verification
 

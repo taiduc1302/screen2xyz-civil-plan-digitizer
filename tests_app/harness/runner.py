@@ -120,27 +120,30 @@ def _tuple(row) -> tuple[float, float, float]:
 def _verify_xlsx(store: SessionStore, session_id: str, path: Path) -> bool:
     database_rows = store.points(session_id)
     workbook = load_workbook(path, data_only=False, read_only=True)
-    sheet = workbook["Points"]
-    exported = list(sheet.iter_rows(min_row=2, values_only=True))
-    if len(exported) != len(database_rows):
-        return False
-    for sequence, (db, xlsx) in enumerate(zip(database_rows, exported), start=1):
-        confidences = [
-            db[key]
-            for key in ("confidence_x", "confidence_y", "confidence_z")
-            if db[key] is not None
-        ]
-        expected = (
-            db["point_number"] or str(sequence),
-            db["x"], db["y"], db["z"], db["capture_status"],
-            db["description"] or None,
-            db["source_method_x"], db["source_method_y"], db["source_method_z"],
-            None if not confidences else sum(confidences) / len(confidences),
-            db["created_utc"],
-        )
-        if tuple(xlsx) != expected:
+    try:
+        sheet = workbook["Points"]
+        exported = list(sheet.iter_rows(min_row=2, values_only=True))
+        if len(exported) != len(database_rows):
             return False
-    return True
+        for sequence, (db, xlsx) in enumerate(zip(database_rows, exported), start=1):
+            confidences = [
+                db[key]
+                for key in ("confidence_x", "confidence_y", "confidence_z")
+                if db[key] is not None
+            ]
+            expected = (
+                db["point_number"] or str(sequence),
+                db["x"], db["y"], db["z"], db["capture_status"],
+                db["description"] or None,
+                db["source_method_x"], db["source_method_y"], db["source_method_z"],
+                None if not confidences else sum(confidences) / len(confidences),
+                db["created_utc"],
+            )
+            if tuple(xlsx) != expected:
+                return False
+        return True
+    finally:
+        workbook.close()
 
 
 def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetrics:
