@@ -19,7 +19,12 @@ from ..capture import CapturePipeline
 from ..controller import CaptureSessionController
 from ..dependencies import poppler_capability, tesseract_capability
 from ..hotkeys import GlobalHotkeys
-from ..mapping import ChannelMapping, ChannelSource, SOURCE_TYPES
+from ..mapping import (
+    ChannelMapping,
+    ChannelSource,
+    DECLARED_NUMBER_FORMATS,
+    SOURCE_TYPES,
+)
 from ..operations import SessionOptions, ZoneHealthSnapshot
 from ..plan import PlanLabelBackend, plan_click_xy, render_plan_page
 from ..profiles import MappingProfileStore
@@ -56,6 +61,7 @@ class Screen2XYZApp(ttk.Frame):
         self._max_vars: dict[str, tk.StringVar] = {}
         self._cursor_width_vars: dict[str, tk.StringVar] = {}
         self._cursor_height_vars: dict[str, tk.StringVar] = {}
+        self._format_vars: dict[str, tk.StringVar] = {}
         self._photo = None
         self._plan_scale = 1.0
         self._status = tk.StringVar(value="X: —   Y: —   Z: —")
@@ -123,7 +129,7 @@ class Screen2XYZApp(ttk.Frame):
         mapping_frame = ttk.LabelFrame(self, text="2–3. Define zones and map columns", padding=8)
         mapping_frame.pack(fill="x", pady=5)
         for index, title in enumerate((
-            "Column", "Source", "Zone / cursor box", "Value", "Minimum", "Maximum"
+            "Column", "Source", "Zone / cursor box", "Value", "Minimum", "Maximum", "Number format"
         )):
             ttk.Label(mapping_frame, text=title, font=("Segoe UI", 9, "bold")).grid(row=0, column=index, sticky="w", padx=5)
         defaults = (
@@ -159,14 +165,23 @@ class Screen2XYZApp(ttk.Frame):
             self._max_vars[column] = maximum
             ttk.Entry(mapping_frame, textvariable=minimum, width=12).grid(row=row, column=4, padx=3)
             ttk.Entry(mapping_frame, textvariable=maximum, width=12).grid(row=row, column=5, padx=3)
+            declared_format = tk.StringVar(value="1,234.56")
+            self._format_vars[column] = declared_format
+            ttk.Combobox(
+                mapping_frame,
+                textvariable=declared_format,
+                values=DECLARED_NUMBER_FORMATS,
+                state="readonly",
+                width=12,
+            ).grid(row=row, column=6, padx=3)
         profile_bar = ttk.Frame(mapping_frame)
-        profile_bar.grid(row=6, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        profile_bar.grid(row=6, column=0, columnspan=7, sticky="w", pady=(8, 0))
         ttk.Button(profile_bar, text="Save profile…", command=self._save_profile).pack(side="left", padx=4)
         ttk.Button(profile_bar, text="Load profile…", command=self._load_profile).pack(side="left", padx=4)
         ttk.Button(profile_bar, text="Test mapping", command=self._test_mapping).pack(side="left", padx=4)
 
         policy_bar = ttk.Frame(mapping_frame)
-        policy_bar.grid(row=7, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        policy_bar.grid(row=7, column=0, columnspan=7, sticky="w", pady=(8, 0))
         ttk.Label(policy_bar, text="Minimum XY delta (m):").pack(side="left")
         ttk.Entry(policy_bar, textvariable=self._delta, width=8).pack(side="left", padx=(3, 12))
         ttk.Label(policy_bar, text="Point prefix:").pack(side="left")
@@ -285,6 +300,10 @@ class Screen2XYZApp(ttk.Frame):
                     int(self._cursor_width_vars[column].get()),
                     int(self._cursor_height_vars[column].get()),
                 ),
+                declared_format=(
+                    self._format_vars[column].get()
+                    if data_type == "number" else None
+                ),
             )
         mapping = ChannelMapping(channels)
         mapping.validate()
@@ -334,6 +353,10 @@ class Screen2XYZApp(ttk.Frame):
                 if source is not None:
                     self._cursor_width_vars[column].set(str(source.cursor_box_size[0]))
                     self._cursor_height_vars[column].set(str(source.cursor_box_size[1]))
+                    self._format_vars[column].set(
+                        source.declared_format
+                        or ("1.234,56" if source.decimal_separator == "comma" else "1,234.56")
+                    )
                 if source is not None and source.zone is not None:
                     self._zones[column] = source.zone
                     self._zone_labels[column].set(

@@ -61,6 +61,12 @@ Append new entries at the end. Each entry must state the date, decision, reason,
 - **Why:** An accepted wrong elevation can corrupt earthwork quantities; a rejection costs a re-hover. Silent empty sessions and silent partial rows are both unacceptable.
 - **Evidence:** Field session produced zero rows while Z failed, despite a misleading healthy status; v2.6 calibration retained 21 wrong values under an unsafe configuration.
 
+### 2026-08-04 — Implement explicit numeric display formats with range-only punctuation recovery
+
+- **Decision:** Numeric mappings may declare one of `1,234.56`, `1.234,56`, `1234.56`, or `1234,56`. Exact declared syntax is used first. A malformed punctuation token is recovered only when a configured numeric range admits exactly one interpretation; zero matches reject as out of range and multiple matches reject as ambiguous. No `auto` fallback is called.
+- **Why:** This preserves the operator's knowledge of the viewer format while safely recovering the observed repeated-separator slip without turning it into a roughly 1000x integer.
+- **Evidence:** Red/green tests and measurements in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT1_FORMAT_OCR.md`.
+
 ## Measurement log
 
 Append every new measured number at the end with exact configuration and retained evidence path.
@@ -95,6 +101,13 @@ Append every new measured number at the end with exact configuration and retaine
 - **Result:** Shipped policy: 29 correct, 19 wrong-accepted, 0 rejected. Proven policy: 46 correct, 0 wrong-accepted, 2 rejected.
 - **Configuration:** Real Tesseract 5 over the harness's 48 rotated labels, cache disabled.
 - **Evidence:** Controlling v2.7 task; must be independently reproduced and retained before claiming fixed.
+
+### 2026-08-04 — Defect 1 declared-format and status OCR measurement
+
+- **Result:** The supplied parser hazard reproduced exactly: `1.844.850` was malformed in point mode but accepted as `1844850` in auto mode. Before the fix, safe recovery under four declared formats was unavailable; after the fix, 4/4 supplied slip variants recovered as `1844.850` only under the unique range `(1800,1900)`. Seven format regressions passed.
+- **Status OCR rate:** The locally generated AGTEK-style 12 px light-strip fixture was 24/24 correct, 0 wrong, 0 rejected both before and after. The synthetic fixture did not reproduce the operator's real-window OCR failure, so no OCR-rate improvement is claimed.
+- **Fast suites:** app 63/63, Civil 113/113, M2 498/498.
+- **Configuration and evidence:** Real Tesseract 5, cache disabled, 12 North/East pairs, fixed zones 112x29 and 104x29; `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT1_FORMAT_OCR.md`.
 
 ## Known traps
 

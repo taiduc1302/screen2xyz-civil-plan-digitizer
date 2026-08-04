@@ -26,6 +26,56 @@ _POINT_GROUPED = re.compile(r"^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$")
 _COMMA_PLAIN = re.compile(r"^[+-]?\d+(?:,\d+)?$")
 _COMMA_GROUPED = re.compile(r"^[+-]?\d{1,3}(?:\.\d{3})+(?:,\d+)?$")
 
+DECLARED_NUMBER_FORMATS = (
+    "1,234.56",
+    "1.234,56",
+    "1234.56",
+    "1234,56",
+)
+
+
+def _interpret_declared(token: str, declared_format: str) -> str | None:
+    if declared_format == "1,234.56":
+        return _interpret(token, "point")
+    if declared_format == "1.234,56":
+        return _interpret(token, "comma")
+    if declared_format == "1234.56":
+        return token if _POINT_PLAIN.fullmatch(token) else None
+    if declared_format == "1234,56":
+        return token.replace(",", ".") if _COMMA_PLAIN.fullmatch(token) else None
+    raise ValueError(f"unsupported declared number format: {declared_format}")
+
+
+def _range_disambiguated_interpretations(
+    token: str,
+    numeric_range: tuple[float, float],
+) -> tuple[str, ...]:
+    """Enumerate punctuation placements; range may select exactly one.
+
+    This is deliberately unavailable without a range. It never calls the
+    permissive auto parser and never substitutes digits.
+    """
+
+    if re.fullmatch(r"[+-]?\d[\d.,]*", token) is None:
+        return ()
+    sign = "-" if token.startswith("-") else ""
+    unsigned = token.lstrip("+-")
+    possibilities: set[str] = set()
+    digits_only = re.sub(r"[.,]", "", unsigned)
+    if digits_only:
+        possibilities.add(sign + digits_only)
+    for index, character in enumerate(unsigned):
+        if character not in ".,":
+            continue
+        before = re.sub(r"[.,]", "", unsigned[:index])
+        after = re.sub(r"[.,]", "", unsigned[index + 1:])
+        if before and after:
+            possibilities.add(f"{sign}{before}.{after}")
+    low, high = numeric_range
+    return tuple(sorted(
+        value for value in possibilities if low <= float(value) <= high
+    ))
+
 
 @dataclass(frozen=True)
 class RawBound:
@@ -147,7 +197,10 @@ def parse_number(
     separator_mode: str = "point",
     numeric_range: tuple[float, float] | None = None,
     precision_max: int | None = None,
+    declared_format: str | None = None,
 ) -> ParseOutcome:
+    if declared_format is not None and declared_format not in DECLARED_NUMBER_FORMATS:
+        raise ValueError(f"unsupported declared number format: {declared_format}")
     stripped = text.strip()
     if not stripped:
         return ParseOutcome("NO_NUMBER")
@@ -157,6 +210,8 @@ def parse_number(
 
     candidates: list[str] = []
     malformed = False
+    format_ambiguous = False
+    format_out_of_range = False
     for match in _TOKEN_RE.finditer(working):
         token = match.group(0).rstrip(".,")
         # _TOKEN_RE requires a literal digit right after the optional sign,
@@ -174,15 +229,42 @@ def parse_number(
         if _letter_adjacent(working, match.start(), match.end()):
             malformed = True
             continue
-        canonical = _interpret(token, separator_mode)
+        canonical = (
+            _interpret(token, separator_mode)
+            if declared_format is None
+            else _interpret_declared(token, declared_format)
+        )
         if canonical is None:
-            malformed = True
+            if declared_format is not None and numeric_range is not None:
+                alternatives = _range_disambiguated_interpretations(
+                    token, numeric_range
+                )
+                if len(alternatives) == 1:
+                    candidates.append(alternatives[0])
+                elif len(alternatives) > 1:
+                    format_ambiguous = True
+                else:
+                    format_out_of_range = True
+            else:
+                malformed = True
             continue
         candidates.append(canonical)
     if len(candidates) > 1:
         return ParseOutcome("AMBIGUOUS_MULTIPLE_NUMBERS",
                             sign_normalized=sign_normalized,
                             original_sign_code_point=original_cp)
+    if format_ambiguous:
+        return ParseOutcome(
+            "AMBIGUOUS_NUMBER_FORMAT",
+            sign_normalized=sign_normalized,
+            original_sign_code_point=original_cp,
+        )
+    if format_out_of_range and not candidates:
+        return ParseOutcome(
+            "OUT_OF_RANGE",
+            sign_normalized=sign_normalized,
+            original_sign_code_point=original_cp,
+        )
     if malformed:
         return ParseOutcome("MALFORMED_NUMBER",
                             sign_normalized=sign_normalized,
@@ -498,6 +580,7 @@ def parse_for_source(
     numeric_range: tuple[float, float] | None = None,
     precision_max: int | None = None,
     line_part: int | None = None,
+    declared_format: str | None = None,
 ) -> ParseOutcome:
     """Full per-source parse honoring the truncation contract.
 
@@ -531,4 +614,5 @@ def parse_for_source(
                           precision_max=precision_max)
     return parse_number(text, separator_mode=separator_mode,
                         numeric_range=numeric_range,
-                        precision_max=precision_max)
+                        precision_max=precision_max,
+                        declared_format=declared_format)
