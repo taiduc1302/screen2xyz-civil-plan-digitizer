@@ -168,6 +168,14 @@ Append every new measured number at the end with exact configuration and retaine
 - **Correction measurement:** Consensus raised to seven and ±8°/±10° added. General 48-label path: 47/48 correct, 0 wrong accepted, 1 safe rejection. AGTEK 12/12, grey 3/3, combined geometry and drift guards remained green.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/FAILED_FINAL_ROUND_1.md` and updated `DEFECT2_CURSOR_OCR.md`.
 
+### 2026-08-04 — Final v2.7 verification round
+
+- **Result:** Application 77/77, Civil 113/113, M2 498/498, Tk functional smoke passed. Cache-disabled harness: 217/220 exact (98.636%), 3 safe failures, 0 wrong accepted, 0 duplicates, exact SQLite/XLSX parity in 3284.702 seconds.
+- **Gate margin:** 3.636 percentage points above 95%. One more failure would be 216/220 (98.182%), still 3.182 points above the gate.
+- **Field fixtures:** Real cursor 12 correct / 0 wrong / 0 rejected; grey contrasts 3 / 0 / 0; combined AGTEK geometry passed.
+- **Bundle:** Fresh PyInstaller 6.21.0 build launched as `Screen2XYZ v2.7`; 1,010 files, 46,828,509 bytes (44.659 MiB), executable SHA-256 `06E846905916F8CC2BEC65B2E7D234FF11CC2DFC00857272A89807A97D7F8FA4`.
+- **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/FINAL_VERIFICATION.md`.
+
 ## Known traps
 
 - **`main` looks valid but is not the product.** It is the abandoned `5525a29` stub.
