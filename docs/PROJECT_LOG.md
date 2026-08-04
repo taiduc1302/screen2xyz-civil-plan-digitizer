@@ -67,6 +67,12 @@ Append new entries at the end. Each entry must state the date, decision, reason,
 - **Why:** This preserves the operator's knowledge of the viewer format while safely recovering the observed repeated-separator slip without turning it into a roughly 1000x integer.
 - **Evidence:** Red/green tests and measurements in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT1_FORMAT_OCR.md`.
 
+### 2026-08-04 — Require measured multi-variant consensus for cursor elevations
+
+- **Decision:** Production cursor OCR and the proof harness use one policy factory. Elevations default to two decimal places, require two distinct angle/preprocessing variants to agree, and resolve overlapping competing reads by independent-variant support while retaining spatially separate labels for nearest-cursor selection.
+- **Why:** A confidence threshold alone both accepted wrong values and rejected valid low-contrast reads. The combined policy recovered the supplied geometry without accepting a wrong elevation.
+- **Evidence:** Red/green tests and cache-disabled measurements in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT2_CURSOR_OCR.md`.
+
 ## Measurement log
 
 Append every new measured number at the end with exact configuration and retained evidence path.
@@ -108,6 +114,14 @@ Append every new measured number at the end with exact configuration and retaine
 - **Status OCR rate:** The locally generated AGTEK-style 12 px light-strip fixture was 24/24 correct, 0 wrong, 0 rejected both before and after. The synthetic fixture did not reproduce the operator's real-window OCR failure, so no OCR-rate improvement is claimed.
 - **Fast suites:** app 63/63, Civil 113/113, M2 498/498.
 - **Configuration and evidence:** Real Tesseract 5, cache disabled, 12 North/East pairs, fixed zones 112x29 and 104x29; `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT1_FORMAT_OCR.md`.
+
+### 2026-08-04 — Defect 2 real cursor OCR measurement
+
+- **Local RED result:** v2.6 shipped policy produced 6/12 correct, 6 wrong accepted, 0 rejected on the AGTEK-style set, and 36/48 correct, 12 wrong accepted, 0 rejected on the existing rotated-label set. These independently reproduced counts differ from the controlling prompt's supplied 10/12 and 29/48 baselines and are therefore reported separately.
+- **GREEN result:** Current production policy produced 12/12 correct, 0 wrong accepted, 0 rejected on the AGTEK-style set and 48/48 correct, 0 wrong accepted, 0 rejected on the existing rotated-label set. The 48-label run took 560.2 seconds.
+- **Policy:** Real Tesseract, cache disabled, PSM `(6,7)`, upscale 2, confidence 0.60, consensus 2 distinct variants, precision 2, bounded elevation range, rotations 0/±12/±15/±20/±25, overlapping-read support resolution.
+- **Suites:** application 66/66, Civil 113/113, M2 498/498.
+- **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/DEFECT2_CURSOR_OCR.md`.
 
 ## Known traps
 

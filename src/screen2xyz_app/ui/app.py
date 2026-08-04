@@ -62,6 +62,7 @@ class Screen2XYZApp(ttk.Frame):
         self._cursor_width_vars: dict[str, tk.StringVar] = {}
         self._cursor_height_vars: dict[str, tk.StringVar] = {}
         self._format_vars: dict[str, tk.StringVar] = {}
+        self._precision_vars: dict[str, tk.StringVar] = {}
         self._photo = None
         self._plan_scale = 1.0
         self._status = tk.StringVar(value="X: —   Y: —   Z: —")
@@ -129,7 +130,7 @@ class Screen2XYZApp(ttk.Frame):
         mapping_frame = ttk.LabelFrame(self, text="2–3. Define zones and map columns", padding=8)
         mapping_frame.pack(fill="x", pady=5)
         for index, title in enumerate((
-            "Column", "Source", "Zone / cursor box", "Value", "Minimum", "Maximum", "Number format"
+            "Column", "Source", "Zone / cursor box", "Value", "Minimum", "Maximum", "Number format", "Decimals"
         )):
             ttk.Label(mapping_frame, text=title, font=("Segoe UI", 9, "bold")).grid(row=0, column=index, sticky="w", padx=5)
         defaults = (
@@ -174,14 +175,19 @@ class Screen2XYZApp(ttk.Frame):
                 state="readonly",
                 width=12,
             ).grid(row=row, column=6, padx=3)
+            precision = tk.StringVar(value="2")
+            self._precision_vars[column] = precision
+            ttk.Entry(mapping_frame, textvariable=precision, width=5).grid(
+                row=row, column=7, padx=3
+            )
         profile_bar = ttk.Frame(mapping_frame)
-        profile_bar.grid(row=6, column=0, columnspan=7, sticky="w", pady=(8, 0))
+        profile_bar.grid(row=6, column=0, columnspan=8, sticky="w", pady=(8, 0))
         ttk.Button(profile_bar, text="Save profile…", command=self._save_profile).pack(side="left", padx=4)
         ttk.Button(profile_bar, text="Load profile…", command=self._load_profile).pack(side="left", padx=4)
         ttk.Button(profile_bar, text="Test mapping", command=self._test_mapping).pack(side="left", padx=4)
 
         policy_bar = ttk.Frame(mapping_frame)
-        policy_bar.grid(row=7, column=0, columnspan=7, sticky="w", pady=(8, 0))
+        policy_bar.grid(row=7, column=0, columnspan=8, sticky="w", pady=(8, 0))
         ttk.Label(policy_bar, text="Minimum XY delta (m):").pack(side="left")
         ttk.Entry(policy_bar, textvariable=self._delta, width=8).pack(side="left", padx=(3, 12))
         ttk.Label(policy_bar, text="Point prefix:").pack(side="left")
@@ -304,6 +310,10 @@ class Screen2XYZApp(ttk.Frame):
                     self._format_vars[column].get()
                     if data_type == "number" else None
                 ),
+                precision_min=(
+                    int(self._precision_vars[column].get())
+                    if data_type == "number" else 0
+                ),
             )
         mapping = ChannelMapping(channels)
         mapping.validate()
@@ -357,6 +367,7 @@ class Screen2XYZApp(ttk.Frame):
                         source.declared_format
                         or ("1.234,56" if source.decimal_separator == "comma" else "1,234.56")
                     )
+                    self._precision_vars[column].set(str(source.precision_min))
                 if source is not None and source.zone is not None:
                     self._zones[column] = source.zone
                     self._zone_labels[column].set(

@@ -31,6 +31,7 @@ class ChannelSource:
     cursor_box_size: tuple[int, int] = (160, 60)
     cursor_snap_radius_px: float = 30.0
     declared_format: str | None = None
+    precision_min: int = 2
 
     def validate(self) -> None:
         if self.source_type not in SOURCE_TYPES:
@@ -61,6 +62,8 @@ class ChannelSource:
             low, high = self.numeric_range
             if low > high:
                 raise ValueError("numeric range minimum cannot exceed maximum")
+        if self.precision_min < 0:
+            raise ValueError("expected decimal count cannot be negative")
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -72,6 +75,7 @@ class ChannelSource:
             "cursor_box_size": list(self.cursor_box_size),
             "cursor_snap_radius_px": self.cursor_snap_radius_px,
             "declared_format": self.declared_format,
+            "precision_min": self.precision_min,
         }
 
     @classmethod
@@ -94,6 +98,7 @@ class ChannelSource:
                 None if value.get("declared_format") is None
                 else str(value["declared_format"])
             ),
+            precision_min=int(value.get("precision_min", 2)),
         )
 
 

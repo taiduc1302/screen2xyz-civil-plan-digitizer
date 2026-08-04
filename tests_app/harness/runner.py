@@ -12,7 +12,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from screen2xyz_app.backends import OcrPolicy, ScreenOcrBackend
+from screen2xyz_app.backends import OcrPolicy, ScreenOcrBackend, cursor_ocr_policy
 from screen2xyz_app.capture import AutoCaptureEngine, CapturePipeline
 from screen2xyz_app.export import export_xlsx
 from screen2xyz_app.mapping import ChannelMapping, ChannelSource
@@ -94,15 +94,12 @@ class RealFrameReader:
             self.plan_path,
             label.ocr_region,
             cache_key=("plan", label.label_id),
-            policy=OcrPolicy(
-                separator_mode="point",
-                numeric_range=(30.0, 100.0),
-                precision_min=2,
-                consensus_min=2,
-                confidence_min=0.85,
-                psm_modes=(6, 7),
-                rotation_angles=(0, -15, 15, -20, 20, -25, 25),
-                upscale=2,
+            policy=create_cursor_harness_policy(
+                ChannelSource(
+                    "screen_cursor_ocr",
+                    numeric_range=(30.0, 100.0),
+                    precision_min=2,
+                )
             ),
         )
 
@@ -110,6 +107,10 @@ class RealFrameReader:
 def create_harness_backend(executable: Path) -> ScreenOcrBackend:
     """Force every confirmation to perform OCR against rendered pixels."""
     return ScreenOcrBackend(executable=executable, cache_enabled=False)
+
+
+def create_cursor_harness_policy(source: ChannelSource) -> OcrPolicy:
+    return cursor_ocr_policy(source)
 
 
 def _tuple(row) -> tuple[float, float, float]:
