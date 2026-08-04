@@ -22,7 +22,7 @@ class CaptureOverlay(tk.Toplevel):
         super().__init__(master)
         self.title("Screen2XYZ capture")
         self.attributes("-topmost", True)
-        self.geometry("480x170")
+        self.geometry("900x210")
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", on_stop)
         body = ttk.Frame(self, padding=10)
@@ -32,7 +32,13 @@ class CaptureOverlay(tk.Toplevel):
         self._zones = tk.StringVar(value="X: —   Y: —   Z: —")
         ttk.Label(body, text="Live capture", font=("Segoe UI", 11, "bold")).pack(anchor="w")
         ttk.Label(body, textvariable=self._summary).pack(anchor="w", pady=(4, 0))
-        self.health_label = tk.Label(body, textvariable=self._health, fg="#9a3412")
+        self.health_label = tk.Label(
+            body,
+            textvariable=self._health,
+            fg="#9a3412",
+            justify="left",
+            wraplength=860,
+        )
         self.health_label.pack(anchor="w", pady=(4, 0))
         zone_row = ttk.Frame(body)
         zone_row.pack(fill="x", pady=(2, 8))
@@ -51,8 +57,9 @@ class CaptureOverlay(tk.Toplevel):
         self.stop_button.pack(side="right")
 
     def show_point(self, point: CapturedPoint, count: int) -> None:
+        z_text = "MISSING (PARTIAL)" if point.z is None else f"{point.z:g}"
         self._summary.set(
-            f"{count} rows · last: {point.x:g}, {point.y:g}, {point.z:g}"
+            f"{count} rows · last: {point.x:g}, {point.y:g}, {z_text}"
         )
 
     def show_health(self, snapshot: ZoneHealthSnapshot) -> None:

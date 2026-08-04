@@ -30,10 +30,14 @@ class CaptureSessionController:
         self.store = SessionStore(project_dir)
         self.session_id = self.store.start_session(mapping, calibration=calibration)
         self.reader = reader or DefaultReader()
-        self.pipeline = CapturePipeline(mapping, self.reader)
+        self.options = options or SessionOptions()
+        self.pipeline = CapturePipeline(
+            mapping,
+            self.reader,
+            allow_partial_z=self.options.allow_partial_z,
+        )
         self.on_point = on_point
         self.on_health = on_health
-        self.options = options or SessionOptions()
         self.row_count = 0
         self.last_point: CapturedPoint | None = None
         self._last_retained_xy: tuple[float, float] | None = None
@@ -122,7 +126,11 @@ class CaptureSessionController:
             self.auto = None
         self.store.update_session_mapping(self.session_id, mapping)
         self.mapping = mapping
-        self.pipeline = CapturePipeline(mapping, self.reader)
+        self.pipeline = CapturePipeline(
+            mapping,
+            self.reader,
+            allow_partial_z=self.options.allow_partial_z,
+        )
         if was_automatic and mapping.automatic:
             self.start_auto()
 
