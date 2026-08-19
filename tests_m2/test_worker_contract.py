@@ -173,6 +173,16 @@ class WorkerContractTests(unittest.TestCase):
         for reader in c._readers:
             self.assertFalse(reader.is_alive())
 
+    def test_start_collects_cycles_before_reader_threads(self):
+        c = client()
+        try:
+            with mock.patch.object(worker_mod.gc, "collect") as collect:
+                c.start(restore_session_state="REGIONS_CONFIGURED",
+                        configuration_revision=0)
+            collect.assert_called_once_with()
+        finally:
+            c.teardown()
+
     def test_bounded_reader_rejects_oversized_line(self):
         with mock.patch.object(worker_mod.C, "JSON_LINE_MAX_BYTES", 64):
             c = client()
