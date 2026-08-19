@@ -19,7 +19,12 @@ from ..capture import CapturePipeline
 from ..controller import CaptureSessionController
 from ..dependencies import poppler_capability, tesseract_capability
 from ..hotkeys import GlobalHotkeys
-from ..mapping import ChannelMapping, ChannelSource, SOURCE_TYPES
+from ..mapping import (
+    ChannelMapping,
+    ChannelSource,
+    DECLARED_NUMBER_FORMATS,
+    SOURCE_TYPES,
+)
 from ..operations import SessionOptions, ZoneHealthSnapshot
 from ..plan import PlanLabelBackend, plan_click_xy, render_plan_page
 from ..profiles import MappingProfileStore
@@ -46,6 +51,7 @@ class Screen2XYZApp(ttk.Frame):
         self._controller: CaptureSessionController | None = None
         self._overlay: CaptureOverlay | None = None
         self._review: SessionReview | None = None
+        self._civil_window: tk.Toplevel | None = None
         self._screen = ScreenOcrBackend()
         self._plan_ocr = PlanLabelBackend()
         self._zones: dict[str, tuple[int, int, int, int]] = {}
@@ -56,6 +62,8 @@ class Screen2XYZApp(ttk.Frame):
         self._max_vars: dict[str, tk.StringVar] = {}
         self._cursor_width_vars: dict[str, tk.StringVar] = {}
         self._cursor_height_vars: dict[str, tk.StringVar] = {}
+        self._format_vars: dict[str, tk.StringVar] = {}
+        self._precision_vars: dict[str, tk.StringVar] = {}
         self._photo = None
         self._plan_scale = 1.0
         self._status = tk.StringVar(value="X: —   Y: —   Z: —")
@@ -65,6 +73,7 @@ class Screen2XYZApp(ttk.Frame):
         self._delta = tk.DoubleVar(value=0.0)
         self._point_prefix = tk.StringVar(value="")
         self._point_start = tk.IntVar(value=1)
+        self._allow_partial_z = tk.BooleanVar(value=False)
         self._hotkey_actions: queue.SimpleQueue[str] = queue.SimpleQueue()
         self._hotkeys = GlobalHotkeys({
             "start/pause": lambda: self._hotkey_actions.put("toggle"),
@@ -97,8 +106,45 @@ class Screen2XYZApp(ttk.Frame):
         for mode in HOME_MODES:
             ttk.Button(
                 self, text=mode, width=32,
-                command=lambda selected=mode: self.show_wizard(selected),
+                command=lambda selected=mode: self._select_home_mode(selected),
             ).pack(pady=6)
+
+    def _select_home_mode(self, mode: str) -> None:
+        if mode == "Civil Plan Digitizer":
+            self._open_civil_digitizer()
+            return
+        self.show_wizard(mode)
+
+    def _open_civil_digitizer(self) -> None:
+        """Open the retained review-first Civil workflow from the main app.
+
+        It owns a substantial project workspace, so it receives a Toplevel
+        while remaining in the same Screen2XYZ process and packaged launcher.
+        The main home remains available for regular screen/PDF/image capture.
+        """
+
+        if self._civil_window is not None and self._civil_window.winfo_exists():
+            self._civil_window.deiconify()
+            self._civil_window.lift()
+            self._civil_window.focus_force()
+            return
+        from screen2xyz_civil.ui.app import CivilPlanDigitizerApp
+
+        window = tk.Toplevel(self.master)
+        civil = CivilPlanDigitizerApp(window)
+        self._civil_window = window
+
+        def close() -> None:
+            civil.dispose()
+            if window.winfo_exists():
+                window.destroy()
+            if self._civil_window is window:
+                self._civil_window = None
+
+        window.protocol("WM_DELETE_WINDOW", close)
+        # Keep a strong reference for the whole window lifetime; the Civil app
+        # owns project state and asynchronous indexing callbacks.
+        window._screen2xyz_civil_app = civil  # type: ignore[attr-defined]
 
     def show_wizard(self, mode: str) -> None:
         self._mode = mode
@@ -123,7 +169,7 @@ class Screen2XYZApp(ttk.Frame):
         mapping_frame = ttk.LabelFrame(self, text="2–3. Define zones and map columns", padding=8)
         mapping_frame.pack(fill="x", pady=5)
         for index, title in enumerate((
-            "Column", "Source", "Zone / cursor box", "Value", "Minimum", "Maximum"
+            "Column", "Source", "Zone / cursor box", "Value", "Minimum", "Maximum", "Number format", "Decimals"
         )):
             ttk.Label(mapping_frame, text=title, font=("Segoe UI", 9, "bold")).grid(row=0, column=index, sticky="w", padx=5)
         defaults = (
@@ -159,20 +205,39 @@ class Screen2XYZApp(ttk.Frame):
             self._max_vars[column] = maximum
             ttk.Entry(mapping_frame, textvariable=minimum, width=12).grid(row=row, column=4, padx=3)
             ttk.Entry(mapping_frame, textvariable=maximum, width=12).grid(row=row, column=5, padx=3)
+            declared_format = tk.StringVar(value="1,234.56")
+            self._format_vars[column] = declared_format
+            ttk.Combobox(
+                mapping_frame,
+                textvariable=declared_format,
+                values=DECLARED_NUMBER_FORMATS,
+                state="readonly",
+                width=12,
+            ).grid(row=row, column=6, padx=3)
+            precision = tk.StringVar(value="2")
+            self._precision_vars[column] = precision
+            ttk.Entry(mapping_frame, textvariable=precision, width=5).grid(
+                row=row, column=7, padx=3
+            )
         profile_bar = ttk.Frame(mapping_frame)
-        profile_bar.grid(row=6, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        profile_bar.grid(row=6, column=0, columnspan=8, sticky="w", pady=(8, 0))
         ttk.Button(profile_bar, text="Save profile…", command=self._save_profile).pack(side="left", padx=4)
         ttk.Button(profile_bar, text="Load profile…", command=self._load_profile).pack(side="left", padx=4)
         ttk.Button(profile_bar, text="Test mapping", command=self._test_mapping).pack(side="left", padx=4)
 
         policy_bar = ttk.Frame(mapping_frame)
-        policy_bar.grid(row=7, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        policy_bar.grid(row=7, column=0, columnspan=8, sticky="w", pady=(8, 0))
         ttk.Label(policy_bar, text="Minimum XY delta (m):").pack(side="left")
         ttk.Entry(policy_bar, textvariable=self._delta, width=8).pack(side="left", padx=(3, 12))
         ttk.Label(policy_bar, text="Point prefix:").pack(side="left")
         ttk.Entry(policy_bar, textvariable=self._point_prefix, width=8).pack(side="left", padx=(3, 12))
         ttk.Label(policy_bar, text="Start:").pack(side="left")
         ttk.Entry(policy_bar, textvariable=self._point_start, width=7).pack(side="left", padx=3)
+        ttk.Checkbutton(
+            policy_bar,
+            text="Allow partial rows with missing Z (flagged)",
+            variable=self._allow_partial_z,
+        ).pack(side="left", padx=(12, 3))
 
         self._plan_canvas = tk.Canvas(self, height=210, bg="#e8edf2", highlightthickness=1)
         if mode != "Live screen capture":
@@ -190,7 +255,7 @@ class Screen2XYZApp(ttk.Frame):
         ttk.Button(controls, text="Export XLSX", command=self._export_xlsx).pack(side="right", padx=4)
         ttk.Button(controls, text="Export CSV", command=self._export_csv).pack(side="right", padx=4)
         ttk.Separator(self).pack(fill="x", pady=(5, 2))
-        ttk.Label(self, textvariable=self._status).pack(anchor="w")
+        ttk.Label(self, textvariable=self._status, wraplength=1100).pack(anchor="w")
 
     def _choose_project(self) -> None:
         value = filedialog.askdirectory(title="Choose Screen2XYZ project folder")
@@ -285,6 +350,14 @@ class Screen2XYZApp(ttk.Frame):
                     int(self._cursor_width_vars[column].get()),
                     int(self._cursor_height_vars[column].get()),
                 ),
+                declared_format=(
+                    self._format_vars[column].get()
+                    if data_type == "number" else None
+                ),
+                precision_min=(
+                    int(self._precision_vars[column].get())
+                    if data_type == "number" else 0
+                ),
             )
         mapping = ChannelMapping(channels)
         mapping.validate()
@@ -334,6 +407,11 @@ class Screen2XYZApp(ttk.Frame):
                 if source is not None:
                     self._cursor_width_vars[column].set(str(source.cursor_box_size[0]))
                     self._cursor_height_vars[column].set(str(source.cursor_box_size[1]))
+                    self._format_vars[column].set(
+                        source.declared_format
+                        or ("1.234,56" if source.decimal_separator == "comma" else "1,234.56")
+                    )
+                    self._precision_vars[column].set(str(source.precision_min))
                 if source is not None and source.zone is not None:
                     self._zones[column] = source.zone
                     self._zone_labels[column].set(
@@ -381,6 +459,7 @@ class Screen2XYZApp(ttk.Frame):
                     min_xy_delta=self._delta.get(),
                     point_prefix=self._point_prefix.get(),
                     point_start=self._point_start.get(),
+                    allow_partial_z=self._allow_partial_z.get(),
                 ),
             )
             if mapping.automatic:
@@ -511,7 +590,8 @@ class Screen2XYZApp(ttk.Frame):
 
     def _show_point(self, point, count: int) -> None:
         self._count.set(f"{count} rows")
-        self._status.set(f"X: {point.x:g}   Y: {point.y:g}   Z: {point.z:g}")
+        z_text = "MISSING (PARTIAL)" if point.z is None else f"{point.z:g}"
+        self._status.set(f"X: {point.x:g}   Y: {point.y:g}   Z: {z_text}")
         if self._overlay is not None and self._overlay.winfo_exists():
             self._overlay.show_point(point, count)
 

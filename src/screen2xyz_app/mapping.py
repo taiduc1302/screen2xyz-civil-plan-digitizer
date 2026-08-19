@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from screen2xyz_m2.models import SourceConfig
+from screen2xyz_m2.parsing import DECLARED_NUMBER_FORMATS
 
 SOURCE_TYPES = (
     "screen_zone_ocr",
@@ -29,6 +30,8 @@ class ChannelSource:
     numeric_range: tuple[float, float] | None = None
     cursor_box_size: tuple[int, int] = (160, 60)
     cursor_snap_radius_px: float = 30.0
+    declared_format: str | None = None
+    precision_min: int = 2
 
     def validate(self) -> None:
         if self.source_type not in SOURCE_TYPES:
@@ -50,10 +53,17 @@ class ChannelSource:
                 raise ValueError("cursor snap radius must be positive")
         if self.decimal_separator not in {"point", "comma", "auto"}:
             raise ValueError("decimal_separator must be point, comma, or auto")
+        if (
+            self.declared_format is not None
+            and self.declared_format not in DECLARED_NUMBER_FORMATS
+        ):
+            raise ValueError("unsupported declared number format")
         if self.numeric_range is not None:
             low, high = self.numeric_range
             if low > high:
                 raise ValueError("numeric range minimum cannot exceed maximum")
+        if self.precision_min < 0:
+            raise ValueError("expected decimal count cannot be negative")
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -64,6 +74,8 @@ class ChannelSource:
             "numeric_range": list(self.numeric_range) if self.numeric_range is not None else None,
             "cursor_box_size": list(self.cursor_box_size),
             "cursor_snap_radius_px": self.cursor_snap_radius_px,
+            "declared_format": self.declared_format,
+            "precision_min": self.precision_min,
         }
 
     @classmethod
@@ -82,6 +94,11 @@ class ChannelSource:
             ),
             cursor_box_size=(int(cursor_box_size[0]), int(cursor_box_size[1])),
             cursor_snap_radius_px=float(value.get("cursor_snap_radius_px", 30.0)),
+            declared_format=(
+                None if value.get("declared_format") is None
+                else str(value["declared_format"])
+            ),
+            precision_min=int(value.get("precision_min", 2)),
         )
 
 

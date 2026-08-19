@@ -12,7 +12,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from screen2xyz_app.backends import OcrPolicy, ScreenOcrBackend
+from screen2xyz_app.backends import OcrPolicy, ScreenOcrBackend, cursor_ocr_policy
 from screen2xyz_app.capture import AutoCaptureEngine, CapturePipeline
 from screen2xyz_app.export import export_xlsx
 from screen2xyz_app.mapping import ChannelMapping, ChannelSource
@@ -55,9 +55,13 @@ class RealFrameReader:
         plan_path: Path,
         labels: list[PlanLabel],
     ) -> None:
+        from PIL import Image
+
         self.backend = backend
         self.plan_path = plan_path
         self.labels = labels
+        with Image.open(plan_path) as opened:
+            self.plan_image = opened.convert("RGB")
         self.frame: StatusFrame | None = None
         self.label_index = 0
 
@@ -90,26 +94,28 @@ class RealFrameReader:
                 ),
             )
         label = self.labels[self.label_index]
-        return self.backend.read_image_region(
-            self.plan_path,
-            label.ocr_region,
-            cache_key=("plan", label.label_id),
-            policy=OcrPolicy(
-                separator_mode="point",
-                numeric_range=(30.0, 100.0),
-                precision_min=2,
-                consensus_min=2,
-                confidence_min=0.85,
-                psm_modes=(6, 7),
-                rotation_angles=(0, -15, 15, -20, 20, -25, 25),
-                upscale=2,
+        left, top, width, height = label.ocr_region
+        cursor_box = self.plan_image.crop((left, top, left + width, top + height))
+        return self.backend.read_cursor_image(
+            cursor_box,
+            policy=create_cursor_harness_policy(
+                ChannelSource(
+                    "screen_cursor_ocr",
+                    numeric_range=(30.0, 100.0),
+                    precision_min=2,
+                )
             ),
+            snap_radius_px=max(width, height),
         )
 
 
 def create_harness_backend(executable: Path) -> ScreenOcrBackend:
     """Force every confirmation to perform OCR against rendered pixels."""
     return ScreenOcrBackend(executable=executable, cache_enabled=False)
+
+
+def create_cursor_harness_policy(source: ChannelSource) -> OcrPolicy:
+    return cursor_ocr_policy(source)
 
 
 def _tuple(row) -> tuple[float, float, float]:
@@ -119,26 +125,30 @@ def _tuple(row) -> tuple[float, float, float]:
 def _verify_xlsx(store: SessionStore, session_id: str, path: Path) -> bool:
     database_rows = store.points(session_id)
     workbook = load_workbook(path, data_only=False, read_only=True)
-    sheet = workbook["Points"]
-    exported = list(sheet.iter_rows(min_row=2, values_only=True))
-    if len(exported) != len(database_rows):
-        return False
-    for sequence, (db, xlsx) in enumerate(zip(database_rows, exported), start=1):
-        confidences = [
-            db[key]
-            for key in ("confidence_x", "confidence_y", "confidence_z")
-            if db[key] is not None
-        ]
-        expected = (
-            db["point_number"] or str(sequence),
-            db["x"], db["y"], db["z"], db["description"] or None,
-            db["source_method_x"], db["source_method_y"], db["source_method_z"],
-            None if not confidences else sum(confidences) / len(confidences),
-            db["created_utc"],
-        )
-        if tuple(xlsx) != expected:
+    try:
+        sheet = workbook["Points"]
+        exported = list(sheet.iter_rows(min_row=2, values_only=True))
+        if len(exported) != len(database_rows):
             return False
-    return True
+        for sequence, (db, xlsx) in enumerate(zip(database_rows, exported), start=1):
+            confidences = [
+                db[key]
+                for key in ("confidence_x", "confidence_y", "confidence_z")
+                if db[key] is not None
+            ]
+            expected = (
+                db["point_number"] or str(sequence),
+                db["x"], db["y"], db["z"], db["capture_status"],
+                db["description"] or None,
+                db["source_method_x"], db["source_method_y"], db["source_method_z"],
+                None if not confidences else sum(confidences) / len(confidences),
+                db["created_utc"],
+            )
+            if tuple(xlsx) != expected:
+                return False
+        return True
+    finally:
+        workbook.close()
 
 
 def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetrics:
@@ -168,12 +178,29 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
             mapping = ChannelMapping({
                 "x": ChannelSource("screen_zone_ocr", primer.x_zone, style.decimal_separator),
                 "y": ChannelSource("screen_zone_ocr", primer.y_zone, style.decimal_separator),
-                "z": ChannelSource("screen_zone_ocr", (0, 0, 120, 28), "point"),
+                "z": ChannelSource("screen_cursor_ocr", decimal_separator="point"),
             })
             session_id = store.start_session(mapping)
+            health_failures: list[dict[str, object]] = []
+
+            def record_health(snapshot) -> None:
+                if not snapshot.ok:
+                    health_failures.append({
+                        "style": style.name,
+                        "label": labels[reader.label_index].label_id,
+                        "error": snapshot.message,
+                    })
+
             engine = AutoCaptureEngine(
                 CapturePipeline(mapping, reader),
                 lambda point, sid=session_id: store.append_point(sid, point),
+                # This proof measures a fresh rendered X/Y/Z tuple on every
+                # scripted frame.  Stability/debounce is covered by the
+                # deterministic AutoCapture tests; requiring a second OCR
+                # execution here can turn an otherwise safe cursor read into
+                # an unmeasurable transient rather than testing its accuracy.
+                confirmations=1,
+                on_health=record_health,
             )
             reader.select(primer, 0)
             try:
@@ -181,6 +208,10 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
                 engine.poll()
             except (ValueError, RuntimeError) as exc:
                 raise RuntimeError(f"primer OCR failed for {style.name}: {exc}") from exc
+            if health_failures:
+                raise RuntimeError(
+                    f"primer OCR failed for {style.name}: {health_failures[-1]['error']}"
+                )
             for frame in frames:
                 label_index = global_index % len(labels)
                 label = labels[label_index]
@@ -196,6 +227,8 @@ def run_harness(output_dir: Path, *, count_per_style: int = 55) -> HarnessMetric
                         "label": label.label_id,
                         "error": str(exc),
                     })
+                failures.extend(health_failures)
+                health_failures.clear()
                 global_index += 1
             session_rows = store.points(session_id)
             captured.extend(_tuple(row) for row in session_rows)

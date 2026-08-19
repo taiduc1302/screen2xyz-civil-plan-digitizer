@@ -7,6 +7,10 @@ from pathlib import Path
 from PIL import Image
 
 from screen2xyz_app.backends import OcrPolicy, ScreenOcrBackend
+from screen2xyz_app.capture import CapturedPoint
+from screen2xyz_app.export import export_xlsx
+from screen2xyz_app.mapping import ChannelMapping, ChannelSource
+from screen2xyz_app.store import SessionStore
 from screen2xyz_civil.ocr import TesseractOcrAdapter
 from tests_app.harness.renderers import (
     STATUS_STYLES,
@@ -14,7 +18,7 @@ from tests_app.harness.renderers import (
     render_status_frame,
     scripted_coordinates,
 )
-from tests_app.harness.runner import HarnessMetrics
+from tests_app.harness.runner import HarnessMetrics, _verify_xlsx
 
 
 class HarnessContractTests(unittest.TestCase):
@@ -57,6 +61,23 @@ class HarnessContractTests(unittest.TestCase):
 
         backend = runner.create_harness_backend(Path("tesseract"))
         self.assertFalse(backend.cache_enabled)
+
+    def test_harness_xlsx_parity_includes_capture_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mapping = ChannelMapping({
+                name: ChannelSource("manual") for name in ("x", "y", "z")
+            })
+            with SessionStore(root) as store:
+                session = store.start_session(mapping)
+                store.append_point(session, CapturedPoint(
+                    values={"x": 1.0, "y": 2.0, "z": 3.0},
+                    source_methods={name: "manual" for name in ("x", "y", "z")},
+                    raw_texts={name: str(index) for index, name in enumerate(("x", "y", "z"), 1)},
+                    confidences={name: None for name in ("x", "y", "z")},
+                ))
+                output = export_xlsx(store, session, root / "parity.xlsx")
+                self.assertTrue(_verify_xlsx(store, session, output))
 
     @unittest.skipUnless(TesseractOcrAdapter.find_executable(), "Tesseract unavailable")
     def test_real_backend_reads_small_status_text(self):

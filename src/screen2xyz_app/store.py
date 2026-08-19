@@ -52,7 +52,7 @@ class SessionStore:
                 session_id TEXT NOT NULL REFERENCES sessions(id),
                 x REAL NOT NULL,
                 y REAL NOT NULL,
-                z REAL NOT NULL,
+                z REAL,
                 description TEXT,
                 point_number TEXT,
                 source_method_x TEXT NOT NULL,
@@ -64,6 +64,7 @@ class SessionStore:
                 confidence_x REAL,
                 confidence_y REAL,
                 confidence_z REAL,
+                capture_status TEXT NOT NULL DEFAULT 'COMPLETE',
                 created_utc TEXT NOT NULL,
                 journal_event_id TEXT NOT NULL UNIQUE,
                 deleted_utc TEXT
@@ -92,7 +93,65 @@ class SessionStore:
         }
         if "deleted_utc" not in columns:
             self.connection.execute("ALTER TABLE points ADD COLUMN deleted_utc TEXT")
+        if "capture_status" not in columns:
+            self.connection.execute(
+                "ALTER TABLE points ADD COLUMN capture_status TEXT NOT NULL DEFAULT 'COMPLETE'"
+            )
         self.connection.commit()
+        z_column = next(
+            row for row in self.connection.execute("PRAGMA table_info(points)")
+            if row[1] == "z"
+        )
+        if bool(z_column[3]):
+            self._make_z_nullable()
+
+    def _make_z_nullable(self) -> None:
+        """Migrate v2.6 databases so an explicitly partial row can store NULL Z."""
+        self.connection.executescript(
+            """
+            PRAGMA foreign_keys = OFF;
+            BEGIN;
+            CREATE TABLE points_v27 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL REFERENCES sessions(id),
+                x REAL NOT NULL,
+                y REAL NOT NULL,
+                z REAL,
+                description TEXT,
+                point_number TEXT,
+                source_method_x TEXT NOT NULL,
+                source_method_y TEXT NOT NULL,
+                source_method_z TEXT NOT NULL,
+                raw_text_x TEXT,
+                raw_text_y TEXT,
+                raw_text_z TEXT,
+                confidence_x REAL,
+                confidence_y REAL,
+                confidence_z REAL,
+                capture_status TEXT NOT NULL DEFAULT 'COMPLETE',
+                created_utc TEXT NOT NULL,
+                journal_event_id TEXT NOT NULL UNIQUE,
+                deleted_utc TEXT
+            );
+            INSERT INTO points_v27 (
+                id, session_id, x, y, z, description, point_number,
+                source_method_x, source_method_y, source_method_z,
+                raw_text_x, raw_text_y, raw_text_z,
+                confidence_x, confidence_y, confidence_z, capture_status,
+                created_utc, journal_event_id, deleted_utc
+            ) SELECT
+                id, session_id, x, y, z, description, point_number,
+                source_method_x, source_method_y, source_method_z,
+                raw_text_x, raw_text_y, raw_text_z,
+                confidence_x, confidence_y, confidence_z, capture_status,
+                created_utc, journal_event_id, deleted_utc
+            FROM points;
+            DROP TABLE points;
+            ALTER TABLE points_v27 RENAME TO points;
+            COMMIT;
+            PRAGMA foreign_keys = ON;
+            """
+        )
 
     def start_session(
         self,
@@ -130,6 +189,7 @@ class SessionStore:
             "source_methods": point.source_methods,
             "raw_texts": point.raw_texts,
             "confidences": point.confidences,
+            "capture_status": point.capture_status,
             "created_utc": point.created_utc,
         }
 
@@ -164,15 +224,17 @@ class SessionStore:
                 source_method_x, source_method_y, source_method_z,
                 raw_text_x, raw_text_y, raw_text_z,
                 confidence_x, confidence_y, confidence_z,
-                created_utc, journal_event_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                capture_status, created_utc, journal_event_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event["session_id"], float(values["x"]), float(values["y"]),
-                float(values["z"]), values.get("description"), values.get("point_number"),
+                None if values["z"] is None else float(values["z"]),
+                values.get("description"), values.get("point_number"),
                 methods["x"], methods["y"], methods["z"],
                 raw.get("x"), raw.get("y"), raw.get("z"),
                 confidence.get("x"), confidence.get("y"), confidence.get("z"),
+                point.get("capture_status", "COMPLETE"),
                 point["created_utc"], event["event_id"],
             ),
         )
@@ -223,7 +285,13 @@ class SessionStore:
             normalized = dict(changes)
             for name in ("x", "y", "z"):
                 if name in normalized:
-                    normalized[name] = float(normalized[name])
+                    normalized[name] = (
+                        None if normalized[name] is None else float(normalized[name])
+                    )
+            if "z" in normalized:
+                normalized["capture_status"] = (
+                    "PARTIAL_MISSING_Z" if normalized["z"] is None else "COMPLETE"
+                )
             assignments = ", ".join(f"{name} = ?" for name in sorted(normalized))
             values = [normalized[name] for name in sorted(normalized)]
             now = _utc_now()

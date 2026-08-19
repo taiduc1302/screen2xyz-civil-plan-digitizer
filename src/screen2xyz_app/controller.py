@@ -30,10 +30,14 @@ class CaptureSessionController:
         self.store = SessionStore(project_dir)
         self.session_id = self.store.start_session(mapping, calibration=calibration)
         self.reader = reader or DefaultReader()
-        self.pipeline = CapturePipeline(mapping, self.reader)
+        self.options = options or SessionOptions()
+        self.pipeline = CapturePipeline(
+            mapping,
+            self.reader,
+            allow_partial_z=self.options.allow_partial_z,
+        )
         self.on_point = on_point
         self.on_health = on_health
-        self.options = options or SessionOptions()
         self.row_count = 0
         self.last_point: CapturedPoint | None = None
         self._last_retained_xy: tuple[float, float] | None = None
@@ -41,6 +45,11 @@ class CaptureSessionController:
         self.stopped = False
 
     def _retain(self, point: CapturedPoint) -> int | None:
+        # AutoCaptureEngine can complete an OCR call after Stop was requested.
+        # The scheduler drain will wait for an already-entered retain, but a
+        # late callback must never open a new database write during teardown.
+        if self.stopped:
+            return None
         if not self.options.accepts(self._last_retained_xy, point.x, point.y):
             return None
         values = dict(point.values)
@@ -107,10 +116,13 @@ class CaptureSessionController:
         return point
 
     def stop(self) -> None:
+        # Publish this gate before draining.  Ticks that finish reading after
+        # this point discard their result; a tick already inside _retain is
+        # drained before the store can later be closed by close().
+        self.stopped = True
         if self.auto is not None:
             self.auto.stop()
             self.auto = None
-        self.stopped = True
 
     def reconfigure(self, mapping: ChannelMapping) -> None:
         """Replace zones in the active session without abandoning retained rows."""
@@ -122,7 +134,11 @@ class CaptureSessionController:
             self.auto = None
         self.store.update_session_mapping(self.session_id, mapping)
         self.mapping = mapping
-        self.pipeline = CapturePipeline(mapping, self.reader)
+        self.pipeline = CapturePipeline(
+            mapping,
+            self.reader,
+            allow_partial_z=self.options.allow_partial_z,
+        )
         if was_automatic and mapping.automatic:
             self.start_auto()
 

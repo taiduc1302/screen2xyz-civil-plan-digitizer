@@ -223,9 +223,14 @@ class ShortSoakTests(unittest.TestCase):
         try:
             session.set_case("changing")
             session.auto_change(True)
-            env = environment_snapshot(session.scope(), C.BACKEND_COPYFROMSCREEN)
+            # This throughput soak measures the capture pipeline for the
+            # synthetic target. Its target-bound backend prevents unrelated
+            # foreground desktop activity from replacing target pixels during
+            # a 40-second test. CopyFromScreen is still exercised by the
+            # real-worker integration suite.
+            env = environment_snapshot(session.scope(), C.BACKEND_PRINTWINDOW)
             controller = LiveSessionController(
-                scope=session.scope(), backend=C.BACKEND_COPYFROMSCREEN,
+                scope=session.scope(), backend=C.BACKEND_PRINTWINDOW,
                 sources=session.sources(),
                 defaults=SessionDefaults(interval_ms=150),
                 environment_snapshot=env, run_parent=run_root())

@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-EXPECTED_TEST_COUNT = 498  # frozen 2026-07-21; update intentionally with tests
+EXPECTED_TEST_COUNT = 499  # frozen 2026-08-18; update intentionally with tests
 
 
 def main() -> int:

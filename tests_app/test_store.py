@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sqlite3
 from pathlib import Path
 
 from screen2xyz_app.capture import CapturedPoint
@@ -50,6 +51,65 @@ class StoreTests(unittest.TestCase):
                 self.assertTrue(
                     {"sessions", "points", "point_audit", "session_audit"}.issubset(names)
                 )
+
+    def test_v26_not_null_z_schema_migrates_without_losing_points(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            store = SessionStore(project)
+            session_id = store.start_session(self.mapping(), session_id="legacy-session")
+            store.append_point(session_id, self.point())
+            database = store.db_path
+            store.close()
+            connection = sqlite3.connect(database)
+            connection.executescript(
+                """
+                ALTER TABLE points RENAME TO points_current;
+                CREATE TABLE points (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL REFERENCES sessions(id),
+                    x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
+                    description TEXT, point_number TEXT,
+                    source_method_x TEXT NOT NULL,
+                    source_method_y TEXT NOT NULL,
+                    source_method_z TEXT NOT NULL,
+                    raw_text_x TEXT, raw_text_y TEXT, raw_text_z TEXT,
+                    confidence_x REAL, confidence_y REAL, confidence_z REAL,
+                    created_utc TEXT NOT NULL,
+                    journal_event_id TEXT NOT NULL UNIQUE,
+                    deleted_utc TEXT
+                );
+                INSERT INTO points (
+                    id, session_id, x, y, z, description, point_number,
+                    source_method_x, source_method_y, source_method_z,
+                    raw_text_x, raw_text_y, raw_text_z,
+                    confidence_x, confidence_y, confidence_z,
+                    created_utc, journal_event_id, deleted_utc
+                ) SELECT
+                    id, session_id, x, y, z, description, point_number,
+                    source_method_x, source_method_y, source_method_z,
+                    raw_text_x, raw_text_y, raw_text_z,
+                    confidence_x, confidence_y, confidence_z,
+                    created_utc, journal_event_id, deleted_utc
+                FROM points_current;
+                DROP TABLE points_current;
+                """
+            )
+            connection.close()
+
+            migrated = SessionStore(project)
+            try:
+                columns = {
+                    row[1]: row for row in migrated.connection.execute(
+                        "PRAGMA table_info(points)"
+                    )
+                }
+                self.assertEqual(columns["z"][3], 0)
+                self.assertIn("capture_status", columns)
+                row = migrated.points(session_id)[0]
+                self.assertEqual(row["z"], 49.78)
+                self.assertEqual(row["capture_status"], "COMPLETE")
+            finally:
+                migrated.close()
 
     def test_edit_and_soft_delete_are_audited(self):
         with tempfile.TemporaryDirectory() as temporary:

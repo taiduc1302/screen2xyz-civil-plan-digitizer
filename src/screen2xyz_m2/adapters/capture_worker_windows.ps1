@@ -411,6 +411,37 @@ function Invoke-Ocr { param([System.Drawing.Bitmap]$Crop, [int]$Upscale)
         $software = Await-Op ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
         $result = Await-Op ($script:Engine.RecognizeAsync($software)) ([Windows.Media.Ocr.OcrResult])
         $software.Dispose(); $ras.Dispose()
+        # Windows.Media.Ocr can occasionally return EMPTY_TEXT for a
+        # content-bearing small live-window crop.  Retry only that safe
+        # failure with one larger rendition of the same immutable pixels;
+        # non-empty reads are never replaced or silently reinterpreted.
+        if ($result.Text.Trim().Length -eq 0 -and $effectiveUpscale -lt 4) {
+            foreach ($retryScale in @(4)) {
+                $retry = $null; $retryRas = $null; $retrySoftware = $null
+                try {
+                    $retry = New-Object System.Drawing.Bitmap ($padded.Width * $retryScale), ($padded.Height * $retryScale)
+                    $retryGraphics = [System.Drawing.Graphics]::FromImage($retry)
+                    $retryGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                    $retryGraphics.DrawImage($padded, 0, 0, $retry.Width, $retry.Height)
+                    $retryGraphics.Dispose()
+                    $retryPng = Get-PngBytes -Bitmap $retry
+                    $retryRas = New-Object Windows.Storage.Streams.InMemoryRandomAccessStream
+                    $retryWriter = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForWrite($retryRas.GetOutputStreamAt(0))
+                    $retryWriter.Write($retryPng, 0, $retryPng.Length); $retryWriter.Flush(); $retryWriter.Dispose()
+                    $retryDecoder = Await-Op ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($retryRas)) ([Windows.Graphics.Imaging.BitmapDecoder])
+                    $retrySoftware = Await-Op ($retryDecoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+                    $retryResult = Await-Op ($script:Engine.RecognizeAsync($retrySoftware)) ([Windows.Media.Ocr.OcrResult])
+                    if ($retryResult.Text.Trim().Length -gt 0) {
+                        $result = $retryResult
+                        break
+                    }
+                } finally {
+                    if ($retrySoftware) { $retrySoftware.Dispose() }
+                    if ($retryRas) { $retryRas.Dispose() }
+                    if ($retry) { $retry.Dispose() }
+                }
+            }
+        }
         return @{ ok = $true; text = [string]$result.Text; ocr_ms = [int]$sw.ElapsedMilliseconds }
     } catch {
         Write-Diag ("ocr failure: " + $_.Exception.Message)

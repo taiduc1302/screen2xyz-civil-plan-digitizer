@@ -37,6 +37,15 @@ def current_virtual_desktop_bounds() -> VirtualDesktopBounds:
         return VirtualDesktopBounds(0, 0, 0, 0)
 
 
+def screen_zone_from_drag(
+    start: tuple[int, int], end: tuple[int, int]
+) -> tuple[int, int, int, int]:
+    """Convert root-screen drag coordinates without losing negative origins."""
+    x0, y0 = start
+    x1, y1 = end
+    return min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0)
+
+
 def preview_without_overlay(*, hide, flush, preview, restore):
     hide()
     try:
@@ -63,6 +72,11 @@ def zone_preview_assessment(
     _left, _top, _width, height = zone
     warnings: list[str] = []
     blocking = height > 48
+    if 18 <= height < 24:
+        warnings.append(
+            f"Selection is only {height} px tall and may clip ascenders or descenders; "
+            "include a little vertical margin."
+        )
     if blocking:
         warnings.append(
             f"Selection is {height} px tall; pick one numeric line no taller than 48 px."
@@ -81,7 +95,8 @@ class SessionOptions:
     min_xy_delta: float = 0.0
     point_prefix: str = ""
     point_start: int = 1
-    zone_failure_limit: int = 3
+    zone_failure_limit: int = 10
+    allow_partial_z: bool = False
 
     def __post_init__(self) -> None:
         if self.min_xy_delta < 0:
@@ -131,12 +146,23 @@ def current_display_signature() -> DisplaySignature:
 
 
 @dataclass(frozen=True)
+class ChannelHealthSnapshot:
+    success_count: int = 0
+    failure_count: int = 0
+    last_success: str | None = None
+    last_failure: str | None = None
+    consecutive_failures: int = 0
+    currently_failing: bool = False
+
+
+@dataclass(frozen=True)
 class ZoneHealthSnapshot:
     ok: bool
     paused: bool
     message: str
     consecutive_failures: int
     readouts: dict[str, str] = field(default_factory=dict)
+    channels: dict[str, ChannelHealthSnapshot] = field(default_factory=dict)
 
 
 class ZoneHealthMonitor:
@@ -145,6 +171,7 @@ class ZoneHealthMonitor:
         failure_limit: int,
         *,
         signature_probe: Callable[[], DisplaySignature] = current_display_signature,
+        channel_names: Iterable[str] = (),
     ) -> None:
         if failure_limit < 1:
             raise ValueError("failure limit must be at least one")
@@ -152,6 +179,13 @@ class ZoneHealthMonitor:
         self.signature_probe = signature_probe
         self.initial_signature = signature_probe()
         self.consecutive_failures = 0
+        self._channels: dict[str, ChannelHealthSnapshot] = {
+            name: ChannelHealthSnapshot() for name in channel_names
+        }
+
+    def bind_channels(self, channel_names: Iterable[str]) -> None:
+        for name in channel_names:
+            self._channels.setdefault(name, ChannelHealthSnapshot())
 
     def check_display(self) -> ZoneHealthSnapshot | None:
         current = self.signature_probe()
@@ -161,32 +195,120 @@ class ZoneHealthMonitor:
                 True,
                 "Screen resolution or DPI changed. Capture paused; re-pick the zones.",
                 self.consecutive_failures,
+                channels=dict(self._channels),
             )
         return None
 
-    def success(self, readouts: dict[str, str]) -> ZoneHealthSnapshot:
-        self.consecutive_failures = 0
-        return ZoneHealthSnapshot(True, False, "Zones are reading normally.", 0, readouts)
+    def _record(
+        self,
+        readouts: dict[str, str],
+        failures: dict[str, str],
+    ) -> ZoneHealthSnapshot:
+        self.bind_channels((*readouts, *failures))
+        for name, prior in tuple(self._channels.items()):
+            if name in failures:
+                self._channels[name] = ChannelHealthSnapshot(
+                    prior.success_count,
+                    prior.failure_count + 1,
+                    prior.last_success,
+                    failures[name],
+                    prior.consecutive_failures + 1,
+                    True,
+                )
+            elif name in readouts:
+                self._channels[name] = ChannelHealthSnapshot(
+                    prior.success_count + 1,
+                    prior.failure_count,
+                    readouts[name],
+                    prior.last_failure,
+                    0,
+                    False,
+                )
+        self.consecutive_failures = (
+            self.consecutive_failures + 1 if failures else 0
+        )
+        blockers = [
+            name for name in failures
+            if (
+                self._channels[name].success_count == 0
+                and self._channels[name].failure_count >= self.failure_limit
+            )
+            or self._channels[name].consecutive_failures >= self.failure_limit
+        ]
+        paused = bool(blockers)
+        summary = " | ".join(
+            f"{name.upper()} ok {state.success_count} / fail {state.failure_count} "
+            f"(last success: {state.last_success or '—'}; "
+            f"last failure: {state.last_failure or '—'})"
+            for name, state in self._channels.items()
+        )
+        if failures:
+            failed = next(iter(failures))
+            state = self._channels[failed]
+            if failed in blockers and state.success_count == 0:
+                message = (
+                    f"{failed.upper()} has never produced a successful read after "
+                    f"{state.failure_count} attempts: {failures[failed]}."
+                )
+            elif failed in blockers:
+                message = (
+                    f"{failed.upper()} failed {state.consecutive_failures} consecutive "
+                    f"attempts: {failures[failed]}."
+                )
+            else:
+                reasons = "; ".join(
+                    f"{name.upper()}: {reason}" for name, reason in failures.items()
+                )
+                message = f"Channel read failure — {reasons}."
+            if paused:
+                message += " Capture paused; re-pick the failing channel."
+        else:
+            message = "Zones are reading normally."
+        if summary:
+            message += f" {summary}"
+        return ZoneHealthSnapshot(
+            not failures,
+            paused,
+            message,
+            self.consecutive_failures,
+            dict(readouts),
+            dict(self._channels),
+        )
+
+    def success(
+        self,
+        readouts: dict[str, str],
+        failures: dict[str, str] | None = None,
+    ) -> ZoneHealthSnapshot:
+        return self._record(readouts, failures or {})
 
     def failure(self, error: Exception) -> ZoneHealthSnapshot:
-        self.consecutive_failures += 1
-        paused = self.consecutive_failures >= self.failure_limit
-        message = (
-            f"Zone read failed {self.consecutive_failures}/{self.failure_limit}: {error}"
-        )
-        if paused:
-            message += " Capture paused; re-pick the zones."
-        return ZoneHealthSnapshot(False, paused, message, self.consecutive_failures)
+        readouts = dict(getattr(error, "successful_readouts", {}))
+        failures = dict(getattr(error, "failures", {}))
+        if not failures:
+            failures = {"unknown": str(error)}
+        return self._record(readouts, failures)
 
 
 def zone_indicator_states(
     snapshot: ZoneHealthSnapshot, names: tuple[str, ...] = ("x", "y", "z")
 ) -> dict[str, tuple[str, bool]]:
     """Return display text and green/red state without depending on Tk."""
-    return {
-        name: (snapshot.readouts.get(name, "—"), snapshot.ok and name in snapshot.readouts)
-        for name in names
-    }
+    result = {}
+    for name in names:
+        channel = snapshot.channels.get(name)
+        if channel is None:
+            result[name] = (
+                snapshot.readouts.get(name, "—"),
+                snapshot.ok and name in snapshot.readouts,
+            )
+            continue
+        value = channel.last_success or "—"
+        result[name] = (
+            f"{value} · ok {channel.success_count} / fail {channel.failure_count}",
+            not channel.currently_failing,
+        )
+    return result
 
 
 def review_rows(

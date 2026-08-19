@@ -12,7 +12,8 @@ try:
     _root = tk.Tk()
     _root.withdraw()
     _HAS_TK = True
-    _root.destroy()
+    # See test_guided_workflow: retain the display probe for this module so
+    # ttk has no destroyed root in a deferred ThemeChanged dispatch.
 except Exception:  # pragma: no cover - headless CI without a display
     _HAS_TK = False
 
