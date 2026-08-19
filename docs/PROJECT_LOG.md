@@ -190,3 +190,34 @@ Append every new measured number at the end with exact configuration and retaine
 
 - Operator validation against a real, live AGTEK GradeWork window remains outstanding; no automated test drives that application.
 - Project-specific numeric ranges and any non-default declared formats must be chosen by the operator for each actual job.
+
+## 2026-08-18 — v2.7 safety and integration hardening
+
+- **Decision:** Keep cursor OCR fail-closed by spatially grouping each label's variant evidence, rejecting comparable competing values, and accepting a competing punctuation variant only when the leading value has at least twice its independent support. A low-confidence retry is allowed only after the normal high-confidence path found no capturable value, and it keeps the same seven-variant consensus requirement.
+- **Why:** Global numeric grouping could manufacture consensus across different locations; returning at the first agreement could accept a weaker value; and a high-confidence-only gate safely dropped some tightly rotated labels despite a dominant local consensus.
+- **Evidence:** `tests_app/test_ocr_consensus_safety.py`; real cursor fixtures in `tests_app/test_agtek_cursor_ocr.py`; final cache-disabled proof below.
+- **Decision:** A live stop/close waits for an in-flight tick, while pause/stop state is checked again after OCR and before retain. Headless sessions apply per-channel health accounting even without a UI callback.
+- **Why:** A late OCR tick could otherwise write after storage close, a failure limit could retain the same failing tick, and headless sessions could bypass automatic health pausing.
+- **Evidence:** `tests_app/test_channel_health_partial.py`; strict M2 regression 498/498 without skips.
+- **Decision:** Expose Civil Plan Digitizer in the Screen2XYZ home screen and invalidate asynchronous extraction results when projects or source hashes change.
+- **Why:** An otherwise implemented Civil workspace was not reachable from the public app, and an old extraction could mutate a different project after switching.
+- **Evidence:** launcher/Civil regressions and the v2.7 full application suite.
+
+## 2026-08-18 — v2.7 final local OCR proof
+
+- **Result:** Cache-disabled real-Tesseract proof captured 212/220 exact rows (96.36%), with 16 safe OCR/parse polling failures, zero false duplicates, zero accepted hallucinations, and exact SQLite/XLSX parity.
+- **Configuration:** Windows; Python 3.12.13; local Tesseract 5.5.0; production screen-zone X/Y plus production cursor-image Z, including box padding, deskew through ±30°, inverse box mapping, seven-variant consensus, and nearest-cursor selection. The proof uses one confirmation per new rendered tuple; the multi-confirmation state machine is independently tested.
+- **Evidence:** local retained output `work/v27-results/ocr-harness-final2` (not committed); reproducible command `python -m tests_app.harness --output <local-output>`.
+- **Interpretation:** The proof gate passed with a 1.36 percentage-point margin. It is not an AGTEK operator acceptance result; the live GradeWork validation remains required.
+
+### 2026-08-18 — M2 real-worker soak rerun
+
+- **Result:** 8/8 tests passed with no skips in 72.382 seconds, including the 40-second 150 ms interval soak, worker-crash recovery, repeated start/stop, and 100 zero-field capture cycles (32 ms/cycle average).
+- **Decision:** The throughput soak uses target-bound PrintWindow capture so unrelated foreground desktop activity cannot replace its synthetic target pixels during the 40-second measurement. CopyFromScreen remains covered by the real-worker integration suite.
+- **Evidence:** local retained output `work/v27-results/m2-soak-final.txt` (not committed); reproducible command `python tests_m2/run_m2_soak.py`.
+
+### 2026-08-18 — Fresh packaged-bundle and Tk lifecycle check
+
+- **Result:** A fresh PyInstaller 6.22.2 bundle built from this worktree under Python 3.12.13 (109.1 MiB) and its launch smoke reported `Screen2XYZ v2.7`. Strict M2 completed 498/498 with no skips and no deferred `ThemeChanged` errors after retaining the display-probe Tcl interpreter for the module lifetime.
+- **Decision:** Treat CopyFromScreen real-OCR integration as desktop-state-sensitive evidence: its synthetic target must remain visible, and an `EMPTY_TEXT` response remains a safe rejection, never a valid point. Do not turn that safe rejection into an accepted reading merely to satisfy an OCR-rate assertion.
+- **Evidence:** local retained outputs `work/v27-results/bundle-build-rerun.txt`, `bundle-smoke-rerun.txt`, and `m2-strict-final-cleanup2.txt` (not committed).

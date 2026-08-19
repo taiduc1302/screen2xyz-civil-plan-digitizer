@@ -45,6 +45,11 @@ class CaptureSessionController:
         self.stopped = False
 
     def _retain(self, point: CapturedPoint) -> int | None:
+        # AutoCaptureEngine can complete an OCR call after Stop was requested.
+        # The scheduler drain will wait for an already-entered retain, but a
+        # late callback must never open a new database write during teardown.
+        if self.stopped:
+            return None
         if not self.options.accepts(self._last_retained_xy, point.x, point.y):
             return None
         values = dict(point.values)
@@ -111,10 +116,13 @@ class CaptureSessionController:
         return point
 
     def stop(self) -> None:
+        # Publish this gate before draining.  Ticks that finish reading after
+        # this point discard their result; a tick already inside _retain is
+        # drained before the store can later be closed by close().
+        self.stopped = True
         if self.auto is not None:
             self.auto.stop()
             self.auto = None
-        self.stopped = True
 
     def reconfigure(self, mapping: ChannelMapping) -> None:
         """Replace zones in the active session without abandoning retained rows."""

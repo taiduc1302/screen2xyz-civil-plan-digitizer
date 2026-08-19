@@ -35,7 +35,7 @@ class TickScheduler:
     def resume(self) -> None:
         self._running.set()
 
-    def drain(self, timeout: float = 2.0) -> bool:
+    def drain(self, timeout: float | None = 2.0) -> bool:
         """Wait up to `timeout` s for a currently in-flight tick to finish,
         WITHOUT stopping the loop thread itself (unlike stop()). A no-op if
         nothing is in-flight. Returns True if drained (nothing was in
@@ -59,25 +59,31 @@ class TickScheduler:
         timeout here that outran the real worker round-trip budget, with
         the True/False outcome previously discarded by every caller)."""
 
+        if timeout is None:
+            self._in_flight.acquire()
+            self._in_flight.release()
+            return True
         if self._in_flight.acquire(timeout=max(0.0, timeout)):
             self._in_flight.release()
             return True
         return False
 
-    def stop(self, drain_timeout: float = 5.0) -> None:
-        """Stop dispatching and wait up to `drain_timeout` s for an in-flight
-        tick to finish, so the caller has exclusive access afterward. Ticks run
-        on their own threads, so the loop-thread join is fast; the drain is the
-        real wait. Pass a small timeout on the emergency path to stay bounded —
-        the caller then kills the worker, unblocking any still-running tick."""
+    def stop(self, drain_timeout: float | None = None) -> bool:
+        """Stop dispatching and drain the active tick before teardown.
+
+        Normal application stop/close paths must not release their backing
+        store while an OCR tick can still retain data.  Passing ``None`` is the
+        safe default: wait for that one in-flight tick.  Explicit finite
+        timeouts remain available only for emergency callers that have their
+        own worker-kill recovery and must honor a ``False`` return.
+        """
         self._stopped.set()
         self._running.clear()
         if self._thread is not None:
-            self._thread.join(timeout=5)
-            self._thread = None
-        # Drain: acquire the in-flight lock the running tick holds, then release.
-        if self._in_flight.acquire(timeout=max(0.0, drain_timeout)):
-            self._in_flight.release()
+            self._thread.join(timeout=5 if drain_timeout is not None else None)
+            if not self._thread.is_alive():
+                self._thread = None
+        return self.drain(drain_timeout)
 
     def _run_tick(self) -> None:
         try:

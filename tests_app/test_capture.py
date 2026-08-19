@@ -81,6 +81,23 @@ class CaptureTests(unittest.TestCase):
             engine.force_capture()
         self.assertEqual(captured, [])
 
+    def test_explicit_single_confirmation_is_honored_by_stability(self):
+        reader = SequenceReader([
+            {"x": 1, "y": 2, "z": 3},
+            {"x": 4, "y": 5, "z": 6},
+        ])
+        captured = []
+        engine = AutoCaptureEngine(
+            CapturePipeline(self.mapping(), reader), captured.append,
+            confirmations=1,
+        )
+        engine.poll()  # establish the initial stable values
+        reader.index = 1
+        engine.poll()
+        self.assertEqual([(point.x, point.y, point.z) for point in captured], [
+            (4, 5, 6),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

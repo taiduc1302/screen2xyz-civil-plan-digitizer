@@ -51,6 +51,7 @@ class Screen2XYZApp(ttk.Frame):
         self._controller: CaptureSessionController | None = None
         self._overlay: CaptureOverlay | None = None
         self._review: SessionReview | None = None
+        self._civil_window: tk.Toplevel | None = None
         self._screen = ScreenOcrBackend()
         self._plan_ocr = PlanLabelBackend()
         self._zones: dict[str, tuple[int, int, int, int]] = {}
@@ -105,8 +106,45 @@ class Screen2XYZApp(ttk.Frame):
         for mode in HOME_MODES:
             ttk.Button(
                 self, text=mode, width=32,
-                command=lambda selected=mode: self.show_wizard(selected),
+                command=lambda selected=mode: self._select_home_mode(selected),
             ).pack(pady=6)
+
+    def _select_home_mode(self, mode: str) -> None:
+        if mode == "Civil Plan Digitizer":
+            self._open_civil_digitizer()
+            return
+        self.show_wizard(mode)
+
+    def _open_civil_digitizer(self) -> None:
+        """Open the retained review-first Civil workflow from the main app.
+
+        It owns a substantial project workspace, so it receives a Toplevel
+        while remaining in the same Screen2XYZ process and packaged launcher.
+        The main home remains available for regular screen/PDF/image capture.
+        """
+
+        if self._civil_window is not None and self._civil_window.winfo_exists():
+            self._civil_window.deiconify()
+            self._civil_window.lift()
+            self._civil_window.focus_force()
+            return
+        from screen2xyz_civil.ui.app import CivilPlanDigitizerApp
+
+        window = tk.Toplevel(self.master)
+        civil = CivilPlanDigitizerApp(window)
+        self._civil_window = window
+
+        def close() -> None:
+            civil.dispose()
+            if window.winfo_exists():
+                window.destroy()
+            if self._civil_window is window:
+                self._civil_window = None
+
+        window.protocol("WM_DELETE_WINDOW", close)
+        # Keep a strong reference for the whole window lifetime; the Civil app
+        # owns project state and asynchronous indexing callbacks.
+        window._screen2xyz_civil_app = civil  # type: ignore[attr-defined]
 
     def show_wizard(self, mode: str) -> None:
         self._mode = mode

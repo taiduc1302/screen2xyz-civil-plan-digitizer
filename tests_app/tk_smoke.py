@@ -10,11 +10,29 @@ from pathlib import Path
 def capture_window(root, output_path: Path) -> None:
     from PIL import ImageGrab
 
+    root.deiconify()
+    root.lift()
+    root.attributes("-topmost", True)
+    root.focus_force()
+    if os.name == "nt":
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        user32.BringWindowToTop(root.winfo_id())
+        user32.SetForegroundWindow(root.winfo_id())
     root.update_idletasks()
     root.update()
     left, top = root.winfo_rootx(), root.winfo_rooty()
     width, height = root.winfo_width(), root.winfo_height()
-    ImageGrab.grab(bbox=(left, top, left + width, top + height)).save(output_path)
+    try:
+        # On a busy desktop an exclusive/full-screen application can occlude
+        # a perfectly healthy Tk window in a screen grab.  Pillow's HWND
+        # capture asks Windows for this window specifically and lets the
+        # smoke artifact represent the UI it actually constructed.
+        image = ImageGrab.grab(window=root.winfo_id())
+    except (OSError, TypeError, ValueError):
+        image = ImageGrab.grab(bbox=(left, top, left + width, top + height))
+    image.save(output_path)
 
 
 def run(output_dir: Path) -> None:
@@ -34,7 +52,22 @@ def run(output_dir: Path) -> None:
     root.geometry("1080x760+40+40")
     app = Screen2XYZApp(root)
     try:
+        home_modes = {
+            child.cget("text")
+            for child in app.winfo_children()
+            if child.winfo_class() in {"TButton", "Button"}
+        }
+        if "Civil Plan Digitizer" not in home_modes:
+            raise RuntimeError("Civil Plan Digitizer is missing from home")
         capture_window(root, output_dir / "home.png")
+        app._select_home_mode("Civil Plan Digitizer")
+        civil_window = app._civil_window
+        if civil_window is None or not civil_window.winfo_exists():
+            raise RuntimeError("Civil Plan Digitizer did not open")
+        capture_window(civil_window, output_dir / "civil-plan-digitizer.png")
+        civil_window._screen2xyz_civil_app.dispose()
+        civil_window.destroy()
+        app._civil_window = None
         app.show_wizard("Live screen capture")
         capture_window(root, output_dir / "live-capture-wizard.png")
         overlay_actions = []

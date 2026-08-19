@@ -14,10 +14,13 @@ from screen2xyz_civil.ocr import adapter_script_path
 
 
 class LauncherTests(unittest.TestCase):
-    def test_home_has_exactly_three_plain_modes(self) -> None:
+    def test_home_exposes_capture_and_civil_digitizer_modes(self) -> None:
         self.assertEqual(
             HOME_MODES,
-            ("Live screen capture", "Load PDF", "Load image"),
+            (
+                "Live screen capture", "Load PDF", "Load image",
+                "Civil Plan Digitizer",
+            ),
         )
 
     def test_wizard_has_five_steps(self) -> None:

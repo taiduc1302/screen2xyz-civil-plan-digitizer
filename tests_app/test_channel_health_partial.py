@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -26,6 +27,32 @@ class ZFailingReader:
         if column == "z":
             raise ValueError("OCR found no numeric candidate near the cursor")
         return Reading("100.25" if column == "x" else "200.50", 0.95)
+
+
+class AlternatingReader:
+    def __init__(self, rows):
+        self.rows = rows
+        self.index = 0
+
+    def __call__(self, column, source, context):
+        del source, context
+        row = self.rows[self.index]
+        if column == "z" and row["z"] is None:
+            raise ValueError("Z unavailable")
+        return Reading(str(row[column]), 0.95)
+
+
+class BlockingReader:
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self, column, source, context):
+        del source, context
+        if column == "z":
+            self.entered.set()
+            self.release.wait(timeout=5)
+        return Reading({"x": "100.25", "y": "200.50", "z": "49.50"}[column], 0.95)
 
 
 class ChannelHealthAndPartialTests(unittest.TestCase):
@@ -64,6 +91,30 @@ class ChannelHealthAndPartialTests(unittest.TestCase):
         self.assertTrue(events[-1].paused)
         self.assertIn("Z has never produced a successful read after 10 attempts", events[-1].message)
         self.assertIn("OCR found no numeric candidate", events[-1].message)
+
+    def test_headless_engine_enforces_channel_pause_without_ui_callback(self):
+        engine = AutoCaptureEngine(
+            CapturePipeline(mapping(), ZFailingReader()),
+            lambda _point: None,
+            zone_failure_limit=2,
+        )
+        self.assertIsNone(engine.poll())
+        self.assertIsNone(engine.poll())
+        self.assertTrue(engine.paused)
+        self.assertEqual(engine.health._channels["z"].failure_count, 2)
+
+    def test_limit_triggering_partial_tick_is_not_retained(self):
+        retained = []
+        engine = AutoCaptureEngine(
+            CapturePipeline(mapping(), ZFailingReader(), allow_partial_z=True),
+            retained.append,
+            confirmations=1,
+            zone_failure_limit=2,
+        )
+        self.assertIsNotNone(engine.poll())
+        self.assertIsNone(engine.poll())
+        self.assertTrue(engine.paused)
+        self.assertEqual(len(retained), 1)
 
     def test_partial_z_requires_opt_in_and_exports_empty_z_with_status(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -114,6 +165,46 @@ class ChannelHealthAndPartialTests(unittest.TestCase):
         self.assertIsNone(engine.poll())
         self.assertEqual(len(retained), 1)
         self.assertEqual(retained[0].capture_status, "PARTIAL_MISSING_Z")
+
+    def test_complete_point_resets_partial_deduplication_state(self):
+        reader = AlternatingReader([
+            {"x": 100.25, "y": 200.50, "z": None},
+            {"x": 100.25, "y": 200.50, "z": 49.50},
+            {"x": 101.25, "y": 201.50, "z": 49.50},
+            {"x": 100.25, "y": 200.50, "z": None},
+        ])
+        retained = []
+        engine = AutoCaptureEngine(
+            CapturePipeline(mapping(), reader, allow_partial_z=True),
+            retained.append,
+            confirmations=1,
+        )
+        self.assertIsNotNone(engine.poll())
+        reader.index = 1
+        engine.poll()
+        reader.index = 2
+        self.assertIsNotNone(engine.poll())
+        reader.index = 3
+        self.assertIsNotNone(engine.poll())
+        self.assertEqual(
+            [point.capture_status for point in retained],
+            ["PARTIAL_MISSING_Z", "COMPLETE", "PARTIAL_MISSING_Z"],
+        )
+
+    def test_pause_discards_an_inflight_ocr_result(self):
+        reader = BlockingReader()
+        retained = []
+        engine = AutoCaptureEngine(
+            CapturePipeline(mapping(), reader), retained.append, confirmations=1,
+        )
+        poller = threading.Thread(target=engine.poll)
+        poller.start()
+        self.assertTrue(reader.entered.wait(timeout=2))
+        engine.pause()
+        reader.release.set()
+        poller.join(timeout=2)
+        self.assertFalse(poller.is_alive())
+        self.assertEqual(retained, [])
 
 
 if __name__ == "__main__":
