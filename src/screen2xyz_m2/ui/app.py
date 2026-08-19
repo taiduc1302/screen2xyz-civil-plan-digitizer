@@ -267,8 +267,25 @@ class M2App:
             self.root.after(150, self._show_welcome)
 
     def _destroy_root(self) -> None:
+        root = self.root
+        original_destroy = self._root_destroy
         self.dispose()
-        self._root_destroy()
+        try:
+            original_destroy()
+        finally:
+            # Restore the native method and remove every app -> widget
+            # reference after Tcl has torn the widgets down.  Without this,
+            # root -> bound callback -> app -> widget/root cycles can survive
+            # a direct ``root.destroy()`` in an embedding host until a later
+            # worker reader thread happens to collect them.
+            try:
+                root.destroy = original_destroy  # type: ignore[method-assign]
+            except tk.TclError:
+                pass
+            for name, value in tuple(self.__dict__.items()):
+                if value is not root and isinstance(
+                        value, (tk.Misc, tk.Variable, tk.Image)):
+                    setattr(self, name, None)
 
     def dispose(self) -> None:
         """Release UI-owned callbacks and Tk values before destroying Tcl.

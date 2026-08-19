@@ -221,3 +221,10 @@ Append every new measured number at the end with exact configuration and retaine
 - **Result:** A fresh PyInstaller 6.22.2 bundle built from this worktree under Python 3.12.13 (109.1 MiB) and its launch smoke reported `Screen2XYZ v2.7`. Strict M2 completed 498/498 with no skips and no deferred `ThemeChanged` errors after retaining the display-probe Tcl interpreter for the module lifetime.
 - **Decision:** Treat CopyFromScreen real-OCR integration as desktop-state-sensitive evidence: its synthetic target must remain visible, and an `EMPTY_TEXT` response remains a safe rejection, never a valid point. Do not turn that safe rejection into an accepted reading merely to satisfy an OCR-rate assertion.
 - **Evidence:** local retained outputs `work/v27-results/bundle-build-rerun.txt`, `bundle-smoke-rerun.txt`, and `m2-strict-final-cleanup2.txt` (not committed).
+
+### 2026-08-18 — Windows CI Tcl lifecycle correction
+
+- **Trigger:** PR #5's first `pull_request` workflow run reached the M2 worker-contract suite on Windows and terminated the Python process at `test_teardown_reaps_and_joins` with `Tcl_AsyncDelete: async handler deleted by the wrong thread`. This was a process abort, not a passing test or an assertion failure.
+- **Correction:** `M2App` now removes app-to-widget references and restores the native root destroy method after Tcl is torn down. `WorkerClient.start()` performs a main-thread garbage-collection boundary before it starts stdout/stderr reader threads, so stale Tcl cycles cannot first be finalized by those threads.
+- **Regression proof:** The worker-contract suite is 12/12 locally, including an explicit main-thread collection guard; strict M2 is 499/499, no skips, in 10.403 seconds. The frozen test count changed from 498 to 499 in this same change.
+- **Remaining verification:** A new GitHub Actions run is required before this is claimed as a Windows CI fix. Live AGTEK GradeWork operator validation remains a separate, outstanding acceptance gate.

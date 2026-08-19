@@ -7,6 +7,7 @@ hardening. Failure *counters* and backoff policy live in the controller.
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import secrets
@@ -118,6 +119,14 @@ class WorkerClient:
     def start(self, *, restore_session_state: str,
               configuration_revision: int,
               init_timeout_ms: int = 15000) -> dict[str, Any]:
+        # Tk values must be finalized by the thread that owns their Tcl
+        # interpreter.  Starting the pipe-reader threads can otherwise be
+        # the first allocation boundary that runs cyclic GC, which makes a
+        # stale Tk cycle fatal (``Tcl_AsyncDelete``) on a reader thread.  A
+        # worker is started from the UI/main thread in the product; keep the
+        # defensive collection explicitly main-thread-only for embedders.
+        if threading.current_thread() is threading.main_thread():
+            gc.collect()
         command = self._spawn_command or [
             "powershell.exe", "-NoProfile", "-NonInteractive",
             "-ExecutionPolicy", "Bypass", "-File", str(self._script)]
