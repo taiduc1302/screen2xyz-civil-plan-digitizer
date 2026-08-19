@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, "feature/**"]
   pull_request:
-    branches: [main, feature/v2-unified-capture]
+    branches: [main, feature/v2-unified-capture, feature/v2.6-real-viewer-capture]
   workflow_dispatch: {}
 
 jobs:

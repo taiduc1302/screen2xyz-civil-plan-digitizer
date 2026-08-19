@@ -6,6 +6,14 @@
 
 The prior v2.5 retained passing range was **97.3%–100.0% exact rows**. The stricter v2.6 cache-disabled verification is reported separately below; the historical maximum must not be presented alone as expected viewer performance.
 
+## v2.7 production cursor-pipeline verification
+
+| Ground truth | Exact rows | Accuracy | Safe OCR/parse failures | False duplicates | Accepted hallucinations | SQLite/XLSX exact | Duration |
+|---:|---:|---:|---:|---:|---:|---|---:|
+| 220 | 212 | **96.36%** | 16 attempts | 0 | 0 | Yes | 505.708 s |
+
+Environment: Windows, Python 3.12.13, Tesseract 5.5.0. The cache-disabled proof ran on 2026-08-18 against the production cursor image path: local padding, deskew angles through ±30°, local Tesseract TSV boxes, inverse-mapped boxes, spatial consensus, nearest-cursor selection, and journal-first SQLite/XLSX export. The 16 failed polling attempts correspond to safe rejections; no rejected value was stored. This is fixture-specific evidence, not live AGTEK validation.
+
 ## v2.6 cache-disabled verification
 
 | Round | Ground truth | Exact rows | Accuracy | Safe failures | False duplicates | Accepted hallucinations | SQLite/XLSX exact | Duration |
@@ -39,8 +47,8 @@ The self-contained harness in [`tests_app/harness/`](../tests_app/harness/) does
 1. Pillow renders four status-bar styles using bundled SIL Open Font License fonts at 11, 12, 13, and 14 pixels.
 2. The 220 unique X/Y pairs cover light and dark backgrounds, point and comma decimal separators, grouped and ungrouped thousands, negative values, and a value change on every scripted frame.
 3. A synthetic plan renders 48 known elevation labels. Labels include 15–25° rotation, design-grade ovals, and existing-grade cross markers.
-4. The harness crops the real image bytes where screen capture would, then uses the production Tesseract backend with padding, scale/binarization variants, locale-aware parsing, token-scoped confidence, range/precision gates, and consensus across deskew retries. A character whitelist is optional rather than assumed, so prefixed labels can be recognized and then reduced to the accepted numeric token.
-5. Every coordinate change is presented for the production default of two stability confirmations. The OCR cache is disabled for the harness, so all 220 rows and both confirmations independently execute OCR. Production `CapturePipeline`, M2 `StabilityEngine`, journal-first `SessionStore`, SQLite, and XLSX export process the readings.
+4. The harness crops the real image bytes where screen capture would, then runs plan Z through the production cursor-image API: local padding, Tesseract TSV boxes, deskew inverse mapping, spatial consensus, and nearest-cursor selection. Status X/Y uses the production image reader. A character whitelist is optional rather than assumed, so prefixed labels can be recognized and then reduced to the accepted numeric token.
+5. The proof uses one confirmation per scripted frame so it measures every freshly rendered OCR tuple; deterministic AutoCapture stability/debounce tests cover the multi-confirmation state machine separately. OCR caching is disabled. Production `CapturePipeline`, M2 `StabilityEngine`, journal-first `SessionStore`, SQLite, and XLSX export process the readings.
 6. The scorer compares retained `(X, Y, Z)` tuples with ground truth, counts duplicates and out-of-ground-truth values, and opens every XLSX to compare it field-for-field with SQLite.
 
 The acceptance gate is machine-enforced:
@@ -58,8 +66,8 @@ Install the project dependencies and Tesseract, then run:
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python -m tests_app.harness --output .lab_work\v2_6_harness
-Get-Content .lab_work\v2_6_harness\metrics.json
+.\.venv\Scripts\python -m tests_app.harness --output .lab_work\v2_7_harness
+Get-Content .lab_work\v2_7_harness\metrics.json
 ```
 
 The output directory contains the generated status frames, fake plan and ground truth, per-session SQLite/journals, XLSX exports, `metrics.json`, and `summary.md`. It is disposable local test output; the generators, scorer, bundled font, and licence are committed so the evidence is reproducible.

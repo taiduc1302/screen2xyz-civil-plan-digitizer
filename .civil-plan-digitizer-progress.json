@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "updated_utc": "2026-08-19T05:00:00Z",
+  "branch": "feature/v2.7-agtek-field-fixes",
+  "status": "release_candidate_local_validation",
+  "completed": [
+    "Civil mode is reachable from the main Screen2XYZ home screen.",
+    "Async Civil extraction is invalidated on project/source changes.",
+    "Civil deterministic regression is required at 113 tests with no skips.",
+    "Local-only OCR and project data remain outside committed evidence."
+  ],
+  "remaining": [
+    "Run final packaging and visual smoke validation.",
+    "Obtain live AGTEK GradeWork operator acceptance before merge/release."
+  ]
+}

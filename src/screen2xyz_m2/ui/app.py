@@ -224,6 +224,8 @@ class M2App:
     def __init__(self) -> None:
         enable_pmv2()
         self.root = tk.Tk()
+        self._disposed = False
+        self._root_destroy = self.root.destroy
         self.root.title("Screen2XYZ M2-Live — Region Watch")
         self.root.geometry("1040x760")
         self.scope: dict[str, Any] | None = None
@@ -255,9 +257,63 @@ class M2App:
         self._build_setup()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.bind("<Escape>", lambda _e: self._emergency_stop())
+        # Test code and embedding hosts frequently call ``root.destroy()``
+        # directly.  Route every destruction path through the same disposal
+        # routine so Tk Variables and bound callbacks are released by the Tk
+        # owner thread, not later by cyclic GC on a worker-reader thread.
+        self.root.destroy = self._destroy_root  # type: ignore[method-assign]
         if not M2App._welcome_shown_this_process:
             M2App._welcome_shown_this_process = True
             self.root.after(150, self._show_welcome)
+
+    def _destroy_root(self) -> None:
+        self.dispose()
+        self._root_destroy()
+
+    def dispose(self) -> None:
+        """Release UI-owned callbacks and Tk values before destroying Tcl.
+
+        Tk objects must be finalized on the thread that owns their Tcl
+        interpreter.  Leaving root -> bound method -> app -> Tk Variable
+        cycles to later garbage collection can otherwise run ``Variable``
+        destructors on a WorkerClient reader thread and abort Python.
+        """
+
+        if self._disposed:
+            return
+        self._disposed = True
+        try:
+            if self.scheduler is not None:
+                self.scheduler.stop(drain_timeout=0.25)
+            self._drop_controller()
+            self._close_mini()
+        except Exception:
+            # Teardown is best effort here; the root must still close.
+            pass
+        try:
+            for identifier in self.root.tk.call("after", "info"):
+                self.root.after_cancel(identifier)
+        except tk.TclError:
+            pass
+        try:
+            self.root.unbind("<Escape>")
+            self.root.protocol("WM_DELETE_WINDOW", "")
+        except tk.TclError:
+            pass
+        # Do not leave a root-owned bound M2App method in the callback slot.
+        self.root.report_callback_exception = lambda *_args: None
+        for name, value in tuple(self.__dict__.items()):
+            if isinstance(value, tk.Variable):
+                setattr(self, name, None)
+        # Flush Tcl's queued theme notifications while the interpreter is
+        # still valid. Without this, creating/destroying many ttk roots in
+        # an embedded host can leave a deferred <<ThemeChanged>> event aimed
+        # at the just-destroyed root, producing stderr noise after otherwise
+        # successful tests (and obscuring real callback failures).
+        try:
+            self.root.update_idletasks()
+        except tk.TclError:
+            pass
 
     # -- callback exception safety net (§6) --------------------------------
 
@@ -3530,15 +3586,8 @@ class M2App:
         self._build_setup()
 
     def _on_close(self) -> None:
-        if self.scheduler:
-            # Don't hang window close on a stuck tick; the worker teardown
-            # below unblocks any in-flight capture.
-            self.scheduler.stop(drain_timeout=0.25)
-        if self.controller and self.controller.worker:
-            self.controller.worker.teardown()
         if self._demo_session is not None:
             self._demo_session.quit()
-        self._close_mini()
         self.root.destroy()
 
     def run(self) -> None:

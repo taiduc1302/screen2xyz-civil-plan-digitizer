@@ -187,6 +187,7 @@ class AutoCaptureEngine:
                 numeric_range=source.numeric_range,
                 rect=source.zone or (0, 0, 8, 8),
                 coordinate_basis="monitor",
+                confirmations=confirmations,
             ))
         self.stability = StabilityEngine(
             configs,
@@ -205,11 +206,14 @@ class AutoCaptureEngine:
         )
         self.health.bind_channels(pipeline.mapping.channels)
         self.paused = False
+        self.stopped = False
         self._partial_candidate: tuple[float, float] | None = None
         self._partial_confirmations = 0
         self._last_partial_emitted: tuple[float, float] | None = None
 
     def poll(self) -> CapturedPoint | None:
+        if self.paused or self.stopped:
+            return None
         display_event = self.health.check_display()
         if display_event is not None:
             self.pause()
@@ -220,19 +224,25 @@ class AutoCaptureEngine:
             point, observations, crops = self.pipeline.read()
             self._require_automatic_ocr_confidence(point)
         except (ValueError, RuntimeError) as exc:
-            if self.on_health is None:
-                raise
             snapshot = self.health.failure(exc)
             if snapshot.paused:
                 self.pause()
-            self.on_health(snapshot)
+            if self.on_health is not None:
+                self.on_health(snapshot)
+            return None
+        # A slow OCR call may finish after the operator pressed Pause or
+        # Stop.  Its result is stale and must never become a retained row.
+        if self.paused or self.stopped:
+            return None
+        snapshot = self.health.success(
+            dict(point.raw_texts), dict(point.channel_failures)
+        )
+        if snapshot.paused:
+            self.pause()
+            if self.on_health is not None:
+                self.on_health(snapshot)
             return None
         if self.on_health is not None:
-            snapshot = self.health.success(
-                dict(point.raw_texts), dict(point.channel_failures)
-            )
-            if snapshot.paused:
-                self.pause()
             self.on_health(snapshot)
         if point.capture_status == "PARTIAL_MISSING_Z":
             signature = (point.x, point.y)
@@ -249,6 +259,12 @@ class AutoCaptureEngine:
                 self._last_partial_emitted = signature
                 return point
             return None
+        # A complete point re-establishes the automatic stream.  Do not allow
+        # an old partial signature to suppress the same XY after an intervening
+        # complete point with different coordinates.
+        self._partial_candidate = None
+        self._partial_confirmations = 0
+        self._last_partial_emitted = None
         self._frame += 1
         decision = self.stability.process_tick(
             observations,
@@ -257,11 +273,14 @@ class AutoCaptureEngine:
             crop_bytes=crops,
         )
         if decision.event_status == "RETAINED_CHANGE":
+            if self.paused or self.stopped:
+                return None
             self.on_point(point)
             return point
         return None
 
     def start(self) -> None:
+        self.stopped = False
         self.paused = False
         self.scheduler.start()
 
@@ -270,6 +289,8 @@ class AutoCaptureEngine:
         self.scheduler.pause()
 
     def resume(self) -> None:
+        if self.stopped:
+            raise RuntimeError("capture is stopped; start a new session first")
         self.paused = False
         self.scheduler.resume()
 
@@ -292,5 +313,6 @@ class AutoCaptureEngine:
                 )
 
     def stop(self) -> None:
-        self.paused = False
+        self.stopped = True
+        self.paused = True
         self.scheduler.stop()

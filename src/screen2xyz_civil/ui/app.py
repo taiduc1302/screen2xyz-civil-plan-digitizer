@@ -34,7 +34,7 @@ from ..persistence import (
     save_project,
 )
 from ..qa import duplicate_pairs, qa_summary
-from ..source import inspect_png
+from ..source import inspect_image
 from ..surface import SurfaceError, build_project_surface, cut_fill_preview
 from ..sheet_metadata import infer_sheet_metadata
 from ..workflow import CivilWorkflow, WorkflowError, new_project
@@ -87,6 +87,7 @@ class CivilPlanDigitizerApp:
         self._sort_reverse: dict[str, bool] = {}
         self._index_generation = 0
         self._indexing = False
+        self._closed = False
         self._candidate_cycle_offset = 0
 
         self.status = tk.StringVar(value="Open a local PDF or PNG to begin.")
@@ -595,7 +596,7 @@ class CivilPlanDigitizerApp:
                     f"of {document.page_count}"
                 )
             else:
-                source = inspect_png(selected)
+                source = inspect_image(selected)
                 manifest = source.to_manifest(include_local_path=True)
                 display_path = selected
                 self.pdf_page_index = 0
@@ -659,6 +660,27 @@ class CivilPlanDigitizerApp:
         self.source_path = Path(str(local_path)) if local_path else None
         if self.source_path and self.source_path.is_file():
             try:
+                expected_sha256 = str(project.source_manifest.get("sha256", ""))
+                if project.source_manifest.get("source_type") == "PDF":
+                    actual_sha256 = inspect_pdf(self.source_path).sha256
+                else:
+                    actual_sha256 = inspect_image(self.source_path).sha256
+                if not expected_sha256 or actual_sha256 != expected_sha256:
+                    self.source_path = None
+                    self.display_source_path = None
+                    self.original_image = None
+                    self.canvas.delete("all")
+                    messagebox.showwarning(
+                        "Source changed",
+                        "The local drawing no longer matches this project's saved "
+                        "source hash. Existing points are preserved, but the drawing, "
+                        "calibration, and candidate index are not reused. Start a new "
+                        "project from the revised drawing and re-review the points.",
+                        parent=self.root,
+                    )
+                    self.status.set(f"Opened {project.name}; source hash mismatch")
+                    self._refresh()
+                    return
                 if project.source_manifest.get("source_type") == "PDF":
                     self.pdf_page_index = int(
                         project.source_manifest.get("selected_page_index", 0)
@@ -736,9 +758,15 @@ class CivilPlanDigitizerApp:
                 result = (candidates, symbols, evidence, None)
             except (PdfAdapterError, WorkflowError, ValueError) as exc:
                 result = ((), (), (), exc)
-            self.root.after(
-                0, lambda: self._finish_pdf_index(generation, result)
-            )
+            if self._closed:
+                return
+            try:
+                self.root.after(
+                    0,
+                    lambda: self._finish_pdf_index(generation, project, result),
+                )
+            except tk.TclError:
+                return
 
         threading.Thread(
             target=worker,
@@ -746,8 +774,12 @@ class CivilPlanDigitizerApp:
             daemon=True,
         ).start()
 
-    def _finish_pdf_index(self, generation: int, result) -> None:
-        if generation != self._index_generation:
+    def _finish_pdf_index(self, generation: int, project, result) -> None:
+        if (
+            self._closed
+            or generation != self._index_generation
+            or project is not self.project
+        ):
             return
         self._indexing = False
         candidates, symbols, evidence, error = result
@@ -849,10 +881,15 @@ class CivilPlanDigitizerApp:
                 OSError,
             ) as exc:
                 payload = ((), (), "", exc)
-            self.root.after(
-                0,
-                lambda: self._finish_ocr_index(generation, payload),
-            )
+            if self._closed:
+                return
+            try:
+                self.root.after(
+                    0,
+                    lambda: self._finish_ocr_index(generation, project, payload),
+                )
+            except tk.TclError:
+                return
 
         threading.Thread(
             target=worker,
@@ -860,8 +897,12 @@ class CivilPlanDigitizerApp:
             daemon=True,
         ).start()
 
-    def _finish_ocr_index(self, generation: int, payload) -> None:
-        if generation != self._index_generation:
+    def _finish_ocr_index(self, generation: int, project, payload) -> None:
+        if (
+            self._closed
+            or generation != self._index_generation
+            or project is not self.project
+        ):
             return
         self._indexing = False
         candidates, evidence, engine, error = payload
@@ -1464,11 +1505,23 @@ class CivilPlanDigitizerApp:
         )
 
     def _clear_candidate_index(self) -> None:
+        # A source/project change invalidates every background extraction.  A
+        # completion posted by an older worker must not populate the new
+        # project's hover index or mutate its metadata.
+        self._index_generation += 1
+        self._indexing = False
         self._candidate_index = SpatialCandidateIndex()
         self._hover_service = None
         self._hover_suggestion = None
         self.candidate_summary.set("Candidate index: empty")
         self.canvas.delete("hover")
+
+    def dispose(self) -> None:
+        """Invalidate asynchronous work before the owning Tk window closes."""
+
+        self._closed = True
+        self._index_generation += 1
+        self._indexing = False
 
     def _rebuild_hover_service(self) -> None:
         if len(self._candidate_index) == 0:

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import io
+import math
+import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Hashable
 
@@ -61,6 +65,16 @@ class OcrPolicy:
             raise ValueError("at least one Tesseract PSM mode is required")
         if not self.rotation_angles or any(abs(angle) > 30 for angle in self.rotation_angles):
             raise ValueError("OCR rotation angles must stay within 30 degrees")
+
+
+@dataclass(frozen=True)
+class _TesseractToken:
+    text: str
+    confidence: float
+    left: float
+    top: float
+    width: float
+    height: float
 
 
 class ScreenOcrBackend:
@@ -216,80 +230,51 @@ class ScreenOcrBackend:
     def _ocr_tesseract(
         self, variants, policy: OcrPolicy, digest: str, png: bytes
     ) -> Reading:
-        import pytesseract
-        from pytesseract import Output
-
-        pytesseract.pytesseract.tesseract_cmd = str(self.executable)
         candidates: list[tuple[bool, float, str, str | None]] = []
         vote_variants: dict[str | None, set[str]] = {}
-        for variant_name, image in variants:
-            for psm in policy.psm_modes:
-                whitelist = (
-                    f" -c tessedit_char_whitelist={policy.whitelist}"
-                    if policy.numeric and policy.whitelist else ""
-                )
-                data = pytesseract.image_to_data(
-                    image,
-                    config=f"--psm {psm}{whitelist}",
-                    output_type=Output.DICT,
-                )
-                entries = [
-                    (str(text).strip(), float(confidence))
-                    for text, confidence in zip(data["text"], data["conf"])
-                    if str(text).strip()
+        for variant_name, _psm, tokens in self._tesseract_passes(variants, policy):
+            entries = [
+                (token.text.strip(), token.confidence)
+                for token in tokens
+                if token.text.strip()
+            ]
+            spans = (
+                [(" ".join(text for text, _score in entries), entries)]
+                if not policy.numeric else
+                [
+                    (
+                        " ".join(text for text, _score in entries[start:end]),
+                        entries[start:end],
+                    )
+                    for start in range(len(entries))
+                    for end in range(start + 1, min(len(entries), start + 3) + 1)
                 ]
-                spans = (
-                    [(" ".join(text for text, _score in entries), entries)]
-                    if not policy.numeric else
-                    [
-                        (
-                            " ".join(text for text, _score in entries[start:end]),
-                            entries[start:end],
-                        )
-                        for start in range(len(entries))
-                        for end in range(start + 1, min(len(entries), start + 3) + 1)
-                    ]
+            )
+            pass_candidates: list[tuple[bool, float, str, str | None]] = []
+            for candidate_text, span in spans:
+                valid, candidate_text, normalized = self._parse_candidate(
+                    candidate_text, policy
                 )
-                pass_candidates: list[tuple[bool, float, str, str | None]] = []
-                for candidate_text, span in spans:
-                    valid, candidate_text, normalized = self._parse_candidate(
-                        candidate_text, policy
-                    )
-                    scores = [score for _text, score in span if score >= 0]
-                    confidence = (
-                        0.0 if not scores else sum(scores) / len(scores) / 100.0
-                    )
-                    pass_candidates.append((valid, confidence, candidate_text, normalized))
-                    if (
-                        policy.consensus_min == 1
-                        and valid
-                        and confidence >= max(0.85, policy.confidence_min)
-                    ):
-                        return Reading(candidate_text, confidence, digest, png, True)
-                best_for_pass: dict[str | None, tuple[bool, float, str, str | None]] = {}
-                for item in pass_candidates:
-                    key = item[3] if item[0] else f"invalid:{item[2]}"
-                    if key not in best_for_pass or item[1] > best_for_pass[key][1]:
-                        best_for_pass[key] = item
-                candidates.extend(best_for_pass.values())
-                for item in best_for_pass.values():
-                    if item[0]:
-                        vote_variants.setdefault(item[3], set()).add(variant_name)
-                if policy.consensus_min > 1:
-                    agreed = [
-                        normalized for normalized, variant_names in vote_variants.items()
-                        if len(variant_names) >= policy.consensus_min
-                    ]
-                    if agreed:
-                        matching = [
-                            item for item in candidates
-                            if item[0] and item[3] in agreed
-                        ]
-                        _valid, best_confidence, best_text, _normalized = max(
-                            matching, key=lambda item: item[1]
-                        )
-                        if best_confidence >= policy.confidence_min:
-                            return Reading(best_text, best_confidence, digest, png, True)
+                scores = [score for _text, score in span if score >= 0]
+                confidence = (
+                    0.0 if not scores else sum(scores) / len(scores) / 100.0
+                )
+                pass_candidates.append((valid, confidence, candidate_text, normalized))
+                if (
+                    policy.consensus_min == 1
+                    and valid
+                    and confidence >= max(0.85, policy.confidence_min)
+                ):
+                    return Reading(candidate_text, confidence, digest, png, True)
+            best_for_pass: dict[str | None, tuple[bool, float, str, str | None]] = {}
+            for item in pass_candidates:
+                key = item[3] if item[0] else f"invalid:{item[2]}"
+                if key not in best_for_pass or item[1] > best_for_pass[key][1]:
+                    best_for_pass[key] = item
+            candidates.extend(best_for_pass.values())
+            for item in best_for_pass.values():
+                if item[0]:
+                    vote_variants.setdefault(item[3], set()).add(variant_name)
         valid_candidates = [item for item in candidates if item[0]]
         if not valid_candidates:
             observed = sorted({item[2] for item in candidates if item[2]})
@@ -319,21 +304,20 @@ class ScreenOcrBackend:
                 normalized: len(variant_names)
                 for normalized, variant_names in vote_variants.items()
             }
-            normalized, count = max(
-                votes.items(),
-                key=lambda item: (
-                    item[1],
-                    max(
-                        candidate[1]
-                        for candidate in valid_candidates
-                        if candidate[3] == item[0]
-                    ),
-                ),
-            )
-            if count < policy.consensus_min:
+            agreed = [
+                (normalized, count)
+                for normalized, count in votes.items()
+                if count >= policy.consensus_min
+            ]
+            if not agreed:
                 raise OcrConfidenceError(
                     f"OCR retry ladder did not reach {policy.consensus_min}-reading consensus"
                 )
+            if len(agreed) != 1:
+                raise OcrConfidenceError(
+                    "OCR retry ladder produced competing consensus values"
+                )
+            normalized, _count = agreed[0]
             _, confidence, text, _ = max(
                 (item for item in valid_candidates if item[3] == normalized),
                 key=lambda item: item[1],
@@ -343,6 +327,135 @@ class ScreenOcrBackend:
                 valid_candidates, key=lambda item: item[1]
             )
         return Reading(text, confidence, digest, png, True)
+
+    def _tesseract_passes(
+        self, variants, policy: OcrPolicy
+    ) -> tuple[tuple[str, int, tuple[_TesseractToken, ...]], ...]:
+        """Run every prepared image while amortizing Tesseract startup cost.
+
+        Tesseract accepts a newline-delimited image list as a multi-page input.
+        Using one process per PSM preserves per-variant evidence via TSV page
+        numbers while avoiding one process launch per angle/threshold variant.
+        A one-image path remains for focused unit tests and tiny policies.
+        """
+
+        if self.executable is None:
+            raise OcrUnavailableError("Tesseract executable is unavailable")
+        variants = tuple(variants)
+        if len(variants) == 1:
+            import pytesseract
+            from pytesseract import Output
+
+            pytesseract.pytesseract.tesseract_cmd = str(self.executable)
+            variant_name, image = variants[0]
+            passes = []
+            for psm in policy.psm_modes:
+                whitelist = (
+                    f" -c tessedit_char_whitelist={policy.whitelist}"
+                    if policy.numeric and policy.whitelist else ""
+                )
+                data = pytesseract.image_to_data(
+                    image,
+                    config=f"--psm {psm}{whitelist}",
+                    output_type=Output.DICT,
+                )
+                passes.append((variant_name, psm, self._tokens_from_dict(data)))
+            return tuple(passes)
+
+        passes: list[tuple[str, int, tuple[_TesseractToken, ...]]] = []
+        with tempfile.TemporaryDirectory(prefix="screen2xyz-ocr-") as temporary:
+            root = Path(temporary)
+            image_paths = []
+            for index, (_variant_name, image) in enumerate(variants):
+                path = root / f"variant-{index:03d}.png"
+                image.save(path, format="PNG")
+                image_paths.append(path)
+            image_list = root / "images.txt"
+            image_list.write_text(
+                "".join(f"{path}\n" for path in image_paths), encoding="utf-8"
+            )
+            timeout_seconds = max(10.0, min(60.0, len(variants) * 0.75))
+            def run_psm(psm: int):
+                command = [
+                    str(self.executable), str(image_list), "stdout",
+                    "--psm", str(psm),
+                ]
+                if policy.numeric and policy.whitelist:
+                    command.extend([
+                        "-c", f"tessedit_char_whitelist={policy.whitelist}",
+                    ])
+                command.append("tsv")
+                try:
+                    return subprocess.run(
+                        command,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=timeout_seconds,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise OcrConfidenceError(
+                        f"Tesseract OCR exceeded the {timeout_seconds:.1f}s safety timeout"
+                    ) from exc
+
+            # PSMs are independent passes over the same immutable files.
+            # Launching them together removes the artificial serial wait from
+            # live cursor reads while leaving all evidence and fail-closed
+            # consensus rules unchanged.
+            with ThreadPoolExecutor(max_workers=len(policy.psm_modes)) as pool:
+                completed_by_psm = dict(zip(
+                    policy.psm_modes,
+                    pool.map(run_psm, policy.psm_modes),
+                ))
+            for psm in policy.psm_modes:
+                completed = completed_by_psm[psm]
+                if completed.returncode != 0:
+                    raise OcrUnavailableError(
+                        f"Tesseract OCR failed with exit code {completed.returncode}"
+                    )
+                page_tokens: list[list[_TesseractToken]] = [
+                    [] for _variant in variants
+                ]
+                reader = csv.DictReader(io.StringIO(completed.stdout), delimiter="\t")
+                for row in reader:
+                    raw_text = str(row.get("text") or "").strip()
+                    if not raw_text:
+                        continue
+                    try:
+                        page_index = int(row.get("page_num") or 0) - 1
+                        token = _TesseractToken(
+                            raw_text,
+                            float(row.get("conf") or -1),
+                            float(row.get("left") or 0),
+                            float(row.get("top") or 0),
+                            float(row.get("width") or 0),
+                            float(row.get("height") or 0),
+                        )
+                    except (TypeError, ValueError):
+                        continue
+                    if 0 <= page_index < len(variants):
+                        page_tokens[page_index].append(token)
+                for index, (variant_name, _image) in enumerate(variants):
+                    passes.append((variant_name, psm, tuple(page_tokens[index])))
+        return tuple(passes)
+
+    @staticmethod
+    def _tokens_from_dict(data) -> tuple[_TesseractToken, ...]:
+        tokens = []
+        size = len(data.get("text", ()))
+        for index in range(size):
+            tokens.append(_TesseractToken(
+                str(data["text"][index]),
+                float(data["conf"][index]),
+                float(data.get("left", [0] * size)[index]),
+                float(data.get("top", [0] * size)[index]),
+                float(data.get("width", [0] * size)[index]),
+                float(data.get("height", [0] * size)[index]),
+            ))
+        return tuple(tokens)
 
     @staticmethod
     def _parse_candidate(
@@ -392,6 +505,25 @@ class ScreenOcrBackend:
         width, height = box_size
         zone = (cursor[0] - width // 2, cursor[1] - height // 2, width, height)
         image = self.capture_provider(zone)
+        return self.read_cursor_image(
+            image, policy=policy, snap_radius_px=snap_radius_px
+        )
+
+    def read_cursor_image(
+        self,
+        image,
+        *,
+        policy: OcrPolicy,
+        snap_radius_px: float,
+        _allow_low_confidence_retry: bool = True,
+    ) -> Reading:
+        """Read an already-captured cursor box with the production policy.
+
+        This lets deterministic image proof exercise the exact same spatial
+        candidate and consensus path as live screen capture without requiring
+        a desktop cursor or screen grab.
+        """
+        width, height = image.size
         candidates = self.cursor_candidate_provider(image, policy)
         usable = []
         for candidate in candidates:
@@ -408,46 +540,60 @@ class ScreenOcrBackend:
             for candidate in usable:
                 grouped.setdefault(candidate.normalized_value, []).append(candidate)
             agreed: list[tuple[CursorOcrCandidate, int]] = []
-            center = PixelPoint(width / 2, height / 2)
             for group in grouped.values():
-                if len({item.variant_name for item in group}) < policy.consensus_min:
-                    continue
-                nearest = min(
-                    group,
-                    key=lambda item: (
-                        (item.bbox.center.x - center.x) ** 2
-                        + (item.bbox.center.y - center.y) ** 2,
-                        -item.confidence,
-                    ),
-                )
-                support = len({item.variant_name for item in group})
-                agreed.append((
-                    CursorOcrCandidate(
-                        nearest.raw_text,
-                        nearest.normalized_value,
-                        max(item.confidence for item in group),
-                        nearest.bbox,
-                        nearest.rotation_angle,
-                        "consensus",
-                        nearest.psm,
-                    ),
-                    support,
-                ))
-            # Competing reads whose centers overlap are interpretations of the
-            # same rendered label. Keep the one supported by the most distinct
-            # preprocessing variants; retain separate labels for nearest-pick.
+                for cluster in self._spatial_candidate_clusters(group):
+                    support = len({item.variant_name for item in cluster})
+                    if support < policy.consensus_min:
+                        continue
+                    representative = min(
+                        cluster,
+                        key=lambda item: (
+                            sum(
+                                self._center_distance_squared(item, other)
+                                for other in cluster
+                            ),
+                            -item.confidence,
+                        ),
+                    )
+                    agreed.append((
+                        CursorOcrCandidate(
+                            representative.raw_text,
+                            representative.normalized_value,
+                            max(item.confidence for item in cluster),
+                            representative.bbox,
+                            representative.rotation_angle,
+                            "consensus",
+                            representative.psm,
+                        ),
+                        support,
+                    ))
+            # Resolve evidence only within one physical label. Spatially
+            # separate equal values remain separate candidates.  Two values
+            # with comparable support are ambiguous and fail closed.  A
+            # clearly dominant reading, however, must not be discarded merely
+            # because a smaller group contains a punctuation hallucination.
             selected: list[CursorOcrCandidate] = []
-            for candidate, _support in sorted(
-                agreed, key=lambda item: (-item[1], -item[0].confidence)
+            support_by_candidate = {candidate: support for candidate, support in agreed}
+            for location in self._spatial_candidate_clusters(
+                [candidate for candidate, _support in agreed]
             ):
-                if any(
-                    (candidate.bbox.center.x - prior.bbox.center.x) ** 2
-                    + (candidate.bbox.center.y - prior.bbox.center.y) ** 2
-                    <= 12.0 ** 2
-                    for prior in selected
-                ):
-                    continue
-                selected.append(candidate)
+                ranked = sorted(
+                    location,
+                    key=lambda candidate: (
+                        support_by_candidate[candidate], candidate.confidence,
+                    ),
+                    reverse=True,
+                )
+                leader = ranked[0]
+                if len(ranked) > 1:
+                    runner_up = ranked[1]
+                    if (
+                        leader.normalized_value != runner_up.normalized_value
+                        and support_by_candidate[leader]
+                        < support_by_candidate[runner_up] * 2
+                    ):
+                        continue
+                selected.append(leader)
             usable = selected
         evidence = [
             candidate.as_evidence(index) for index, candidate in enumerate(usable)
@@ -460,6 +606,19 @@ class ScreenOcrBackend:
             capture_mode=civil_contracts.EXISTING_GROUND,
         )
         if not suggestion.can_capture or suggestion.evidence is None:
+            # Keep the measured high-confidence policy as the normal path.
+            # A few tightly rotated low-contrast labels only expose seven
+            # spatially consistent readings just below that gate.  Retrying
+            # only an otherwise empty result at 0.40 still requires the same
+            # independent consensus and dominant-value safeguards; it never
+            # replaces a successful high-confidence read.
+            if _allow_low_confidence_retry and policy.confidence_min > 0.40:
+                return self.read_cursor_image(
+                    image,
+                    policy=replace(policy, confidence_min=0.40),
+                    snap_radius_px=snap_radius_px,
+                    _allow_low_confidence_retry=False,
+                )
             raise OcrConfidenceError("OCR found no numeric candidate near the cursor")
         selected = suggestion.evidence
         png = self._png_bytes(image)
@@ -471,6 +630,63 @@ class ScreenOcrBackend:
             True,
         )
 
+    @staticmethod
+    def _center_distance_squared(
+        first: "CursorOcrCandidate", second: "CursorOcrCandidate"
+    ) -> float:
+        return (
+            (first.bbox.center.x - second.bbox.center.x) ** 2
+            + (first.bbox.center.y - second.bbox.center.y) ** 2
+        )
+
+    @classmethod
+    def _spatial_candidate_clusters(
+        cls,
+        candidates: list["CursorOcrCandidate"],
+        *,
+        radius_px: float = 20.0,
+    ) -> list[list["CursorOcrCandidate"]]:
+        """Complete-link clusters whose members all describe one location.
+
+        Complete-link membership prevents a chain of slightly shifted OCR
+        boxes from bridging two neighbouring labels. Splitting uncertain
+        evidence is deliberately safer than manufacturing consensus.
+        """
+
+        clusters: list[list[CursorOcrCandidate]] = []
+        radius_squared = radius_px ** 2
+        ordered = sorted(
+            candidates,
+            key=lambda item: (
+                item.bbox.center.x,
+                item.bbox.center.y,
+                item.normalized_value,
+                item.variant_name,
+                item.psm,
+            ),
+        )
+        for candidate in ordered:
+            eligible = [
+                cluster for cluster in clusters
+                if all(
+                    cls._center_distance_squared(candidate, member)
+                    <= radius_squared
+                    for member in cluster
+                )
+            ]
+            if not eligible:
+                clusters.append([candidate])
+                continue
+            cluster = min(
+                eligible,
+                key=lambda items: sum(
+                    cls._center_distance_squared(candidate, member)
+                    for member in items
+                ) / len(items),
+            )
+            cluster.append(candidate)
+        return clusters
+
     def _cursor_candidates_tesseract(
         self, image, policy: OcrPolicy
     ) -> tuple["CursorOcrCandidate", ...]:
@@ -478,15 +694,20 @@ class ScreenOcrBackend:
             raise OcrUnavailableError(
                 "Cursor OCR requires Tesseract so confidence can be enforced"
             )
-        import pytesseract
         from PIL import Image, ImageOps
-        from pytesseract import Output
 
-        pytesseract.pytesseract.tesseract_cmd = str(self.executable)
-        source = image.convert("RGB")
-        if sum(source.getpixel((0, 0))) / 3 < 128:
-            source = ImageOps.invert(source)
-        candidates: list[CursorOcrCandidate] = []
+        original = image.convert("RGB")
+        if sum(original.getpixel((0, 0))) / 3 < 128:
+            original = ImageOps.invert(original)
+        # Rotation around a tight cursor crop clips the very labels that are
+        # nearest the pointer.  Give every variant the same local border, then
+        # translate its evidence back into the original cursor coordinates.
+        border = 16
+        source = ImageOps.expand(
+            original, border=border, fill=original.getpixel((0, 0))
+        )
+        prepared_variants = []
+        variant_metadata: dict[str, tuple[int, int]] = {}
         for angle in policy.rotation_angles:
             fill = source.getpixel((0, 0))
             rotated = source if angle == 0 else source.rotate(
@@ -509,38 +730,70 @@ class ScreenOcrBackend:
                     (variant.width * factor, variant.height * factor),
                     resample=Image.Resampling.LANCZOS,
                 )
-                for psm in policy.psm_modes:
-                    whitelist = (
-                        f" -c tessedit_char_whitelist={policy.whitelist}"
-                        if policy.whitelist else ""
-                    )
-                    data = pytesseract.image_to_data(
-                        prepared,
-                        config=f"--psm {psm}{whitelist}",
-                        output_type=Output.DICT,
-                    )
-                    for index, text in enumerate(data["text"]):
-                        raw = str(text).strip()
-                        if not raw:
-                            continue
-                        confidence = float(data["conf"][index]) / 100.0
-                        valid, normalized_text, normalized = self._parse_candidate(raw, policy)
-                        if not valid or normalized is None or confidence < 0:
-                            continue
-                        left = float(data["left"][index]) / factor
-                        top = float(data["top"][index]) / factor
-                        width = float(data["width"][index]) / factor
-                        height = float(data["height"][index]) / factor
-                        candidates.append(CursorOcrCandidate(
-                            normalized_text,
-                            float(normalized),
-                            confidence,
-                            Rect(left, top, left + width, top + height),
-                            angle,
-                            variant_name,
-                            psm,
-                        ))
+                prepared_variants.append((variant_name, prepared))
+                variant_metadata[variant_name] = (angle, factor)
+        candidates: list[CursorOcrCandidate] = []
+        for variant_name, psm, tokens in self._tesseract_passes(
+            prepared_variants, policy
+        ):
+            angle, factor = variant_metadata[variant_name]
+            for token in tokens:
+                raw = token.text.strip()
+                if not raw:
+                    continue
+                confidence = token.confidence / 100.0
+                valid, _normalized_text, normalized = self._parse_candidate(raw, policy)
+                if not valid or normalized is None or confidence < 0:
+                    continue
+                left = token.left / factor
+                top = token.top / factor
+                width = token.width / factor
+                height = token.height / factor
+                rotated_bbox = Rect(left, top, left + width, top + height)
+                mapped_bbox = self._source_bbox(
+                    rotated_bbox, angle, source.width, source.height
+                )
+                candidates.append(CursorOcrCandidate(
+                    normalized,
+                    float(normalized),
+                    confidence,
+                    Rect(
+                        mapped_bbox.x0 - border,
+                        mapped_bbox.y0 - border,
+                        mapped_bbox.x1 - border,
+                        mapped_bbox.y1 - border,
+                    ),
+                    angle,
+                    variant_name,
+                    psm,
+                ))
         return tuple(candidates)
+
+    @staticmethod
+    def _source_bbox(rect: Rect, angle: int, width: int, height: int) -> Rect:
+        """Map an expand=False rotated-image box back to source coordinates."""
+
+        if angle == 0:
+            return rect
+        center_x = width / 2.0
+        center_y = height / 2.0
+        radians = math.radians(angle)
+        cosine = math.cos(radians)
+        sine = math.sin(radians)
+        source_points = []
+        for x, y in (
+            (rect.x0, rect.y0), (rect.x1, rect.y0),
+            (rect.x1, rect.y1), (rect.x0, rect.y1),
+        ):
+            dx = x - center_x
+            dy = y - center_y
+            source_points.append((
+                center_x + cosine * dx - sine * dy,
+                center_y + sine * dx + cosine * dy,
+            ))
+        xs = [max(0.0, min(float(width), point[0])) for point in source_points]
+        ys = [max(0.0, min(float(height), point[1])) for point in source_points]
+        return Rect(min(xs), min(ys), max(xs), max(ys))
 
     def _ocr_windows(self, image, digest: str, png: bytes) -> Reading:
         temporary_path: Path | None = None
@@ -632,6 +885,7 @@ class DefaultReader:
                     numeric=source.data_type != "text",
                     numeric_range=source.numeric_range,
                     declared_format=source.declared_format,
+                    precision_min=source.precision_min,
                 ),
             )
         if source.source_type == "screen_cursor_ocr":
@@ -673,6 +927,9 @@ def cursor_ocr_policy(source: ChannelSource) -> OcrPolicy:
         consensus_min=7,
         confidence_min=0.60,
         psm_modes=(6, 7),
-        rotation_angles=(0, -8, 8, -10, 10, -12, 12, -15, 15, -20, 20, -25, 25),
+        rotation_angles=(
+            0, -2, 2, -5, 5, -8, 8, -10, 10, -12, 12, -15, 15,
+            -20, 20, -25, 25, -30, 30,
+        ),
         upscale=2,
     )

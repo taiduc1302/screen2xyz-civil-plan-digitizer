@@ -1,7 +1,12 @@
 """UI labels and layout constants kept separate from application logic."""
 
 APP_TITLE = "Screen2XYZ v2.7"
-HOME_MODES = ("Live screen capture", "Load PDF", "Load image")
+HOME_MODES = (
+    "Live screen capture",
+    "Load PDF",
+    "Load image",
+    "Civil Plan Digitizer",
+)
 WIZARD_STEPS = (
     "1. Source",
     "2. Zones / calibration",

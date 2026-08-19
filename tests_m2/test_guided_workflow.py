@@ -87,7 +87,10 @@ try:
     _root = tk.Tk()
     _root.withdraw()
     _HAS_TK = True
-    _root.destroy()
+    # Keep the display-probe interpreter alive for this module. Destroying
+    # the first ttk interpreter before the test-created roots initialize can
+    # leave Tcl's deferred ThemeChanged dispatch pointed at that dead root on
+    # Windows, producing stderr noise despite a passing suite.
 except Exception:  # pragma: no cover - headless CI without a display
     _HAS_TK = False
 
