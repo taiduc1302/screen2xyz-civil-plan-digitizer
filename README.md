@@ -7,7 +7,10 @@ screen/OCR review and preliminary civil-plan digitization.
 > M2-Live watcher are merged on private `main`. The Civil Plan Digitizer is
 > implemented and being stabilized on
 > `feature/assisted-c03-validation`; it is not merged, released, or
-> downstream-certified.
+> downstream-certified. A review-first quantity takeoff core is under active
+> integration on `integration/open-source-takeoff-stack`; it is tested as a
+> domain/adapter layer but is not yet wired into the operator UI or an MCP
+> runtime gateway.
 
 All PDF/image-derived coordinates and elevations are preliminary and require
 estimator or survey review. They are not certified survey data. The repository
@@ -53,11 +56,14 @@ The manual PNG workflow remains standard-library/Tkinter only. Optional PDF
 inspection uses pinned `pypdf`; PDF rendering requires a host-installed
 Poppler `pdftoppm` on `PATH`. If installed, local Tesseract is preferred for
 small rotated grade labels; Windows Media OCR remains the fallback. No drawing
-is uploaded.
+is uploaded by the current standalone application.
 
 Read the [Civil Plan Digitizer guide](docs/civil-plan-digitizer/README.md),
 [QA checklist](docs/civil-plan-digitizer/QA_CHECKLIST.md), and
 [limitations](docs/civil-plan-digitizer/LIMITATIONS.md) before project use.
+For the in-progress quantity takeoff runtime, operator, AI-client, and test
+contract, read
+[`RUNTIME_OPERATOR_TEST_MODEL.md`](docs/integrations/RUNTIME_OPERATOR_TEST_MODEL.md).
 
 ### Civil validation
 
@@ -67,10 +73,24 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m tests_civil.benchmark_civil
 ```
 
-The civil suite currently contains 113 deterministic tests. The benchmark uses
-synthetic rule fixtures only; its exact scores are not real-drawing OCR or
-symbol accuracy. See
+The civil suite currently contains **178 deterministic tests** on the takeoff
+integration branch. The benchmark uses synthetic rule fixtures only; its exact
+scores are not real-drawing OCR, symbol, or end-to-end takeoff accuracy. See
 [BENCHMARK_RESULTS.md](docs/civil-plan-digitizer/BENCHMARK_RESULTS.md).
+
+## Quantity takeoff integration status
+
+The current integration branch contains a normalized civil takeoff domain,
+audited takeoff sidecar workspace, OpenTakeoff request/coordinate adapter,
+segmentation-provider boundary, evidence/question model, and synthetic-vs-real
+evaluation contracts.
+
+Those pieces are **not yet the final operator product**. In particular, the
+existing launcher still opens the point/terrain Tk workspace, the takeoff
+panel is not yet wired into that UI, the OpenTakeoff adapter does not start an
+MCP process, and Screen2XYZ does not yet expose its own MCP gateway to Claude,
+ChatGPT, or another agent client. Multi-sheet bid-set and per-viewport scale
+support are also still required before normal tender takeoff use.
 
 ## Preserved product lines
 
@@ -79,18 +99,20 @@ symbol accuracy. See
 | `src/screen2xyz_lab/` | Sealed synthetic OCR baseline, evidence, metrics, and CLI |
 | `src/screen2xyz_m1/` | Explicit local PNG review/correction/approval and approved-only export |
 | `src/screen2xyz_m2/` | Merged M2-Live local region watcher with owner-machine gate evidence |
-| `src/screen2xyz_civil/` | Feature-branch Civil Plan Digitizer described above |
+| `src/screen2xyz_civil/` | Feature-branch Civil Plan Digitizer plus in-progress takeoff domain |
 | `tests/` | 42 baseline tests |
 | `tests_m1/` | 34 M1 tests |
 | `tests_m2/` | 498 deterministic M2 tests plus 16 Windows integration tests |
-| `tests_civil/` | 113 deterministic civil tests and synthetic benchmark |
+| `tests_civil/` | 178 deterministic civil tests and synthetic benchmark on the integration branch |
 | `runs/evidence/` | Immutable retained baseline/M1 evidence |
 | `docs/control/` | Current authorization, project state, and next action |
 
-The final standalone validation on 2026-07-29 passed baseline 42/42, M1
-34/34, M2 deterministic 498/498, M2 Windows integration 16/16, Civil
-113/113, retained-evidence verification, and compile. See the Civil worklog
-and project state for the exact scope and remaining external gates.
+The earlier standalone Civil validation passed baseline 42/42, M1 34/34,
+M2 deterministic 498/498, M2 Windows integration 16/16, Civil 113/113,
+retained-evidence verification, and compile before the quantity-takeoff branch.
+The takeoff integration branch subsequently expanded the Civil deterministic
+suite to 178 tests and has passed its CI gate, but runtime/OpenTakeoff/real-plan
+acceptance remain separate gates.
 
 ## Baseline commands
 
@@ -113,6 +135,9 @@ py -3.14 -m screen2xyz_lab.cli verify-evidence
 - The preliminary TIN is not an engineering surface; cut/fill samples are not
   volumes or quantities.
 - AGTEK/Civil 3D/Kubla/LandXML compatibility is not certified.
+- The quantity takeoff integration is not operator-ready until the UI/runtime,
+  multi-sheet/scale-region, real OpenTakeoff protocol, and private real-plan
+  acceptance gates are satisfied.
 - Real drawing validation, default-branch merge, licence selection, and public
   release require separate owner decisions.
 
