@@ -1,6 +1,11 @@
 # Local PDF page/text/vector inspection.
 pypdf==6.14.2
 
+# Self-contained cross-platform PDF rasterization for the Claude/takeoff MCP
+# path. pypdfium2 is Apache-2.0/BSD-3-Clause; Pillow is MIT-CMU.
+pypdfium2==5.13.0
+Pillow==12.3.0
+
 # Estimator-facing XLSX creation and generated-workbook round-trip validation.
 openpyxl==3.1.5
 
