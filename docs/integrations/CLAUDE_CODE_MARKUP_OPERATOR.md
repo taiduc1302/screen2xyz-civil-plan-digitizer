@@ -41,10 +41,10 @@ $env:PYTHONPATH = (Resolve-Path .\src)
 
 PDF image viewing requires Poppler `pdftoppm` on `PATH`. Tesseract is optional for OCR. Node/OpenTakeoff are optional for manual Claude proposals but required for `auto_trace_area`.
 
-Optional OpenTakeoff install:
+Optional OpenTakeoff install. The public package version exercised by this branch's Windows CI is pinned for reproducibility:
 
 ```powershell
-npm install -g opentakeoff-mcp
+npm install -g opentakeoff-mcp@0.9.65
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
@@ -95,18 +95,30 @@ C:\path\to\screen2xyz-civil-plan-digitizer\.venv\Scripts\python.exe `
 
 It speaks MCP over stdio and waits for Claude Code to launch it. Do not start it manually in another terminal unless you are using an MCP Inspector/client.
 
-Claude Code project MCP configuration should launch that exact Python command and pass the `-m screen2xyz_civil mcp --session ...` arguments. Current Claude Code supports project/local MCP servers; verify the connection in Claude Code with `/mcp` before starting the takeoff.
-
-If using the Claude Code CLI to register the server, the common form is:
+For Claude Code, register the local stdio server with the `PYTHONPATH` embedded in the MCP configuration so later Claude sessions do not depend on whatever environment happened to be active in your PowerShell window:
 
 ```powershell
-claude mcp add screen2xyz -- `
-  "C:\path\to\.venv\Scripts\python.exe" `
+claude mcp add --transport stdio `
+  --env "PYTHONPATH=C:\path\to\screen2xyz-civil-plan-digitizer\src" `
+  screen2xyz -- `
+  "C:\path\to\screen2xyz-civil-plan-digitizer\.venv\Scripts\python.exe" `
   -m screen2xyz_civil mcp `
   --session "C:\Tenders\ExampleRoad\ExampleRoad_S03.s2a.json"
 ```
 
-If your installed Claude Code version uses a different scope/config syntax, use `/mcp` and its current help to register the same stdio command. The Screen2XYZ server itself does not depend on Claude-specific business logic.
+Claude Code requires all MCP options before the server name, then `--`, then the actual server command/arguments. Confirm the connection with:
+
+```text
+/mcp
+```
+
+or from the shell:
+
+```powershell
+claude mcp get screen2xyz
+```
+
+If you want this configuration shared at project scope instead, Claude Code also supports a project `.mcp.json`; keep proprietary tender/session paths out of committed configuration. The Screen2XYZ business logic is independent of Claude-specific configuration.
 
 ## 5. Give Claude the operating prompt
 
