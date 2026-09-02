@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .bluebeam_runtime import bluebeam_claude_registration
 from .opentakeoff_runtime import probe_opentakeoff, resolve_opentakeoff_command
 
 
@@ -70,6 +71,21 @@ def environment_report(*, deep: bool = False) -> dict[str, Any]:
     checks.append(_executable("npm", required=False))
     checks.append(_executable("npx", required=False))
 
+    bluebeam = bluebeam_claude_registration()
+    checks.append(
+        {
+            "name": "bluebeam-revu-mcp",
+            "kind": "optional-native-review-bridge",
+            "required": False,
+            "available": bool(bluebeam["available"]),
+            "path": str(bluebeam.get("executable", "")),
+            "status": "PASS" if bluebeam["available"] else "OPTIONAL_MISSING",
+            "capability_state": bluebeam["capability_state"],
+            "live_tested": False,
+            "note": bluebeam["note"],
+        }
+    )
+
     command = resolve_opentakeoff_command()
     checks.append(
         {
@@ -107,11 +123,15 @@ def environment_report(*, deep: bool = False) -> dict[str, Any]:
         "required_failures": required_failures,
         "checks": checks,
         "opentakeoff_deep_probe": deep_probe,
+        "bluebeam": bluebeam,
         "environment": {
             "platform": sys.platform,
             "cwd": str(Path.cwd()),
             "SCREEN2XYZ_OPENTAKEOFF_CMD": os.environ.get(
                 "SCREEN2XYZ_OPENTAKEOFF_CMD", ""
+            ),
+            "SCREEN2XYZ_BLUEBEAM_MCP_EXE": os.environ.get(
+                "SCREEN2XYZ_BLUEBEAM_MCP_EXE", ""
             ),
         },
         "readiness": {
@@ -123,6 +143,7 @@ def environment_report(*, deep: bool = False) -> dict[str, Any]:
                 and command is not None
                 and (deep_probe is None or deep_probe.get("compatible", False))
             ),
+            "bluebeam_mcp_discovered_not_live_tested": bool(bluebeam["available"]),
         },
     }
 
@@ -153,5 +174,10 @@ def format_environment_report(report: dict[str, Any]) -> str:
         lines.append(
             "Claude Code executable was not found; Screen2XYZ can still run/test locally, "
             "but install/configure Claude Code before the operator pilot."
+        )
+    if report.get("bluebeam", {}).get("available"):
+        lines.append(
+            "Bluebeam MCP executable was discovered, but native measurement creation is "
+            "NOT LIVE_TESTED until the owner-machine Length+Area acceptance gate passes."
         )
     return "\n".join(lines)
