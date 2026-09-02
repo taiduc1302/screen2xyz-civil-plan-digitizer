@@ -197,7 +197,7 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
-The current branch freezes the Civil suite at **213 discovered tests**. Tests
+The current branch freezes the Civil suite at **214 discovered tests**. Tests
 that exercise the real OpenTakeoff process or the external Claude-style stdio
 operator path are deliberately skipped in the ordinary deterministic lane and
 are enabled in the separate Windows protocol smoke lane. Synthetic/unit/MCP
@@ -222,7 +222,7 @@ for the larger bid-set/scale-region/runtime/test architecture.
 | `tests/` | 42 baseline tests |
 | `tests_m1/` | 34 M1 tests |
 | `tests_m2/` | 498 deterministic M2 tests plus Windows integration tests |
-| `tests_civil/` | 213 discovered Civil tests on the Claude operator branch, with live lanes gated by environment |
+| `tests_civil/` | 214 discovered Civil tests on the Claude operator branch, with live lanes gated by environment |
 | `docs/control/` | Authorization, current state, and next gate |
 
 ## Claims and release boundary
