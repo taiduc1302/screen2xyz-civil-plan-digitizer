@@ -29,7 +29,7 @@ class McpGatewayTests(unittest.IsolatedAsyncioTestCase):
         save_agent_session(session, session_path)
         return session_path, build_mcp_server(session_path)
 
-    async def test_gateway_exposes_proposal_tools_but_no_approval_tool(self):
+    async def test_gateway_exposes_proposal_and_scope_tools_but_no_approval_tool(self):
         _path, server = self.make_gateway()
         async with Client(server) as client:
             listed = await client.list_tools()
@@ -37,11 +37,13 @@ class McpGatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("propose_line_takeoff", names)
         self.assertIn("propose_polygon_takeoff", names)
         self.assertIn("auto_trace_area", names)
+        self.assertIn("scope_status", names)
+        self.assertIn("account_scope_rule", names)
         self.assertIn("export_bluebeam_markup_plan", names)
         self.assertNotIn("approve_takeoff", names)
         self.assertNotIn("publish_final_export", names)
 
-    async def test_session_status_discloses_human_only_boundary(self):
+    async def test_session_status_discloses_human_only_boundary_and_unsearched_scope(self):
         _path, server = self.make_gateway()
         async with Client(server) as client:
             result = await client.call_tool("session_status", {})
@@ -49,8 +51,10 @@ class McpGatewayTests(unittest.IsolatedAsyncioTestCase):
         payload = result.structured_content
         self.assertEqual(payload["source"]["page_label"], "03")
         self.assertIn("approve final bid quantity", payload["human_only"])
+        self.assertGreater(payload["scope"]["unsearched_count"], 0)
+        self.assertFalse(payload["scope"]["ready_for_coverage_review"])
 
-    async def test_agent_line_proposal_persists_with_scale_blocker(self):
+    async def test_agent_line_proposal_persists_with_scale_blocker_and_accounts_rule(self):
         path, server = self.make_gateway()
         async with Client(server) as client:
             result = await client.call_tool(
@@ -68,6 +72,39 @@ class McpGatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(restored.measurements), 1)
         self.assertIn("SCALE_UNVERIFIED", restored.measurements[0].flags)
         self.assertEqual(restored.measurements[0].bid_item, "33.01")
+        scope = result.structured_content["scope"]
+        row = next(
+            item for item in scope["states"] if item["rule_id"] == "DRIVEWAY_CULVERT_300"
+        )
+        self.assertEqual(row["status"], "PROPOSED")
+
+    async def test_agent_can_account_evidence_backed_absence_without_geometry(self):
+        path, server = self.make_gateway()
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "account_scope_rule",
+                {
+                    "rule_id": "FULL_DEPTH_ASPHALT_RR",
+                    "status": "NOT_PRESENT",
+                    "detail": "No matching full-depth hatch found on the reviewed sheet; legend presence alone is insufficient.",
+                },
+            )
+            self.assertFalse(result.is_error)
+            status = await client.call_tool("scope_status", {})
+        row = next(
+            item
+            for item in status.structured_content["states"]
+            if item["rule_id"] == "FULL_DEPTH_ASPHALT_RR"
+        )
+        self.assertEqual(row["status"], "NOT_PRESENT")
+        restored = load_agent_session(path)
+        self.assertTrue(
+            any(
+                event.get("action") == "SCOPE_STATUS_SET"
+                and event.get("rule_id") == "FULL_DEPTH_ASPHALT_RR"
+                for event in restored.decision_log
+            )
+        )
 
     async def test_anchor_polygon_remains_reference_only(self):
         path, server = self.make_gateway()
@@ -117,6 +154,14 @@ class McpGatewayTests(unittest.IsolatedAsyncioTestCase):
         restored = load_agent_session(path)
         self.assertIn("MIXED", restored.measurements[0].flags)
         self.assertEqual(restored.context.unresolved_summary()["error_count"], 1)
+
+    async def test_takeoff_qa_includes_scope_coverage(self):
+        _path, server = self.make_gateway()
+        async with Client(server) as client:
+            result = await client.call_tool("takeoff_qa", {})
+        self.assertFalse(result.is_error)
+        self.assertIn("scope", result.structured_content)
+        self.assertGreater(result.structured_content["scope"]["unsearched_count"], 0)
 
     async def test_sheet_text_is_explicitly_untrusted_evidence(self):
         _path, server = self.make_gateway()
