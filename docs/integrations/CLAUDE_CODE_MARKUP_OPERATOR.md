@@ -27,6 +27,8 @@ This first runnable agent session is **one PDF page with one scale context**. Do
 
 For Example Road Sheet 03, use the pilot only after the estimator has confirmed the relevant plan scale and independently checked it against a known dimension in Bluebeam/Revu.
 
+Use one writer for one `.s2a.json` session during this pilot. Do not run two independent Claude/Screen2XYZ MCP processes that mutate the same session at the same time.
+
 ## 1. One-time Windows setup
 
 From the repository root:
@@ -88,18 +90,16 @@ You can also calibrate using two clicked/render coordinates and later run `agent
 
 ## 4. Connect Claude Code
 
-The local server command is:
+First let Screen2XYZ generate the exact registration commands for the current interpreter, repository path, session, and locally installed Revu MCP executable:
 
 ```powershell
-$env:PYTHONPATH = "C:\path\to\screen2xyz-civil-plan-digitizer\src"
-C:\path\to\screen2xyz-civil-plan-digitizer\.venv\Scripts\python.exe `
-  -m screen2xyz_civil mcp `
+.\.venv\Scripts\python.exe -m screen2xyz_civil agent-claude-config `
   --session "C:\Tenders\ExampleRoad\ExampleRoad_S03.s2a.json"
 ```
 
-It speaks MCP over stdio and waits for Claude Code to launch it. Do not start it manually in another terminal unless you are using an MCP Inspector/client.
+The command never edits Claude configuration itself. Copy/run the emitted `screen2xyz` command once, then verify it with `/mcp` or `claude mcp get screen2xyz`.
 
-For Claude Code, register the local stdio server with the `PYTHONPATH` embedded in the MCP configuration so later Claude sessions do not depend on whatever environment happened to be active in your PowerShell window:
+The equivalent manual Screen2XYZ registration is:
 
 ```powershell
 claude mcp add --transport stdio `
@@ -110,19 +110,28 @@ claude mcp add --transport stdio `
   --session "C:\Tenders\ExampleRoad\ExampleRoad_S03.s2a.json"
 ```
 
-Claude Code requires all MCP options before the server name, then `--`, then the actual server command/arguments. Confirm the connection with:
+Claude Code requires all MCP options before the server name, then `--`, then the actual server command/arguments.
 
-```text
-/mcp
-```
+### Candidate Bluebeam MCP registration in Claude Code
 
-or from the shell:
+Bluebeam's current Revu documentation directly supports Claude Desktop and separately documents the local stdio executable used by AnythingLLM:
 
-```powershell
-claude mcp get screen2xyz
-```
+`C:\Program Files\Bluebeam Software\Bluebeam Revu\21\Revu\mcp\Bluebeam MCP Server.exe`
 
-If you want this configuration shared at project scope instead, Claude Code also supports a project `.mcp.json`; keep proprietary tender/session paths out of committed configuration. The Screen2XYZ business logic is independent of Claude-specific configuration.
+Claude Code supports arbitrary local stdio MCP servers. Therefore `agent-claude-config` also emits a candidate `bluebeam-revu` registration when this executable exists. This is an interoperability route inferred from the two documented stdio contracts, **not** a Bluebeam-published Claude Code certification.
+
+Before trying it:
+
+1. use Revu 21.10+ with the required Bluebeam plan;
+2. enable Revu MCP in `Revu > Preferences > Admin > MCP`;
+3. keep the intended editable local PDF active in Revu;
+4. register the emitted `bluebeam-revu` command in Claude Code;
+5. confirm `/mcp` actually lists Bluebeam tools;
+6. run `BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md` before production measurement creation.
+
+A discovered executable or visible tool list establishes at most a candidate/current surface. Only a disposable native Length + native Area create/save/readback pass establishes `LIVE_TESTED` measurement creation on that machine.
+
+If Revu is installed elsewhere, set `SCREEN2XYZ_BLUEBEAM_MCP_EXE` to the exact MCP executable and rerun `doctor` / `agent-claude-config`.
 
 ## 5. Give Claude the operating prompt
 
@@ -148,7 +157,7 @@ For current Sheet 03 examples the first-pass rules include:
 - `DITCH_REGRADE` and `DITCH_RELOCATION`: separate traces; a mixed trace is `MIXED/UNRESOLVED`;
 - `ANCHOR_ROADWORKS_EXTENT`: QA/reference only, `DO NOT SUM`.
 
-Claude must not call the sheet complete merely because an anchor exists. Coverage means each expected visible scope is either `PROPOSED`, explicitly `WITHHELD/QUESTION`, or clearly `NOT PRESENT`; a silent miss is a failure.
+Claude must not call the sheet complete merely because an anchor exists. Coverage means each expected visible scope is either `PROPOSED`, explicitly `WITHHELD/QUESTION`, or clearly `NOT PRESENT`; a silent miss is a failure. Because the current machine ledger is rule-level, Claude must also perform a final **instance-level visual pass** (for example, verify both North and South culverts rather than treating one culvert as coverage for the whole culvert rule).
 
 ## 7. Bluebeam handoff
 
@@ -189,6 +198,14 @@ The pilot is ready for a real operator test when:
 4. `session_status`, `view_sheet`, manual proposal tools, save/reopen, and `agent-plan` work locally;
 5. `doctor --deep` reports OpenTakeoff compatible if `auto_trace_area` will be used;
 6. the estimator has independently verified the page/viewport scale;
-7. native Bluebeam creation/readback is executed through the current proven Revu route, not assumed from the Screen2XYZ JSON.
+7. if native Bluebeam MCP creation is desired, `/mcp` shows the actual Bluebeam tools and the disposable Length+Area create/save/readback acceptance gate passes;
+8. if that Bluebeam gate does not pass, Claude stops at the Screen2XYZ plan or uses a separate proven GUI operator path instead of pretending native markups were created.
 
 A successful single Sheet 03 pilot is the gate before generalizing to multi-document bid sets, per-viewport scale regions, and automated Bluebeam-native creation.
+
+## References for the host boundary
+
+- Bluebeam Revu MCP overview: `https://support.bluebeam.com/revu/resources/revu-mcp.html`
+- Bluebeam Claude Desktop setup: `https://support.bluebeam.com/revu/how-to/mcp-claude.html`
+- Bluebeam AnythingLLM setup (documents the local MCP executable path): `https://support.bluebeam.com/revu/how-to/mcp-anything.html`
+- Anthropic Claude Code MCP: `https://docs.anthropic.com/en/docs/claude-code/mcp`
