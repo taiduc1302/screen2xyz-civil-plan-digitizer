@@ -74,16 +74,19 @@ $env:PYTHONPATH = (Resolve-Path .\src)
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor
 ```
 
-Required for PDF sheet images: Poppler `pdftoppm` on `PATH`. Tesseract is
-optional. Claude Code is reported by `doctor` as the optional operator client.
-OpenTakeoff/Node are optional for manual Claude line/polygon proposals but
-required for `auto_trace_area`.
+The Claude/operator sheet-image path uses the pinned `pypdfium2` + Pillow
+packages in `requirements-civil.txt`, so a separate Poppler install is not
+required for this pilot. Existing legacy Civil rendering can still use Poppler
+`pdftoppm` when it is already available. Tesseract is optional. Claude Code is
+reported by `doctor` as the optional operator client. OpenTakeoff/Node are
+optional for manual Claude line/polygon proposals but required for
+`auto_trace_area`.
 
-Optional OpenTakeoff setup. The Windows CI protocol lane pins the public npm
-package version below so the operator environment is reproducible:
+Optional OpenTakeoff setup. The Windows CI protocol lane pins the reviewed
+public npm package version below so the operator environment is reproducible:
 
 ```powershell
-npm install -g opentakeoff-mcp@0.9.65
+npm install -g opentakeoff-mcp@0.9.68
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
@@ -170,8 +173,8 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
-The current branch freezes the Civil suite at **201 discovered tests**. Tests
-that exercise the real OpenTakeoff process or real Poppler-backed external
+The current branch freezes the Civil suite at **210 discovered tests**. Tests
+that exercise the real OpenTakeoff process or the external Claude-style stdio
 operator path are deliberately skipped in the ordinary deterministic lane and
 are enabled in the separate Windows protocol smoke lane. Synthetic/unit/MCP
 results are pipeline and contract evidence, not real-drawing takeoff accuracy.
@@ -195,7 +198,7 @@ for the larger bid-set/scale-region/runtime/test architecture.
 | `tests/` | 42 baseline tests |
 | `tests_m1/` | 34 M1 tests |
 | `tests_m2/` | 498 deterministic M2 tests plus Windows integration tests |
-| `tests_civil/` | 201 discovered Civil tests on the Claude operator branch, with live lanes gated by environment |
+| `tests_civil/` | 210 discovered Civil tests on the Claude operator branch, with live lanes gated by environment |
 | `docs/control/` | Authorization, current state, and next gate |
 
 ## Claims and release boundary
