@@ -48,6 +48,8 @@ It currently provides:
   correction history;
 - MCP `view_sheet`, PDF text/vector evidence, proposal/edit/QA tools;
 - optional real OpenTakeoff MCP `one_click` area tracing when installed;
+- local discovery of the installed Bluebeam MCP executable plus copy/paste
+  Claude Code registration output, without claiming native measurement success;
 - deterministic Bluebeam markup-plan export with Subject/Label/Comment
   traceability and an explicit `ANCHOR - DO NOT SUM` policy;
 - **no ordinary MCP tool for estimator approval or final bid publication**.
@@ -125,11 +127,33 @@ second-dimension path when exact coordinates are available.
 
 ## Connect Claude Code
 
-Screen2XYZ serves the session over local MCP stdio. Register it with Claude
-Code using the current documented option order: MCP options first, then the
-server name, then `--`, then the subprocess command. Embed `PYTHONPATH` in the
-MCP registration so future Claude sessions do not depend on a temporary shell
-environment:
+The easiest operator setup is to let Screen2XYZ print the exact commands for
+this session:
+
+```powershell
+.\.venv\Scripts\python.exe -m screen2xyz_civil agent-claude-config `
+  --session "C:\Tenders\Project\Project_S03.s2a.json"
+```
+
+It always prints the local `screen2xyz` stdio registration. If the standard
+Revu 21 Bluebeam MCP executable is installed, it also prints a candidate
+`bluebeam-revu` stdio registration command.
+
+Bluebeam currently documents Claude Desktop directly and documents the local
+`Bluebeam MCP Server.exe` stdio executable for AnythingLLM. Claude Code supports
+arbitrary local stdio MCP servers, so Screen2XYZ exposes the same executable as
+an **experimental host route**. Discovery/registration is not `LIVE_TESTED`
+measurement capability. Revu must have MCP enabled, the intended PDF must be
+active, `/mcp` must show the actual Bluebeam tool surface, and the disposable
+Length+Area create/save/readback gate in
+[`BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md`](docs/integrations/BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md)
+must pass before production native measurement creation.
+
+If automatic discovery misses a nonstandard Revu install, set
+`SCREEN2XYZ_BLUEBEAM_MCP_EXE` to the exact local executable path and rerun
+`doctor` / `agent-claude-config`.
+
+The underlying Screen2XYZ command can also be registered manually:
 
 ```powershell
 claude mcp add --transport stdio `
@@ -173,7 +197,7 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
-The current branch freezes the Civil suite at **210 discovered tests**. Tests
+The current branch freezes the Civil suite at **213 discovered tests**. Tests
 that exercise the real OpenTakeoff process or the external Claude-style stdio
 operator path are deliberately skipped in the ordinary deterministic lane and
 are enabled in the separate Windows protocol smoke lane. Synthetic/unit/MCP
@@ -198,13 +222,14 @@ for the larger bid-set/scale-region/runtime/test architecture.
 | `tests/` | 42 baseline tests |
 | `tests_m1/` | 34 M1 tests |
 | `tests_m2/` | 498 deterministic M2 tests plus Windows integration tests |
-| `tests_civil/` | 210 discovered Civil tests on the Claude operator branch, with live lanes gated by environment |
+| `tests_civil/` | 213 discovered Civil tests on the Claude operator branch, with live lanes gated by environment |
 | `docs/control/` | Authorization, current state, and next gate |
 
 ## Claims and release boundary
 
 - Synthetic tests are not evidence of real-plan accuracy.
 - A green MCP test does not prove native Bluebeam markup creation.
+- A discovered Bluebeam MCP executable or successful Claude registration does not prove native measurement create/save/readback.
 - OpenTakeoff confidence is a review prioritizer, not estimator verification.
 - `ANCHOR - DO NOT SUM` is QA/reference geometry and never a bid total.
 - Scale-dependent QA requires both resolved and independently verified scale.
