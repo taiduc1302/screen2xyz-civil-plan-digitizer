@@ -14,7 +14,7 @@ on:
 #
 # Screen2XYZ targets Windows only (Windows.Media.Ocr, PrintWindow). The
 # baseline and M1 OCR suites invoke powershell.exe, so the deterministic suite
-# runs on windows-latest. The OpenTakeoff job installs a fixed public npm build
+# runs on windows-latest. The OpenTakeoff job installs fixed public tool builds
 # only to prove the real stdio MCP process/protocol against an owned synthetic
 # PDF; it does not establish real-drawing or Bluebeam accuracy.
 
@@ -65,6 +65,9 @@ jobs:
       - name: Install Screen2XYZ dependencies
         shell: bash
         run: python -m pip install -r requirements-civil.txt
+      - name: Install fixed Poppler renderer
+        shell: powershell
+        run: choco install poppler --version=26.6.0 -y --no-progress
       - name: Install fixed public OpenTakeoff MCP build
         shell: bash
         run: npm install -g opentakeoff-mcp@0.9.65
