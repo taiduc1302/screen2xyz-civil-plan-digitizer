@@ -292,7 +292,10 @@ def main(argv: list[str] | None = None) -> int:
         if command == "agent-plan":
             from .agent_session import export_bluebeam_plan, load_agent_session
             from .scope_ledger import scope_summary
-            from .working_copy import working_copy_status
+            from .working_copy import (
+                bind_working_copy_to_markup_plan,
+                working_copy_status,
+            )
 
             path = Path(args.session)
             session = load_agent_session(path)
@@ -301,7 +304,8 @@ def main(argv: list[str] | None = None) -> int:
                 if args.out
                 else path.with_name(path.name[: -len(".s2a.json")] + ".bluebeam-markup-plan.json")
             )
-            identity = export_bluebeam_plan(session, target, replace=True)
+            export_bluebeam_plan(session, target, replace=True)
+            identity = bind_working_copy_to_markup_plan(session, target)
             print(
                 json.dumps(
                     {
