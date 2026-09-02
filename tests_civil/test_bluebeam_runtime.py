@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import io
+import json
+import os
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
+from screen2xyz_civil.agent_session import new_agent_session, save_agent_session
 from screen2xyz_civil.bluebeam_runtime import (
     BLUEBEAM_OVERRIDE_ENV,
     bluebeam_claude_registration,
@@ -10,8 +16,9 @@ from screen2xyz_civil.bluebeam_runtime import (
     claude_stdio_add_command,
     resolve_bluebeam_mcp_executable,
 )
+from screen2xyz_civil.cli import main
 
-from .helpers_civil import fresh_dir
+from .helpers_civil import fresh_dir, make_vector_pdf
 
 
 class BluebeamRuntimeTests(unittest.TestCase):
@@ -55,6 +62,39 @@ class BluebeamRuntimeTests(unittest.TestCase):
         self.assertIn("--env 'PYTHONPATH=C:\\Repo With Space\\src'", command)
         self.assertIn("screen2xyz -- 'C:\\Tools With Space\\python.exe'", command)
         self.assertIn("'C:\\Tender\\S 03.s2a.json'", command)
+
+    def test_agent_claude_config_reports_both_routes_without_mutating_them(self):
+        root = fresh_dir()
+        pdf = make_vector_pdf(root / "operator.pdf", text="PLAN 1:250")
+        session = new_agent_session(
+            pdf,
+            page_number=1,
+            page_label="03",
+            name="Synthetic operator",
+            now="2026-09-02T19:30:00+00:00",
+        )
+        session_path = root / "operator.s2a.json"
+        save_agent_session(session, session_path)
+        bluebeam = root / "Bluebeam MCP Server.exe"
+        bluebeam.write_bytes(b"synthetic-test-placeholder")
+        output = io.StringIO()
+        with patch.dict(os.environ, {BLUEBEAM_OVERRIDE_ENV: str(bluebeam)}):
+            with redirect_stdout(output):
+                rc = main(
+                    [
+                        "agent-claude-config",
+                        "--session",
+                        str(session_path),
+                        "--json",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["session"]["page_label"], "03")
+        self.assertIn("screen2xyz", payload["screen2xyz"]["claude_command"])
+        self.assertTrue(payload["bluebeam"]["available"])
+        self.assertFalse(payload["bluebeam"]["live_tested"])
+        self.assertIn("bluebeam-revu", payload["bluebeam"]["claude_command"])
 
 
 if __name__ == "__main__":
