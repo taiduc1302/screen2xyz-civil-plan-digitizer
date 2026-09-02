@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from pypdf import PdfReader, PdfWriter
 
 from screen2xyz_civil.agent_session import (
+    export_bluebeam_plan,
     load_agent_session,
     new_agent_session,
     save_agent_session,
@@ -12,6 +14,7 @@ from screen2xyz_civil.agent_session import (
 from screen2xyz_civil.io_utils import sha256_file
 from screen2xyz_civil.working_copy import (
     WorkingCopyError,
+    bind_working_copy_to_markup_plan,
     create_working_copy,
     register_working_copy,
     working_copy_status,
@@ -66,8 +69,10 @@ class WorkingCopyTests(unittest.TestCase):
         writer = PdfWriter()
         writer.append_pages_from_reader(reader)
         writer.add_metadata({"/Producer": "Synthetic Revu annotation-save analogue"})
-        with working.open("wb") as handle:
+        rewritten = root / "rewritten.pdf"
+        with rewritten.open("wb") as handle:
             writer.write(handle)
+        rewritten.replace(working)
 
         self.assertNotEqual(initial, sha256_file(working))
         self.assertEqual(session.source_sha256, sha256_file(source))
@@ -105,6 +110,23 @@ class WorkingCopyTests(unittest.TestCase):
         _root, source, _session_path, session = self.make_session()
         with self.assertRaisesRegex(WorkingCopyError, "separate file"):
             register_working_copy(session, source, now=NOW)
+
+    def test_markup_plan_embeds_immutable_source_and_revu_target_contract(self):
+        root, source, _session_path, session = self.make_session()
+        working = root / "TAKEOFF_WORKING.pdf"
+        create_working_copy(session, working, now=NOW)
+        plan = root / "sheet03.bluebeam-markup-plan.json"
+        export_bluebeam_plan(session, plan)
+        identity = bind_working_copy_to_markup_plan(session, plan)
+        self.assertEqual(identity["sha256"], sha256_file(plan))
+        payload = json.loads(plan.read_text(encoding="utf-8"))
+        contract = payload["document_contract"]
+        self.assertEqual(contract["immutable_source"]["path"], str(source.resolve()))
+        self.assertEqual(
+            contract["bluebeam_working_copy"]["path"], str(working.resolve())
+        )
+        self.assertTrue(contract["native_bluebeam_target_ready"])
+        self.assertIn("NEVER_MUTATE_IMMUTABLE_SOURCE", contract["policy"])
 
 
 if __name__ == "__main__":
