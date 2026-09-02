@@ -75,13 +75,15 @@ $env:PYTHONPATH = (Resolve-Path .\src)
 ```
 
 Required for PDF sheet images: Poppler `pdftoppm` on `PATH`. Tesseract is
-optional. OpenTakeoff/Node are optional for manual Claude line/polygon
-proposals but required for `auto_trace_area`.
+optional. Claude Code is reported by `doctor` as the optional operator client.
+OpenTakeoff/Node are optional for manual Claude line/polygon proposals but
+required for `auto_trace_area`.
 
-Optional OpenTakeoff setup:
+Optional OpenTakeoff setup. The Windows CI protocol lane pins the public npm
+package version below so the operator environment is reproducible:
 
 ```powershell
-npm install -g opentakeoff-mcp
+npm install -g opentakeoff-mcp@0.9.65
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
@@ -120,26 +122,28 @@ second-dimension path when exact coordinates are available.
 
 ## Connect Claude Code
 
-Screen2XYZ serves the session over local MCP stdio:
+Screen2XYZ serves the session over local MCP stdio. Register it with Claude
+Code using the current documented option order: MCP options first, then the
+server name, then `--`, then the subprocess command. Embed `PYTHONPATH` in the
+MCP registration so future Claude sessions do not depend on a temporary shell
+environment:
 
 ```powershell
-$env:PYTHONPATH = "C:\path\to\screen2xyz-civil-plan-digitizer\src"
-C:\path\to\screen2xyz-civil-plan-digitizer\.venv\Scripts\python.exe `
+claude mcp add --transport stdio `
+  --env "PYTHONPATH=C:\path\to\screen2xyz-civil-plan-digitizer\src" `
+  screen2xyz -- `
+  "C:\path\to\screen2xyz-civil-plan-digitizer\.venv\Scripts\python.exe" `
   -m screen2xyz_civil mcp `
   --session "C:\Tenders\Project\Project_S03.s2a.json"
 ```
 
-Register that command as the `screen2xyz` MCP server in Claude Code. A common
-CLI form is:
+Confirm the connection with Claude Code `/mcp` or:
 
 ```powershell
-claude mcp add screen2xyz -- `
-  "C:\path\to\.venv\Scripts\python.exe" `
-  -m screen2xyz_civil mcp `
-  --session "C:\Tenders\Project\Project_S03.s2a.json"
+claude mcp get screen2xyz
 ```
 
-Confirm the connection with Claude Code `/mcp`, then use
+Then use
 [`prompts/CLAUDE_CODE_BLUEBEAM_TAKEOFF_PROMPT.md`](prompts/CLAUDE_CODE_BLUEBEAM_TAKEOFF_PROMPT.md).
 Full operator/setup detail is in
 [`docs/integrations/CLAUDE_CODE_MARKUP_OPERATOR.md`](docs/integrations/CLAUDE_CODE_MARKUP_OPERATOR.md).
@@ -166,13 +170,15 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
-The current branch freezes the deterministic Civil suite at **196 tests**.
-Synthetic/unit/MCP-in-memory results are pipeline and contract evidence, not
-real-drawing takeoff accuracy. The private acceptance gate is an
-estimator-reviewed plan such as King Road Sheet 03 compared against Bluebeam,
-with expected-item coverage, silent misses, rule correctness, quantity error,
-geometry corrections, withheld items, and native Revu readback recorded
-without committing the proprietary drawing.
+The current branch freezes the Civil suite at **201 discovered tests**. Tests
+that exercise the real OpenTakeoff process or real Poppler-backed external
+operator path are deliberately skipped in the ordinary deterministic lane and
+are enabled in the separate Windows protocol smoke lane. Synthetic/unit/MCP
+results are pipeline and contract evidence, not real-drawing takeoff accuracy.
+The private acceptance gate is an estimator-reviewed plan such as King Road
+Sheet 03 compared against Bluebeam, with expected-item coverage, silent misses,
+rule correctness, quantity error, geometry corrections, withheld items, and
+native Revu readback recorded without committing the proprietary drawing.
 
 See
 [`RUNTIME_OPERATOR_TEST_MODEL.md`](docs/integrations/RUNTIME_OPERATOR_TEST_MODEL.md)
@@ -189,7 +195,7 @@ for the larger bid-set/scale-region/runtime/test architecture.
 | `tests/` | 42 baseline tests |
 | `tests_m1/` | 34 M1 tests |
 | `tests_m2/` | 498 deterministic M2 tests plus Windows integration tests |
-| `tests_civil/` | 196-test frozen Civil suite on the Claude operator branch |
+| `tests_civil/` | 201 discovered Civil tests on the Claude operator branch, with live lanes gated by environment |
 | `docs/control/` | Authorization, current state, and next gate |
 
 ## Claims and release boundary
