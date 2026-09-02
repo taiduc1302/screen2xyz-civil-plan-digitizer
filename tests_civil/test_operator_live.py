@@ -18,7 +18,7 @@ NOW = "2026-09-02T20:40:00+00:00"
 
 @unittest.skipUnless(
     RUN_LIVE,
-    "live operator smoke requires SCREEN2XYZ_RUN_OPERATOR_LIVE=1 and Poppler",
+    "live operator smoke requires SCREEN2XYZ_RUN_OPERATOR_LIVE=1",
 )
 class OperatorLiveTests(unittest.IsolatedAsyncioTestCase):
     async def test_external_stdio_can_view_sheet_and_persist_proposal(self):
