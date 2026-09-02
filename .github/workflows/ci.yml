@@ -14,9 +14,10 @@ on:
 #
 # Screen2XYZ targets Windows only (Windows.Media.Ocr, PrintWindow). The
 # baseline and M1 OCR suites invoke powershell.exe, so the deterministic suite
-# runs on windows-latest. The OpenTakeoff job installs fixed public tool builds
-# only to prove the real stdio MCP process/protocol against an owned synthetic
-# PDF; it does not establish real-drawing or Bluebeam accuracy.
+# runs on windows-latest. The operator job installs fixed public tool builds
+# only to prove real stdio MCP, sheet-image rendering, proposal persistence,
+# and OpenTakeoff protocol flow against owned synthetic PDFs; it does not
+# establish real-drawing or Bluebeam accuracy.
 
 jobs:
   deterministic:
@@ -52,7 +53,7 @@ jobs:
           PYTHONPATH=src python -m unittest tests_m2.test_profiles_privacy
 
   opentakeoff-protocol:
-    name: real OpenTakeoff MCP synthetic smoke
+    name: real Claude-style MCP + OpenTakeoff synthetic smoke
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +75,12 @@ jobs:
       - name: Deep environment / MCP tool-contract probe
         shell: bash
         run: PYTHONPATH=src python -m screen2xyz_civil doctor --deep
-      - name: Real stdio MCP + synthetic One-Click smoke
+      - name: External stdio MCP sheet-image + proposal smoke
+        shell: bash
+        env:
+          SCREEN2XYZ_RUN_OPERATOR_LIVE: '1'
+        run: PYTHONPATH=src python -m unittest tests_civil.test_operator_live -v
+      - name: Real OpenTakeoff stdio MCP + synthetic One-Click smoke
         shell: bash
         env:
           SCREEN2XYZ_RUN_OPENTAKEOFF_LIVE: '1'
