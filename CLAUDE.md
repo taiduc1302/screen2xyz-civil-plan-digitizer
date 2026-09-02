@@ -7,6 +7,7 @@ For civil takeoff / Bluebeam markup work, also read:
 - `docs/control/PROJECT_STATE.md`
 - `docs/control/NEXT_ACTION.md`
 - `docs/integrations/CLAUDE_CODE_MARKUP_OPERATOR.md`
+- `docs/integrations/BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md`
 - `prompts/CLAUDE_CODE_BLUEBEAM_TAKEOFF_PROMPT.md`
 
 ## Product boundary
@@ -29,9 +30,13 @@ When the user asks you to create, improve, audit, or complete takeoff markups an
 
 ## Bluebeam discipline
 
-Treat Bluebeam capability as three separate facts: product-documented, currently exposed, and live-tested. Native measurement creation through an MCP connector is allowed only when the needed path is actually exposed and end-to-end live-tested for the current environment, with resolved and independently verified scale. Otherwise use the proven Revu GUI measurement path.
+Bluebeam documents measurement capability in Revu 21.10, but treat capability as three separate facts: `PRODUCT_DOCUMENTED`, `CURRENT_SURFACE_EXPOSED`, and `LIVE_TESTED`. Discover the current MCP tool schemas at runtime rather than inventing names/arguments.
 
-After native Bluebeam create/edit/property operations, read the saved markup back and verify its page, Subject/Label/Comment, measurement intent/type, unit, live computed quantity, and geometry where available.
+Before mass-creating native Length/Area measurements on a machine where the exact path has not yet passed, execute `docs/integrations/BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md` using disposable test measurements. Native measurement creation through MCP is allowed for production only after the needed path is actually exposed and create/save/readback has passed with resolved and independently verified scale. Otherwise use the proven Revu GUI measurement path when such a GUI/computer tool is actually available; if neither safe path exists, stop at the Screen2XYZ markup plan and state the blocker.
+
+If a Bluebeam MCP server is connected, list existing markups on the active page before improving them. Preserve a markup ID when a safe edit suffices; do not create duplicates just because replacement is easier. Never try to bypass locked/read-only/Studio ownership restrictions.
+
+After native Bluebeam create/edit/property operations, read the saved markup back and verify its page, Subject/Comment, measurement intent/type, unit, live computed quantity, and geometry where available.
 
 `ANCHOR_ROADWORKS_EXTENT` / `ANCHOR - DO NOT SUM` is QA/reference geometry and must never be included in bid totals.
 
