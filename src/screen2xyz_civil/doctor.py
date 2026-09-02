@@ -59,6 +59,7 @@ def environment_report(*, deep: bool = False) -> dict[str, Any]:
         checks.append(_module(name, required=required))
     checks.append(_executable("pdftoppm", required=True))
     checks.append(_executable("tesseract", required=False))
+    checks.append(_executable("claude", required=False))
     checks.append(_executable("node", required=False))
     checks.append(_executable("npm", required=False))
     checks.append(_executable("npx", required=False))
@@ -92,6 +93,9 @@ def environment_report(*, deep: bool = False) -> dict[str, Any]:
     required_failures = [
         item["name"] for item in checks if item["required"] and item["status"] != "PASS"
     ]
+    claude_available = any(
+        item["name"] == "claude" and item["available"] for item in checks
+    )
     return {
         "overall": "PASS" if not required_failures else "FAIL",
         "required_failures": required_failures,
@@ -105,6 +109,8 @@ def environment_report(*, deep: bool = False) -> dict[str, Any]:
             ),
         },
         "readiness": {
+            "screen2xyz_mcp_server": not required_failures,
+            "claude_code_client": bool(not required_failures and claude_available),
             "manual_agent_proposals": not required_failures,
             "opentakeoff_auto_trace": bool(
                 not required_failures
@@ -136,5 +142,10 @@ def format_environment_report(report: dict[str, Any]) -> str:
     if report["required_failures"]:
         lines.append("Required failures: " + ", ".join(report["required_failures"]))
     else:
-        lines.append("Required local runtime checks passed.")
+        lines.append("Required local Screen2XYZ runtime checks passed.")
+    if not report["readiness"]["claude_code_client"]:
+        lines.append(
+            "Claude Code executable was not found; Screen2XYZ can still run/test locally, "
+            "but install/configure Claude Code before the operator pilot."
+        )
     return "\n".join(lines)
