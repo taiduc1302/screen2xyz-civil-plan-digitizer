@@ -39,6 +39,7 @@ class McpGatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("auto_trace_area", names)
         self.assertIn("scope_status", names)
         self.assertIn("account_scope_rule", names)
+        self.assertIn("bluebeam_working_copy_status", names)
         self.assertIn("export_bluebeam_markup_plan", names)
         self.assertNotIn("approve_takeoff", names)
         self.assertNotIn("publish_final_export", names)
@@ -50,6 +51,8 @@ class McpGatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.is_error)
         payload = result.structured_content
         self.assertEqual(payload["source"]["page_label"], "03")
+        self.assertEqual(payload["source"]["role"], "IMMUTABLE_DRAWING_EVIDENCE")
+        self.assertFalse(payload["bluebeam_working_copy"]["configured"])
         self.assertIn("approve final bid quantity", payload["human_only"])
         self.assertGreater(payload["scope"]["unsearched_count"], 0)
         self.assertFalse(payload["scope"]["ready_for_coverage_review"])
@@ -161,6 +164,7 @@ class McpGatewayTests(unittest.IsolatedAsyncioTestCase):
             result = await client.call_tool("takeoff_qa", {})
         self.assertFalse(result.is_error)
         self.assertIn("scope", result.structured_content)
+        self.assertIn("bluebeam_working_copy", result.structured_content)
         self.assertGreater(result.structured_content["scope"]["unsearched_count"], 0)
 
     async def test_sheet_text_is_explicitly_untrusted_evidence(self):
