@@ -3,87 +3,152 @@
 | Field | Current value |
 |---|---|
 | Date | 2026-09-02 |
-| Project version | v0.2 baseline + M1 + M2 preserved; Civil Plan Digitizer parent branch plus review-first civil quantity-takeoff integration under test |
-| Lifecycle phase | Private feature integration; no default-branch merge or public release |
-| Current `main` observed by integration PR | `5525a29b3c1c643a31804f6e7cf8aa8bd6786ce6` |
-| Civil parent branch | `feature/assisted-c03-validation` at integration merge-base `dcf2cf00c972b503558426b17b6ec51460617f01` |
-| Active integration branch | `integration/open-source-takeoff-stack` |
-| Clean review PR | Draft PR #7 -> `feature/assisted-c03-validation` |
-| CI harness PR | Draft PR #6 -> `main`; CI-only, do not merge |
-| Civil authorization | OD-006; implementation, tests, docs, local/feature commits, and justified dependencies authorized; default-branch merge/release remain owner gates |
-| Latest integration verification | GitHub CI run #39 on code commit `a07d3ec18d2e2ae323b3f61a5a589fe365a0a044`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count 178, retained-evidence verification PASS, privacy/sanitization PASS, Windows real-worker integration PASS |
-| Current integration head | `a70d9d85371a20aa5a99a7554caf75cd7410c0bc`; difference from tested code commit above is ConstructDrawingAI clean-room review documentation only |
-| Output classification | Conceptual and preliminary estimating data only; no real-plan accuracy or certified engineering/survey claim |
+| Project version | v0.2 baseline + M1 + M2 preserved; Civil Plan Digitizer plus review-first civil takeoff/Claude operator pilot |
+| Lifecycle phase | Private feature pilot; owner-machine acceptance required before default-branch merge or production Bluebeam claims |
+| Current `main` observed by CI harness | `5525a29b3c1c643a31804f6e7cf8aa8bd6786ce6` |
+| Civil parent/default feature branch | `feature/assisted-c03-validation` |
+| Integration base | `integration/open-source-takeoff-stack` at `709460d095a8316f43bfe1f00d89c7b47c4fda33` |
+| Active operator branch | `feature/claude-markup-operator-real3` |
+| Clean review PR | Draft PR #8 -> `integration/open-source-takeoff-stack`; keep Draft until owner-machine acceptance |
+| CI harness PR | Draft PR #9 -> `main`; CI-only, **DO NOT MERGE** |
+| Civil authorization | OD-006; implementation, tests, docs, feature commits, and justified dependencies authorized; default-branch merge/release remain owner gates |
+| Latest fully green code verification | GitHub CI run #130 on `0204f34287ee73c46def456e8239b0f88ce73a49`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count **214**, retained-evidence/privacy scans PASS, headless Windows integration PASS, external Claude-style Screen2XYZ stdio MCP PASS, real OpenTakeoff 0.9.68 stdio/One-Click synthetic smoke PASS |
+| Output classification | Conceptual/preliminary estimating data until estimator review; no real-plan accuracy or native-Bluebeam certification claim |
 
 ## Current sources of truth
 
 - `AGENTS.md` - repository and parent-agent working rules.
+- `CLAUDE.md` - repository rules for Claude Code.
 - `docs/control/OWNER_DECISIONS.md` - owner authorizations, including OD-006.
-- `docs/control/PROJECT_STATE.md` - current integration status.
-- `docs/control/NEXT_ACTION.md` - next controlled validation gate.
-- `docs/civil-plan-digitizer/` - existing Civil Plan Digitizer architecture, decisions, QA, limitations, and worklog.
-- `docs/integrations/UPSTREAM_TAKEOFF_STACK.md` - fixed upstream snapshots and license boundary.
-- `docs/integrations/TAKEOFF_INTEGRATION_PLAN.md` - civil quantity integration design/phase plan.
+- `docs/control/PROJECT_STATE.md` - current operator/integration status.
+- `docs/control/NEXT_ACTION.md` - owner-machine acceptance gate.
+- `docs/civil-plan-digitizer/` - preserved Civil Plan Digitizer architecture and terrain-point workflow.
+- `docs/integrations/UPSTREAM_TAKEOFF_STACK.md` - pinned upstream/license boundary.
+- `docs/integrations/RUNTIME_OPERATOR_TEST_MODEL.md` - target runtime/operator/test architecture.
+- `docs/integrations/CLAUDE_CODE_MARKUP_OPERATOR.md` - installation and operator runbook.
+- `docs/integrations/BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md` - native Revu create/save/readback gate.
+- `prompts/CLAUDE_CODE_BLUEBEAM_TAKEOFF_PROMPT.md` - full Claude Code task prompt.
 - `docs/integrations/CONSTRUCTDRAWINGAI_IDEA_REVIEW.md` - clean-room comparison and independently implemented ideas.
 
-## Preserved integrated work
+## Preserved product lines
 
-- The sealed synthetic baseline and retained evidence remain immutable.
-- The M1 explicit-review/approved-only workflow remains available.
+- Sealed synthetic baseline and retained evidence remain immutable.
+- M1 explicit-review/approved-only workflow remains available.
 - M2-Live remains isolated under `src/screen2xyz_m2/`.
-- The pre-existing Civil Plan Digitizer remains under `src/screen2xyz_civil/` and its terrain-point contracts are not replaced by the takeoff work.
-- The quantity integration is additive and uses a separate `.s2t.json` sidecar during validation rather than migrating the proven Civil project schema in place.
+- Existing Civil Plan Digitizer terrain-point contracts remain under `src/screen2xyz_civil/`; the takeoff operator is additive, not a destructive migration.
+- The older `.s2t.json` takeoff-workspace/domain code remains useful as integration architecture. The runnable Claude pilot uses a separate source-hash-bound `.s2a.json` agent session so the existing Civil project schema is not silently migrated.
 
-## Civil quantity integration now present
+## Runnable Claude civil-takeoff pilot now present
 
-### Review-first takeoff domain
+### Agent session and scale controls
 
-`src/screen2xyz_civil/takeoff.py` adds normalized line/polygon/count measurement records with:
+`src/screen2xyz_civil/agent_session.py` provides a single-sheet `.s2a.json` session with:
 
-- explicit civil rules and units;
-- review-required / approved / edited-and-approved / rejected states;
-- non-summable reference geometry such as `ANCHOR - DO NOT SUM`;
-- blocker flags such as `PARTIAL`, `MIXED`, `UNRESOLVED`, `TENTATIVE`, `SCALE_UNVERIFIED`, and `GEOMETRY_UNVERIFIED`;
-- explicit scale-gated quantity math;
-- machine provenance, immutable original proposal geometry, and estimator correction history;
-- correction records suitable for later controlled evaluation/training exports.
+- exact source PDF path + SHA-256 identity and stale-source refusal;
+- 1-based page selection plus drawing page label;
+- canonical DPI-independent geometry in rendered PDF points;
+- explicit `SCALE_RESOLVED` vs `SCALE_VERIFIED` state;
+- printed-ratio, two-point calibration, and independent second-dimension verification paths;
+- line/polygon proposal persistence, correction history, evidence/questions, QA, and deterministic Bluebeam markup-plan export.
 
-Initial civil rules cover road widening, 40 mm mill/overlay, full-depth asphalt R&R, ditch infill, ditch regrade, ditch relocation, 0.30 m gravel shoulder, 300 mm driveway culvert, gravel driveway reinstatement, and QA-only roadworks anchors.
+Scale-dependent quantities remain blocked while scale is unverified. Changing scale invalidates dependent quantity state.
 
-### Audited takeoff workspace
+### Review-first civil takeoff domain
 
-`src/screen2xyz_civil/takeoff_workspace.py` adds an atomic `.s2t.json` workspace linked to the existing Civil project id, source hash/identity, and calibration revision. Quantity approval is invalidated when scale changes. Scale confirmation and every add/edit/flag/evidence/question/approve/reject action are audited.
+`src/screen2xyz_civil/takeoff.py` contains normalized line/polygon/count records and current civil rules for:
 
-### External-engine boundaries
+- `ANCHOR_ROADWORKS_EXTENT` - reference/QA only, never summable;
+- `ROAD_WIDENING_FULL_STRUCTURE`;
+- `MILL_OVERLAY_40MM`;
+- `FULL_DEPTH_ASPHALT_RR`;
+- `DITCH_INFILL`;
+- `DITCH_REGRADE`;
+- `DITCH_RELOCATION`;
+- `GRAVEL_SHOULDER_030` with stated 0.30 m width;
+- `DRIVEWAY_CULVERT_300`;
+- `GRAVEL_DRIVEWAY_REINSTATEMENT`.
 
-- `adapters/opentakeoff.py` translates the existing Screen2XYZ pixel/calibration frame to the reviewed OpenTakeoff MCP coordinate/scale contract without making OpenTakeoff the project database.
-- `adapters/segmentation.py` defines a dependency-free proposal interface; SAM 2 may sit behind it later, but segmentation geometry always enters with `GEOMETRY_UNVERIFIED` and cannot approve itself.
-- PDF.js is not vendored separately because the chosen OpenTakeoff path already owns its browser PDF/vector dependency. Existing Python PDF extraction remains the local Screen2XYZ path.
+Blockers include `PARTIAL`, `MIXED`, `UNRESOLVED`, `TENTATIVE`, `SCALE_UNVERIFIED`, `SCOPE_UNMAPPED`, and `GEOMETRY_UNVERIFIED`. The agent surface does not expose estimator approval.
 
-### Evidence, withheld uncertainty, and evaluation
+### Scope/coverage guard
 
-- `takeoff_context.py` adds source-linked evidence refs, typed relationships, data classification, and first-class unresolved questions.
-- An open `ERROR` question related to a takeoff blocks quantity approval until explicitly resolved.
-- `takeoff_eval.py` separates `SYNTHETIC` from `REAL` evaluation lanes and refuses synthetic results as real-plan accuracy evidence.
-- Evaluation distinguishes proposed items, disclosed-withheld items, and silent misses.
+`src/screen2xyz_civil/scope_ledger.py` tracks each rule as `UNSEARCHED`, `PROPOSED`, `WITHHELD`, `NOT_PRESENT`, or `NOT_APPLICABLE`.
 
-## External-source / license boundary
+- `PROPOSED` is derived from actual geometry, not an agent assertion.
+- A rule cannot be hidden as absent/not applicable while current geometry exists.
+- Claude is instructed not to stop with `UNSEARCHED` rules.
+- Because the current ledger is rule-level, the prompt requires a second instance-level visual pass so one culvert/reach cannot silently stand in for multiple separate occurrences.
 
-- OpenTakeoff, PDF.js, and SAM 2 were reviewed as Apache-2.0 upstream components/ideas with pinned snapshots and notices requirements.
-- ConstructDrawingAI is PolyForm Noncommercial and is **not** integrated as source code. Only its public architecture/design documentation was reviewed for ideas after the Screen2XYZ takeoff core passed CI. Useful missing concepts were independently implemented in Screen2XYZ: evidence relationships, first-class withheld questions, stricter synthetic-vs-real evaluation, and data-reuse classification.
+### Screen2XYZ MCP gateway for Claude Code
+
+`src/screen2xyz_civil/mcp_gateway.py` is a real local MCP stdio/Streamable-HTTP server. Its Claude-facing surface includes:
+
+- sheet image/text/vector evidence;
+- civil rule/takeoff/scope listing;
+- line/polygon proposals;
+- optional OpenTakeoff area trace;
+- proposal geometry edits;
+- flags, first-class questions, and evidence links;
+- takeoff QA and deterministic markup-plan export.
+
+It intentionally has no normal `approve_takeoff` or final bid publication tool. Drawing text is labelled untrusted project evidence, not model instructions.
+
+The external stdio smoke test launches the server as a separate process, calls the same route an MCP host uses, obtains a real sheet image, proposes geometry, closes the client, and verifies persistence on disk.
+
+### Real optional OpenTakeoff integration
+
+`src/screen2xyz_civil/opentakeoff_runtime.py` launches an installed `opentakeoff-mcp` through the MCP Python client. CI pins/reviews public `opentakeoff-mcp@0.9.68` and verifies the required tool contract plus a real synthetic One-Click trace.
+
+OpenTakeoff remains a geometry engine only. Screen2XYZ retains project state, review status, provenance, and corrections. One-Click output enters as unverified geometry until visually checked.
+
+### Portable sheet rendering
+
+The Claude/operator `view_sheet` path uses pinned `pypdfium2` + Pillow, so Poppler is no longer a hard prerequisite for this pilot. The legacy Poppler renderer remains a supported fallback for older Civil paths.
+
+### Environment and host setup
+
+`doctor` verifies the required Python/PDF/MCP runtime and optionally probes OpenTakeoff. `agent-claude-config` prints copy/paste Claude Code registrations for:
+
+1. the Screen2XYZ session MCP server; and
+2. when discovered, the installed `Bluebeam MCP Server.exe` as a **candidate** local stdio route.
+
+Bluebeam discovery/registration is explicitly classified `DISCOVERED_STDIO_ROUTE_NOT_LIVE_TESTED`; it is not proof of native measurement creation.
+
+## Bluebeam capability boundary
+
+The pilot deliberately separates:
+
+1. `PRODUCT_DOCUMENTED` - Bluebeam documents a capability for a named Revu version;
+2. `CURRENT_SURFACE_EXPOSED` - the owner-machine MCP host actually advertises a usable route/schema;
+3. `LIVE_TESTED` - a disposable or production-safe native measurement was created, saved, and read back with a live computed quantity in that exact environment.
+
+A discovered executable or visible tool list is insufficient for level 3. Before Claude may mass-create production native Length/Area measurements, the owner machine must pass `BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md`. If that gate fails, the safe path is reviewed Screen2XYZ geometry plus the proven Revu GUI measurement route, followed by saved-state readback where available.
+
+Direct production PDF `/Measure` dictionary injection is out of bounds.
+
+## ConstructDrawingAI / external-source boundary
+
+- OpenTakeoff, PDF.js, and SAM 2 were reviewed as Apache-2.0 upstream components/ideas with pinned provenance/license notes.
+- ConstructDrawingAI is PolyForm Noncommercial and is **not** copied into Screen2XYZ. Only public architecture/design ideas were reviewed after the takeoff core passed CI.
+- Independently implemented ideas include evidence relationships, explicit withheld questions, synthetic-vs-real evaluation separation, data-reuse classification, and silent-miss accounting.
 
 ## Current limitations and remaining gates
 
-- No authorized real civil drawing has yet been run end-to-end through the new takeoff workspace as committed test evidence.
-- OpenTakeoff MCP request translation is deterministic-tested, but actual `opentakeoff-mcp` runtime execution has not yet been validated on the owner workstation in this branch.
-- SAM 2 is only an optional provider contract; model weights/runtime are intentionally absent.
-- Takeoff review does not yet have a dedicated estimator UI inside the Civil Plan Digitizer.
-- Marked-plan PDF / direct Bluebeam handoff has not yet been promoted into this integration branch.
-- The current Python PDF vector adapter does not yet expose complete path geometry for every CAD-exported hatch; its existing evidence remains bounded.
-- Real-plan quantity/coverage accuracy is unknown. Synthetic deterministic tests are pipeline/contract evidence only.
-- Local East/North remains non-geodetic unless tied to a verified survey basis.
+- The runnable agent pilot is intentionally **one PDF page / one compatible scale context**. It is not yet the final bid-set + per-viewport `ScaleRegion` product.
+- The current `.s2a.json` pilot assumes a single writer. Do not run two mutating Screen2XYZ MCP processes against the same session concurrently.
+- Rule-level scope coverage still requires the explicit second visual instance pass.
+- Native Bluebeam measurement create/edit/save/readback has **not** been declared `LIVE_TESTED` for the owner's Claude Code/Revu environment.
+- No authorized proprietary Example Road sheet is committed as CI evidence. Real-plan quantity/coverage accuracy remains unknown until private owner-machine acceptance.
+- SAM 2 remains optional; weights/runtime are intentionally absent from core.
+- There is not yet a dedicated takeoff review UI merged into the existing Civil Tk workspace.
+- Multi-sheet bid sets, mixed plan/profile/detail scale regions, full native Bluebeam interoperability, and real-plan accuracy claims are later gates.
+- Local East/North remains non-geodetic unless tied to verified survey control.
 - Default-branch merge, public release, public licensing, proprietary fixture commits, and certified claims remain unauthorized.
 
-## Preserved prior evidence
+## Next gate
 
-The July 2026 project state recorded the existing baseline/M1/M2/Civil feature work and its then-current host OCR limitations. This update does not erase those historical reports; it supersedes the stale active-branch/next-action fields for the current quantity-integration task.
+The next task is no longer more generic architecture. It is a private owner-machine acceptance on Example Road Sheet 03:
+
+`checkout branch -> doctor --deep -> create/verify Sheet 03 session -> agent-claude-config -> connect Screen2XYZ (+ candidate Bluebeam) in Claude Code -> run disposable Revu Length+Area acceptance -> execute full takeoff prompt -> compare against estimator-reviewed Bluebeam gold -> record coverage/silent-miss/geometry/quantity/readback evidence`.
+
+Only after that result should the branch be promoted or generalized to multi-sheet/ScaleRegion operation.
