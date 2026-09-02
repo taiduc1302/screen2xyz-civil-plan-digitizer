@@ -3,9 +3,9 @@
 The first integration slice uses a sidecar (`.s2t.json`) instead of changing
 the proven terrain-project schema in-place.  This keeps the new quantity domain
 isolated while it is validated.  The sidecar records the Civil project id,
-source identity, reviewed calibration snapshot, takeoff records, and decision
-log.  A later owner-approved migration may fold it into `CivilProject` once the
-workflow is stable.
+source identity, reviewed calibration snapshot, takeoff records, evidence,
+withheld questions, and decision log.  A later owner-approved migration may
+fold it into `CivilProject` once the workflow is stable.
 """
 
 from __future__ import annotations
@@ -26,11 +26,18 @@ from .takeoff import (
     TakeoffGeometry,
     TakeoffMeasurement,
     approve_takeoff,
+    clear_takeoff_flag,
     correct_takeoff_geometry,
     reject_takeoff,
     set_takeoff_flag,
-    clear_takeoff_flag,
     takeoff_qa_summary,
+)
+from .takeoff_context import (
+    TakeoffContext,
+    TakeoffContextError,
+    TakeoffEvidenceRef,
+    TakeoffQuestion,
+    TakeoffRelation,
 )
 
 
@@ -53,6 +60,7 @@ class TakeoffWorkspace:
     metres_per_pixel: float | None = None
     scale_verified: bool = False
     measurements: list[TakeoffMeasurement] = field(default_factory=list)
+    context: TakeoffContext = field(default_factory=TakeoffContext)
     decision_log: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -61,12 +69,27 @@ class TakeoffWorkspace:
         ids = [item.id for item in self.measurements]
         if len(ids) != len(set(ids)):
             raise TakeoffWorkspaceError("duplicate takeoff ids")
+        try:
+            self.context.validate_links(ids)
+        except TakeoffContextError as exc:
+            raise TakeoffWorkspaceError(str(exc)) from exc
 
     def measurement(self, takeoff_id: str) -> TakeoffMeasurement:
         for item in self.measurements:
             if item.id == takeoff_id:
                 return item
         raise TakeoffWorkspaceError(f"unknown takeoff: {takeoff_id}")
+
+    @property
+    def takeoff_ids(self) -> list[str]:
+        return [item.id for item in self.measurements]
+
+    def open_questions_for_takeoff(self, takeoff_id: str) -> list[TakeoffQuestion]:
+        return [
+            item
+            for item in self.context.questions
+            if item.status == "OPEN" and takeoff_id in item.related_takeoff_ids
+        ]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -81,8 +104,12 @@ class TakeoffWorkspace:
                 "scale_verified": self.scale_verified,
             },
             "measurements": [item.to_dict() for item in self.measurements],
+            "context": self.context.to_dict(),
             "decision_log": list(self.decision_log),
-            "qa": takeoff_qa_summary(self.measurements),
+            "qa": {
+                "takeoffs": takeoff_qa_summary(self.measurements),
+                "unresolved": self.context.unresolved_summary(),
+            },
         }
 
     @classmethod
@@ -93,6 +120,10 @@ class TakeoffWorkspace:
                 f"unsupported takeoff workspace schema: {version or '<missing>'}"
             )
         calibration = dict(value.get("calibration", {}))
+        try:
+            context = TakeoffContext.from_dict(dict(value.get("context", {})))
+        except (TakeoffContextError, TypeError, ValueError) as exc:
+            raise TakeoffWorkspaceError("invalid takeoff context") from exc
         return cls(
             schema_version=version,
             civil_project_id=str(value["civil_project_id"]),
@@ -114,6 +145,7 @@ class TakeoffWorkspace:
                 TakeoffMeasurement.from_dict(item)
                 for item in value.get("measurements", [])
             ],
+            context=context,
             decision_log=list(value.get("decision_log", [])),
         )
 
@@ -164,9 +196,9 @@ def sync_workspace_calibration(
     calibration = project.calibration
     revision = None if calibration is None else calibration.revision
     mpp = None if calibration is None else calibration.metres_per_pixel
-    # The existing project treats a second-distance check as optional.  In the
-    # takeoff sidecar it is explicitly recorded: a present passing check is
-    # verified; otherwise an estimator must later call `confirm_workspace_scale`.
+    # The existing project treats a second-distance check as optional. In the
+    # takeoff sidecar it is explicit: a present passing check is verified;
+    # otherwise an estimator must later call `confirm_workspace_scale`.
     checked = bool(
         calibration is not None
         and calibration.scale_check is not None
@@ -240,6 +272,11 @@ def add_workspace_takeoff(
     if measurement.approved:
         raise TakeoffWorkspaceError("takeoff proposal cannot enter workspace approved")
     workspace.measurements.append(measurement)
+    try:
+        workspace.context.validate_links(workspace.takeoff_ids)
+    except TakeoffContextError as exc:
+        workspace.measurements.pop()
+        raise TakeoffWorkspaceError(str(exc)) from exc
     workspace.updated_at = now
     workspace.decision_log.append(
         {
@@ -251,6 +288,101 @@ def add_workspace_takeoff(
         }
     )
     return measurement
+
+
+def add_workspace_evidence(
+    workspace: TakeoffWorkspace,
+    evidence: TakeoffEvidenceRef,
+    *,
+    now: str,
+) -> TakeoffEvidenceRef:
+    try:
+        workspace.context.add_evidence(evidence)
+    except TakeoffContextError as exc:
+        raise TakeoffWorkspaceError(str(exc)) from exc
+    workspace.updated_at = now
+    workspace.decision_log.append(
+        {
+            "at": now,
+            "action": "TAKEOFF_EVIDENCE_ADDED",
+            "evidence_id": evidence.id,
+            "kind": evidence.kind,
+            "detail": evidence.summary,
+        }
+    )
+    return evidence
+
+
+def link_workspace_evidence(
+    workspace: TakeoffWorkspace,
+    relation: TakeoffRelation,
+    *,
+    now: str,
+) -> TakeoffRelation:
+    try:
+        workspace.context.add_relation(relation, takeoff_ids=workspace.takeoff_ids)
+    except TakeoffContextError as exc:
+        raise TakeoffWorkspaceError(str(exc)) from exc
+    workspace.updated_at = now
+    workspace.decision_log.append(
+        {
+            "at": now,
+            "action": "TAKEOFF_EVIDENCE_LINKED",
+            "source_id": relation.source_id,
+            "target_id": relation.target_id,
+            "relation_type": relation.relation_type,
+            "detail": relation.detail,
+        }
+    )
+    return relation
+
+
+def add_workspace_question(
+    workspace: TakeoffWorkspace,
+    question: TakeoffQuestion,
+    *,
+    now: str,
+) -> TakeoffQuestion:
+    try:
+        workspace.context.add_question(question, takeoff_ids=workspace.takeoff_ids)
+    except TakeoffContextError as exc:
+        raise TakeoffWorkspaceError(str(exc)) from exc
+    workspace.updated_at = now
+    workspace.decision_log.append(
+        {
+            "at": now,
+            "action": "TAKEOFF_QUESTION_ADDED",
+            "question_id": question.id,
+            "reason_code": question.reason_code,
+            "detail": question.detail,
+            "next_action": question.next_action,
+        }
+    )
+    return question
+
+
+def resolve_workspace_question(
+    workspace: TakeoffWorkspace,
+    question_id: str,
+    *,
+    now: str,
+    resolution: str,
+) -> TakeoffQuestion:
+    try:
+        question = workspace.context.question(question_id)
+        question.resolve(now=now, resolution=resolution)
+    except TakeoffContextError as exc:
+        raise TakeoffWorkspaceError(str(exc)) from exc
+    workspace.updated_at = now
+    workspace.decision_log.append(
+        {
+            "at": now,
+            "action": "TAKEOFF_QUESTION_RESOLVED",
+            "question_id": question.id,
+            "detail": question.resolution,
+        }
+    )
+    return question
 
 
 def correct_workspace_takeoff(
@@ -325,6 +457,16 @@ def approve_workspace_takeoff(
     now: str,
 ) -> TakeoffMeasurement:
     item = workspace.measurement(takeoff_id)
+    blocking_questions = [
+        question
+        for question in workspace.open_questions_for_takeoff(takeoff_id)
+        if question.severity == "ERROR"
+    ]
+    if blocking_questions:
+        ids = ", ".join(question.id for question in blocking_questions)
+        raise TakeoffWorkspaceError(
+            f"takeoff has unresolved blocking question(s): {ids}"
+        )
     try:
         approve_takeoff(
             item,
@@ -385,9 +527,10 @@ def save_takeoff_workspace(
             f"takeoff workspace file must end with {TAKEOFF_WORKSPACE_SUFFIX}"
         )
     try:
+        workspace.context.validate_links(workspace.takeoff_ids)
         atomic_write_json(target, workspace.to_dict(), replace=replace)
         return {"path": str(target), "sha256": sha256_file(target)}
-    except (OSError, ValueError, TakeoffError) as exc:
+    except (OSError, ValueError, TakeoffError, TakeoffContextError) as exc:
         raise TakeoffWorkspaceError("takeoff workspace save failed") from exc
 
 
@@ -400,5 +543,13 @@ def load_takeoff_workspace(path: Path) -> TakeoffWorkspace:
         return TakeoffWorkspace.from_dict(value)
     except TakeoffWorkspaceError:
         raise
-    except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        TakeoffContextError,
+    ) as exc:
         raise TakeoffWorkspaceError("takeoff workspace load failed") from exc
