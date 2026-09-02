@@ -15,12 +15,12 @@ hash check.
 from __future__ import annotations
 
 import hashlib
-import math
+import json
 import shutil
 from pathlib import Path
 from typing import Any
 
-from .io_utils import sha256_file
+from .io_utils import atomic_write_json, sha256_file
 
 
 WORKING_COPY_KEY = "bluebeam_working_copy"
@@ -236,11 +236,40 @@ def working_copy_status(session: Any) -> dict[str, Any]:
     initial_sha = str(raw.get("initial_sha256", ""))
     status["modified_since_registration"] = bool(initial_sha and current_sha != initial_sha)
     expected_fp = str(raw.get("drawing_fingerprint_sha256", source_fp["sha256"]))
-    drawing_match = (
-        source_fp["sha256"] == working_fp["sha256"] == expected_fp
-    )
+    drawing_match = source_fp["sha256"] == working_fp["sha256"] == expected_fp
     status["drawing_match"] = drawing_match
     status["drawing_fingerprint_sha256"] = working_fp["sha256"]
     status["safe_for_bluebeam_operator"] = drawing_match
     status["reason"] = "OK" if drawing_match else "WORKING_DRAWING_CHANGED_OR_WRONG_REVISION"
     return status
+
+
+def bind_working_copy_to_markup_plan(
+    session: Any,
+    plan_path: Path,
+) -> dict[str, str]:
+    """Embed the immutable/working document contract into an exported plan."""
+
+    target = Path(plan_path).expanduser().resolve()
+    try:
+        value = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise WorkingCopyError("unable to read exported Bluebeam markup plan") from exc
+    if not isinstance(value, dict):
+        raise WorkingCopyError("Bluebeam markup plan root must be an object")
+    status = working_copy_status(session)
+    value["document_contract"] = {
+        "immutable_source": {
+            "path": str(session.source_path),
+            "sha256": session.source_sha256,
+            "policy": "DO_NOT_SAVE_REVU_MARKUPS_IN_SOURCE",
+        },
+        "bluebeam_working_copy": status,
+        "native_bluebeam_target_ready": bool(status.get("safe_for_bluebeam_operator")),
+        "policy": (
+            "NATIVE_REVU_CREATE_EDIT_SAVE_ONLY_IN_REGISTERED_WORKING_COPY; "
+            "READ_BACK_SAVED_NATIVE_MEASUREMENT; NEVER_MUTATE_IMMUTABLE_SOURCE"
+        ),
+    }
+    atomic_write_json(target, value, replace=True)
+    return {"path": str(target), "sha256": sha256_file(target)}
