@@ -34,7 +34,7 @@ It provides:
 - MCP sheet image/text/vector evidence, working-copy status, proposal/edit/QA tools;
 - optional real OpenTakeoff MCP One-Click area tracing;
 - local discovery of Bluebeam's MCP executable plus copy/paste Claude Code registration output;
-- deterministic Bluebeam markup-plan export;
+- deterministic Bluebeam markup-plan export bound to the immutable source and registered Revu target;
 - **no ordinary MCP tool for estimator approval or final bid publication**.
 
 The pilot does **not** yet replace Bluebeam. A `*.bluebeam-markup-plan.json` file is geometry/traceability, not proof that native Revu measurements exist. Native Bluebeam measurements must be created on the registered working PDF through a currently proven Revu route and then read back from saved state.
@@ -190,7 +190,7 @@ It must finish with no `UNSEARCHED` rule and then perform an instance-level visu
   --session "C:\Tenders\KingRoad\KingRoad_S03.s2a.json"
 ```
 
-The output contains canonical/OpenTakeoff geometry, preview quantity, flags, scale state, working-copy status, traceability fields, and native-Revu creation/readback policy.
+The saved plan includes the immutable-source/working-copy document contract plus canonical/OpenTakeoff geometry, preview quantity, flags, scale state, traceability fields, and native-Revu creation/readback policy.
 
 ## Validation
 
@@ -201,7 +201,7 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
-The current branch freezes the Civil suite at **219 discovered tests**. Separate Windows protocol smoke tests launch the same external stdio Screen2XYZ server an MCP host uses and real OpenTakeoff 0.9.68 against owned synthetic PDFs. Synthetic/unit/protocol results are pipeline evidence, not real-drawing accuracy.
+The current branch freezes the Civil suite at **220 discovered tests**. Separate Windows protocol smoke tests launch the same external stdio Screen2XYZ server an MCP host uses and real OpenTakeoff 0.9.68 against owned synthetic PDFs. Synthetic/unit/protocol results are pipeline evidence, not real-drawing accuracy.
 
 The private acceptance gate is an estimator-reviewed plan such as King Road Sheet 03 compared against Bluebeam, with expected-item coverage, silent misses, rule correctness, quantity error, geometry corrections, withheld items, working-copy integrity, and native Revu readback recorded without committing proprietary drawings.
 
