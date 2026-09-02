@@ -107,7 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--session", required=True)
     plan.add_argument("--out", default="")
 
-    status = sub.add_parser("agent-status", help="print session/QA status")
+    status = sub.add_parser("agent-status", help="print session/scope/QA status")
     status.add_argument("--session", required=True)
 
     mcp = sub.add_parser(
@@ -215,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if command == "agent-plan":
             from .agent_session import export_bluebeam_plan, load_agent_session
+            from .scope_ledger import scope_summary
 
             path = Path(args.session)
             session = load_agent_session(path)
@@ -224,11 +225,21 @@ def main(argv: list[str] | None = None) -> int:
                 else path.with_name(path.name[: -len(".s2a.json")] + ".bluebeam-markup-plan.json")
             )
             identity = export_bluebeam_plan(session, target, replace=True)
-            print(json.dumps({"saved": identity, "qa": session.qa_summary()}, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "saved": identity,
+                        "scope": scope_summary(session),
+                        "qa": session.qa_summary(),
+                    },
+                    indent=2,
+                )
+            )
             return 0
 
         if command == "agent-status":
             from .agent_session import load_agent_session
+            from .scope_ledger import scope_summary
 
             session = load_agent_session(Path(args.session))
             print(
@@ -242,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
                         "takeoffs": [
                             session.takeoff_summary(item) for item in session.measurements
                         ],
+                        "scope": scope_summary(session),
                         "qa": session.qa_summary(),
                     },
                     indent=2,
