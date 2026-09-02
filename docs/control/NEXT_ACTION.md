@@ -1,27 +1,41 @@
 # Next Action
 
-## Current stage: review-first civil quantity takeoff integration
+## Current stage: make civil takeoff runnable before real accuracy claims
 
-The additive takeoff core, OpenTakeoff bridge contract, optional segmentation boundary, audited `.s2t.json` workspace, evidence/question layer, and takeoff evaluation contracts are implemented on `integration/open-source-takeoff-stack`.
+The review-first quantity domain, workspace, evidence/question model,
+OpenTakeoff request adapter, segmentation boundary, and deterministic tests are
+implemented on `integration/open-source-takeoff-stack`.
 
-The tested code state passed GitHub CI run #39: baseline, M1, M2 deterministic, Civil deterministic frozen count 178, retained evidence verification, privacy/sanitization, and Windows real-worker integration all succeeded. Draft PR #7 is the clean review PR against `feature/assisted-c03-validation`; draft PR #6 exists only to exercise the `main`-targeted CI workflow and must not be merged.
+They are not yet a complete operator product. The existing launcher still opens
+the point/terrain Civil Plan Digitizer UI; quantity takeoff is not wired into
+that UI, the OpenTakeoff adapter does not execute an MCP process, and
+Screen2XYZ does not yet expose a runnable MCP gateway for Claude/ChatGPT.
+The existing Civil project model is also centered on one selected PDF page and
+one page calibration, which is too narrow for a real multi-sheet/mixed-scale
+tender takeoff workflow.
 
 ## Exactly one recommended next action
 
-Run one **owner-authorized real civil takeoff validation session** using a private/local drawing already being manually reviewed by the estimator, with Sheet 03 of the current Example Road workflow as the preferred first case if project-data handling permits.
+Build and validate one **runnable local takeoff vertical slice** before the
+private Example Road/Bluebeam accuracy comparison:
 
-The validation should compare the new system against the estimator-reviewed Bluebeam result for a small, explicit rule set:
+1. introduce the bid-set/sheet + scale-region contract (or an intentionally
+   limited single-sheet pilot that refuses mixed-scale regions);
+2. wire manual line/polygon/count takeoffs and the `.s2t` workspace into the
+   local estimator UI;
+3. add a real OpenTakeoff process/MCP runner and protocol integration test;
+4. add a Screen2XYZ MCP gateway with proposal-only AI tools and human-only
+   approval/export gates;
+5. add one-command environment diagnostics and an operator run guide;
+6. prove save/reopen/QA/export in an end-to-end Windows test.
 
-1. `DRIVEWAY_CULVERT_300` - line endpoints/centerline and length;
-2. `GRAVEL_DRIVEWAY_REINSTATEMENT` - actual reinstatement polygon and area;
-3. `DITCH_INFILL` - hatch boundary and area;
-4. `GRAVEL_SHOULDER_030` - continuous reaches and stated 0.30 m width;
-5. `ROAD_WIDENING_FULL_STRUCTURE` - hatch coverage;
-6. `ANCHOR_ROADWORKS_EXTENT` - confirm it remains QA-only and never enters totals;
-7. one intentionally unresolved/partial ditch case - confirm the system discloses/withholds it rather than silently summing it.
+Only after that vertical slice works should the owner-machine private
+Example Road/Bluebeam gold set be used to measure proposal coverage, silent misses,
+rule accuracy, and quantity/geometry error.
 
-During that same session, run the pinned OpenTakeoff MCP locally and verify that Screen2XYZ -> OpenTakeoff coordinate/scale translation lands the same proposal geometry on the correct sheet. Record corrections in the `.s2t.json` sidecar and evaluate **coverage, silent misses, rule mapping, and quantity error** as private real-plan evidence. Do not commit the proprietary drawing or raw private evidence to Git.
+See `docs/integrations/RUNTIME_OPERATOR_TEST_MODEL.md` for the runtime,
+operator, ChatGPT/Claude connection, privacy, scale-region, and test contract.
 
-Only after this real session should the next implementation target be chosen between estimator UI integration, richer PDF/CAD hatch geometry, marked-plan/Bluebeam handoff, or a SAM 2 runtime adapter.
-
-Real-data accuracy claims, default-branch merge, public release/licensing, AGTEK/Bluebeam certification, and any proprietary fixture commit remain separate owner gates.
+Real proprietary-drawing use, AGTEK/Civil 3D/Kubla acceptance, marked-plan or
+Bluebeam compatibility, default-branch merge, licence selection, packaging,
+and public release remain separate owner gates.
