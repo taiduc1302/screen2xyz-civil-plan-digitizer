@@ -9,6 +9,8 @@ Revu readback through a proven route.
 
 from __future__ import annotations
 
+import argparse
+import json
 from pathlib import Path
 from typing import Any
 
@@ -31,9 +33,7 @@ def _text(value: Any, *, max_chars: int = 4000) -> str:
         text = str(_resolve(value))
     except Exception:
         return ""
-    if len(text) > max_chars:
-        return text[:max_chars]
-    return text
+    return text[:max_chars]
 
 
 def _numbers(value: Any, *, max_items: int = 2000) -> list[float]:
@@ -75,10 +75,7 @@ def _measure_summary(measure: Any) -> dict[str, Any]:
         if key in obj:
             raw = _resolve(obj.get(key))
             try:
-                result[key[1:]] = {
-                    "present": True,
-                    "items": len(raw),
-                }
+                result[key[1:]] = {"present": True, "items": len(raw)}
             except Exception:
                 result[key[1:]] = {"present": True}
     return result
@@ -138,14 +135,13 @@ def inspect_page_annotations(
                 }
             )
             continue
-        subtype = _text(annot.get("/Subtype"), max_chars=200)
         measure = annot.get("/Measure")
         rows.append(
             {
                 "index": index,
                 "object_ref": _object_ref(ref),
                 "parse_status": "OK",
-                "subtype": subtype,
+                "subtype": _text(annot.get("/Subtype"), max_chars=200),
                 "intent": _text(annot.get("/IT"), max_chars=500),
                 "name_id": _text(annot.get("/NM"), max_chars=1000),
                 "subject": _text(annot.get("/Subj"), max_chars=2000),
@@ -181,3 +177,76 @@ def inspect_page_annotations(
             "Use live Revu create/save/readback for native measurement acceptance and final quantity QA.",
         ],
     }
+
+
+def inspect_registered_working_copy(
+    session_path: Path,
+    *,
+    limit: int = 1000,
+    preview_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Inspect only the working PDF already governed by a Screen2XYZ session."""
+
+    from .agent_session import load_agent_session
+    from .portable_render import render_pdf_page_portable
+    from .working_copy import working_copy_status
+
+    session = load_agent_session(Path(session_path), verify_source=True)
+    status = working_copy_status(session)
+    if not status.get("safe_for_bluebeam_operator"):
+        raise PdfAnnotationInspectionError(
+            "registered Bluebeam working copy is not safe: "
+            + str(status.get("reason", "UNKNOWN"))
+        )
+    working = Path(str(status["path"]))
+    result = inspect_page_annotations(working, session.page_index, limit=limit)
+    result["working_copy"] = status
+    result["immutable_source"] = {
+        "path": str(session.source_path),
+        "sha256": session.source_sha256,
+    }
+    if preview_dir is not None:
+        current_sha = str(status.get("current_sha256", "unknown"))[:16]
+        target_dir = Path(preview_dir).expanduser().resolve() / current_sha
+        preview = render_pdf_page_portable(
+            working,
+            session.page_index,
+            target_dir,
+            dpi=session.render_dpi,
+        )
+        result["preview_png"] = str(preview)
+        result["preview_includes_saved_annotations"] = True
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m screen2xyz_civil.pdf_annotations",
+        description=(
+            "Read saved annotations from the registered Bluebeam working PDF. "
+            "This is offline evidence, not live Revu quantity/editability proof."
+        ),
+    )
+    parser.add_argument("--session", required=True, help="path to .s2a.json")
+    parser.add_argument("--limit", type=int, default=1000)
+    parser.add_argument(
+        "--preview-dir",
+        default="",
+        help="optional directory for a PDFium PNG preview including saved annotations",
+    )
+    args = parser.parse_args(argv)
+    try:
+        result = inspect_registered_working_copy(
+            Path(args.session),
+            limit=args.limit,
+            preview_dir=Path(args.preview_dir) if args.preview_dir else None,
+        )
+    except Exception as exc:
+        print(json.dumps({"status": "FAIL", "error": str(exc)}, indent=2))
+        return 2
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
