@@ -110,6 +110,13 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("agent-status", help="print session/scope/QA status")
     status.add_argument("--session", required=True)
 
+    config = sub.add_parser(
+        "agent-claude-config",
+        help="print copy/paste Claude Code MCP registration for the session and Bluebeam",
+    )
+    config.add_argument("--session", required=True)
+    config.add_argument("--json", action="store_true", dest="as_json")
+
     mcp = sub.add_parser(
         "mcp",
         help="serve one .s2a.json takeoff session to Claude Code or another MCP host",
@@ -259,6 +266,58 @@ def main(argv: list[str] | None = None) -> int:
                     indent=2,
                 )
             )
+            return 0
+
+        if command == "agent-claude-config":
+            from .agent_session import load_agent_session
+            from .bluebeam_runtime import (
+                bluebeam_claude_registration,
+                claude_stdio_add_command,
+            )
+
+            session_path = Path(args.session).expanduser().resolve()
+            session = load_agent_session(session_path)
+            src_root = Path(__file__).resolve().parents[1]
+            screen2xyz_command = claude_stdio_add_command(
+                name="screen2xyz",
+                executable=Path(sys.executable).resolve(),
+                args=(
+                    "-m",
+                    "screen2xyz_civil",
+                    "mcp",
+                    "--session",
+                    str(session_path),
+                ),
+                env={"PYTHONPATH": str(src_root)},
+            )
+            bluebeam = bluebeam_claude_registration()
+            payload = {
+                "session": {
+                    "id": session.session_id,
+                    "page_label": session.page_label,
+                    "source_sha256": session.source_sha256,
+                },
+                "screen2xyz": {
+                    "capability_state": "LOCAL_STDIO_SERVER",
+                    "claude_command": screen2xyz_command,
+                },
+                "bluebeam": bluebeam,
+                "next_steps": [
+                    "Run the Screen2XYZ claude_command once, then confirm it with `claude mcp get screen2xyz` or `/mcp`.",
+                    "If Bluebeam is discovered, ensure Revu MCP is enabled and the intended PDF is active, then run the Bluebeam claude_command and confirm tools appear in `/mcp`.",
+                    "Bluebeam discovery/registration is not LIVE_TESTED measurement capability. Run the disposable Length+Area acceptance gate before production native measurement creation.",
+                    "Start Claude Code from this repository and use prompts/CLAUDE_CODE_BLUEBEAM_TAKEOFF_PROMPT.md.",
+                ],
+            }
+            if args.as_json:
+                print(json.dumps(payload, indent=2))
+            else:
+                print("Screen2XYZ Claude Code registration:\n" + screen2xyz_command)
+                if bluebeam["available"]:
+                    print("\nBluebeam Revu MCP candidate registration (NOT LIVE_TESTED):\n" + str(bluebeam["claude_command"]))
+                else:
+                    print("\nBluebeam Revu MCP: not discovered on this machine.")
+                print("\nThen verify both servers with `/mcp` before running the takeoff prompt.")
             return 0
 
         if command == "mcp":
