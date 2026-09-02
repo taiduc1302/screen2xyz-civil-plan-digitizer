@@ -30,7 +30,7 @@ from .portable_render import render_pdf_page_portable
 from .scope_ledger import scope_summary, set_scope_status
 from .takeoff import LINE, POLYGON, RULES
 from .takeoff_context import TakeoffEvidenceRef, TakeoffQuestion, TakeoffRelation
-from .working_copy import working_copy_status
+from .working_copy import bind_working_copy_to_markup_plan, working_copy_status
 
 
 def _utc_now() -> str:
@@ -503,16 +503,21 @@ def build_mcp_server(session_path: Path):
             target = store.path.with_name(
                 store.path.name[: -len(".s2a.json")] + ".bluebeam-markup-plan.json"
             )
-        identity = export_bluebeam_plan(session, target, replace=True)
+        export_bluebeam_plan(session, target, replace=True)
+        identity = bind_working_copy_to_markup_plan(session, target)
         working = working_copy_status(session)
         return {
             "export": identity,
             "plan": session.bluebeam_plan(),
+            "document_contract": {
+                "immutable_source": str(session.source_path),
+                "bluebeam_working_copy": working,
+            },
             "scope": scope_summary(session),
-            "bluebeam_working_copy": working,
             "important": (
-                "This is a geometry/traceability plan, not proof that native Bluebeam markups exist. "
-                "Keep the immutable source unchanged. Create native Revu measurements only in the registered working copy through the live-tested MCP route or GUI, then read back the saved markup and computed quantity."
+                "The saved file includes the immutable-source/working-copy contract. "
+                "It is still a geometry/traceability plan, not proof that native Bluebeam markups exist. "
+                "Create native Revu measurements only in the registered working copy through the live-tested MCP route or GUI, then read back the saved markup and computed quantity."
             ),
         }
 
