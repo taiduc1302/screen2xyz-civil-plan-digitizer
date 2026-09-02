@@ -25,7 +25,8 @@ from .opentakeoff_runtime import (
     auto_trace_area as opentakeoff_auto_trace_area,
     probe_opentakeoff,
 )
-from .pdf import extract_pdf_vector_shapes, render_pdf_page
+from .pdf import extract_pdf_vector_shapes
+from .portable_render import render_pdf_page_portable
 from .scope_ledger import scope_summary, set_scope_status
 from .takeoff import LINE, POLYGON, RULES
 from .takeoff_context import TakeoffEvidenceRef, TakeoffQuestion, TakeoffRelation
@@ -121,7 +122,7 @@ def build_mcp_server(session_path: Path):
     def view_sheet() -> Image:
         """Return the selected plan sheet as an image for visual takeoff reasoning."""
         session = store.load()
-        image_path = render_pdf_page(
+        image_path = render_pdf_page_portable(
             session.source_path,
             session.page_index,
             store.cache_dir(session),
