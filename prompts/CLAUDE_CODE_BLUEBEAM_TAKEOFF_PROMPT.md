@@ -117,7 +117,7 @@ Do not imply that a quantity is drawing-authoritative merely because the AI reco
 
 ## Bluebeam-native execution
 
-Bluebeam currently documents measurement capability in Revu 21.10, but that establishes only `PRODUCT_DOCUMENTED`. You must still prove `CURRENT_SURFACE_EXPOSED` and `LIVE_TESTED` for the connected machine/MCP host.
+Bluebeam documents MCP markup creation/editing in Revu 21.10+ (`add_markup`, geometry/property read/edit functions) and continues expanding MCP in Revu 21.11. That is `PRODUCT_DOCUMENTED` general capability only. The public tool table does not by itself prove that this exact host exposes a native scaled Length/Area creation schema. A generic Line/Polygon is not automatically a native measurement. Record the exact connected Revu point version, inspect the live schemas, and prove native measurement intent plus Revu-computed quantity by saved readback.
 
 After the Screen2XYZ proposal set is coherent and the scope ledger has no `UNSEARCHED` rules, call `export_bluebeam_markup_plan`.
 
@@ -126,7 +126,7 @@ If a live Bluebeam/Revu connector/tool surface is available in this environment:
 1. Inspect its actual tools/schemas before creating a measurement. Do not invent a tool name or argument schema from documentation.
 2. List existing markups on the active PDF/page. Reconcile relevant existing markups with Screen2XYZ proposals using type/subject/comment/geometry/quantity where exposed. Do not touch unrelated markups.
 3. Distinguish `PRODUCT_DOCUMENTED`, `CURRENT_SURFACE_EXPOSED`, and `LIVE_TESTED` capability explicitly.
-4. If Length/Area creation/readback has **not** already passed on this exact machine/Revu/MCP setup, execute the disposable acceptance procedure in `BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md` before mass creation. Do not use a production takeoff as the first experiment.
+4. If native Length/Area creation/readback has **not** already passed on this exact machine/Revu/MCP setup, execute the disposable acceptance procedure in `BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md` before mass creation. Do not use a production takeoff as the first experiment.
 5. For every scale-dependent native Length/Area/etc., require the target Revu context to have resolved and independently verified scale/viewport.
 6. Create a **native measurement**, not merely a visually similar generic Line/Polygon, using the actual measurement-capable tool/schema exposed by the connected Revu MCP.
 7. Apply Subject/Comment traceability from the exported Screen2XYZ plan.
