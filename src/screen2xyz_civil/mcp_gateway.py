@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from mcp.server.mcpserver import Image
+
 from .agent_session import (
     AgentSessionError,
     AgentTakeoffSession,
@@ -20,7 +22,6 @@ from .agent_session import (
     save_agent_session,
 )
 from .opentakeoff_runtime import (
-    OpenTakeoffRuntimeError,
     auto_trace_area as opentakeoff_auto_trace_area,
     probe_opentakeoff,
 )
@@ -49,13 +50,11 @@ class AgentSessionStore:
         return self.path.parent / ".screen2xyz-agent-cache" / session.source_sha256[:16]
 
 
-
 def build_mcp_server(session_path: Path):
     """Build one MCPServer bound to a specific local `.s2a.json` session."""
 
     try:
         from mcp.server import MCPServer
-        from mcp.server.mcpserver import Image
     except ImportError as exc:  # pragma: no cover - diagnosed by `doctor`
         raise AgentSessionError(
             "MCP Python SDK is unavailable; install requirements-civil.txt"
