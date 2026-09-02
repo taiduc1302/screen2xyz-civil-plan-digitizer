@@ -17,7 +17,9 @@ on:
 # runs on windows-latest. The operator job installs fixed public tool builds
 # only to prove real stdio MCP, sheet-image rendering, proposal persistence,
 # and OpenTakeoff protocol flow against owned synthetic PDFs; it does not
-# establish real-drawing or Bluebeam accuracy.
+# establish real-drawing or Bluebeam accuracy. The Claude operator uses the
+# pinned pypdfium2/Pillow renderer from requirements-civil.txt; Poppler remains
+# a supported legacy fallback but is not a CI/operator prerequisite.
 
 jobs:
   deterministic:
@@ -66,19 +68,6 @@ jobs:
       - name: Install Screen2XYZ dependencies
         shell: bash
         run: python -m pip install -r requirements-civil.txt
-      - name: Install fixed Poppler renderer
-        shell: powershell
-        run: choco install poppler --version=26.6.0 -y --no-progress
-      - name: Expose installed Poppler bin on PATH
-        shell: powershell
-        run: |
-          $pdftoppm = Get-ChildItem 'C:\ProgramData\chocolatey\lib\poppler\tools' -Recurse -Filter pdftoppm.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $pdftoppm) { throw 'Chocolatey Poppler installed but pdftoppm.exe was not found.' }
-          $bin = $pdftoppm.Directory.FullName
-          Write-Host "Poppler bin: $bin"
-          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          $env:PATH = "$bin;$env:PATH"
-          & $pdftoppm.FullName -v
       - name: Install fixed public OpenTakeoff MCP build
         shell: bash
         run: npm install -g opentakeoff-mcp@0.9.65
