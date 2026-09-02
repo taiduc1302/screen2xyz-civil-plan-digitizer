@@ -70,7 +70,7 @@ jobs:
         run: python -m pip install -r requirements-civil.txt
       - name: Install fixed public OpenTakeoff MCP build
         shell: bash
-        run: npm install -g opentakeoff-mcp@0.9.65
+        run: npm install -g opentakeoff-mcp@0.9.68
       - name: Deep environment / MCP tool-contract probe
         shell: bash
         run: PYTHONPATH=src python -m screen2xyz_civil doctor --deep
