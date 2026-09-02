@@ -38,12 +38,31 @@ def build_parser() -> argparse.ArgumentParser:
         "agent-init",
         help="create a single-sheet .s2a.json session for Claude/AI takeoff proposals",
     )
-    init.add_argument("pdf", help="local tender PDF path")
+    init.add_argument("pdf", help="immutable local tender/source PDF path")
     init.add_argument("--page", type=int, required=True, help="1-based PDF page number")
     init.add_argument("--page-label", default="", help="drawing sheet label, e.g. 03")
     init.add_argument("--name", default="", help="session/project display name")
     init.add_argument("--out", required=True, help="output path ending .s2a.json")
     init.add_argument("--render-dpi", type=int, default=150)
+
+    working = sub.add_parser(
+        "agent-working-copy",
+        help="copy immutable source PDF to a separate editable Bluebeam working PDF",
+    )
+    working.add_argument("--session", required=True)
+    working.add_argument("--out", required=True, help="editable Revu working PDF path")
+    working.add_argument(
+        "--replace",
+        action="store_true",
+        help="explicitly replace an existing working PDF with a fresh source copy",
+    )
+
+    register_working = sub.add_parser(
+        "agent-register-working-copy",
+        help="register an existing annotated Revu PDF after drawing-content validation",
+    )
+    register_working.add_argument("--session", required=True)
+    register_working.add_argument("--pdf", required=True, help="existing editable Revu PDF")
 
     ratio = sub.add_parser(
         "agent-scale-ratio",
@@ -167,6 +186,56 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"session": session.to_dict(), "saved": identity}, indent=2))
             return 0
 
+        if command == "agent-working-copy":
+            from .agent_session import load_agent_session, save_agent_session
+            from .working_copy import create_working_copy, working_copy_status
+
+            path = Path(args.session)
+            session = load_agent_session(path)
+            registered = create_working_copy(
+                session,
+                Path(args.out),
+                now=_now(),
+                replace=args.replace,
+            )
+            saved = save_agent_session(session, path, replace=True)
+            print(
+                json.dumps(
+                    {
+                        "working_copy": registered,
+                        "status": working_copy_status(session),
+                        "saved": saved,
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+
+        if command == "agent-register-working-copy":
+            from .agent_session import load_agent_session, save_agent_session
+            from .working_copy import register_working_copy, working_copy_status
+
+            path = Path(args.session)
+            session = load_agent_session(path)
+            registered = register_working_copy(
+                session,
+                Path(args.pdf),
+                now=_now(),
+                created_from_source=False,
+            )
+            saved = save_agent_session(session, path, replace=True)
+            print(
+                json.dumps(
+                    {
+                        "working_copy": registered,
+                        "status": working_copy_status(session),
+                        "saved": saved,
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+
         if command == "agent-scale-ratio":
             from .agent_session import load_agent_session, save_agent_session
 
@@ -223,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
         if command == "agent-plan":
             from .agent_session import export_bluebeam_plan, load_agent_session
             from .scope_ledger import scope_summary
+            from .working_copy import working_copy_status
 
             path = Path(args.session)
             session = load_agent_session(path)
@@ -236,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
                 json.dumps(
                     {
                         "saved": identity,
+                        "working_copy": working_copy_status(session),
                         "scope": scope_summary(session),
                         "qa": session.qa_summary(),
                     },
@@ -247,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
         if command == "agent-status":
             from .agent_session import load_agent_session
             from .scope_ledger import scope_summary
+            from .working_copy import working_copy_status
 
             session = load_agent_session(Path(args.session))
             print(
@@ -254,7 +326,9 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "session_id": session.session_id,
                         "name": session.name,
-                        "source": str(session.source_path),
+                        "immutable_source": str(session.source_path),
+                        "source_sha256": session.source_sha256,
+                        "bluebeam_working_copy": working_copy_status(session),
                         "page_label": session.page_label,
                         "scale": session.scale.to_dict(),
                         "takeoffs": [
@@ -274,9 +348,11 @@ def main(argv: list[str] | None = None) -> int:
                 bluebeam_claude_registration,
                 claude_stdio_add_command,
             )
+            from .working_copy import working_copy_status
 
             session_path = Path(args.session).expanduser().resolve()
             session = load_agent_session(session_path)
+            working = working_copy_status(session)
             src_root = Path(__file__).resolve().parents[1]
             screen2xyz_command = claude_stdio_add_command(
                 name="screen2xyz",
@@ -291,11 +367,21 @@ def main(argv: list[str] | None = None) -> int:
                 env={"PYTHONPATH": str(src_root)},
             )
             bluebeam = bluebeam_claude_registration()
+            bluebeam["working_copy"] = working
+            bluebeam["operator_ready"] = bool(
+                bluebeam.get("available") and working.get("safe_for_bluebeam_operator")
+            )
+            if not working.get("safe_for_bluebeam_operator"):
+                bluebeam["operator_blocker"] = working.get(
+                    "reason", "NO_SAFE_BLUEBEAM_WORKING_COPY"
+                )
             payload = {
                 "session": {
                     "id": session.session_id,
                     "page_label": session.page_label,
+                    "immutable_source": str(session.source_path),
                     "source_sha256": session.source_sha256,
+                    "bluebeam_working_copy": working,
                 },
                 "screen2xyz": {
                     "capability_state": "LOCAL_STDIO_SERVER",
@@ -303,21 +389,31 @@ def main(argv: list[str] | None = None) -> int:
                 },
                 "bluebeam": bluebeam,
                 "next_steps": [
+                    "Keep the immutable source PDF unchanged; Screen2XYZ deliberately verifies its exact SHA-256.",
+                    "Open/save native Revu markups only in the registered Bluebeam working copy, never in the immutable source.",
                     "Run the Screen2XYZ claude_command once, then confirm it with `claude mcp get screen2xyz` or `/mcp`.",
-                    "If Bluebeam is discovered, ensure Revu MCP is enabled and the intended PDF is active, then run the Bluebeam claude_command and confirm tools appear in `/mcp`.",
-                    "Bluebeam discovery/registration is not LIVE_TESTED measurement capability. Run the disposable Length+Area acceptance gate before production native measurement creation.",
+                    "If Bluebeam operator_ready is true, open the exact registered working-copy PDF in Revu, enable MCP, run the Bluebeam claude_command, and confirm tools appear in `/mcp`.",
+                    "Bluebeam discovery/registration is not LIVE_TESTED measurement capability. Run the disposable native Length+Area acceptance gate before production native measurement creation.",
                     "Start Claude Code from this repository and use prompts/CLAUDE_CODE_BLUEBEAM_TAKEOFF_PROMPT.md.",
                 ],
             }
             if args.as_json:
                 print(json.dumps(payload, indent=2))
             else:
-                print("Screen2XYZ Claude Code registration:\n" + screen2xyz_command)
-                if bluebeam["available"]:
+                print("Immutable Screen2XYZ source:\n" + str(session.source_path))
+                print("\nScreen2XYZ Claude Code registration:\n" + screen2xyz_command)
+                if not working.get("safe_for_bluebeam_operator"):
+                    print(
+                        "\nBluebeam registration withheld: first create/register a separate "
+                        "working PDF (`agent-working-copy` or `agent-register-working-copy`). "
+                        f"Reason: {working.get('reason')}"
+                    )
+                elif bluebeam["available"]:
+                    print("\nOpen this editable PDF in Revu:\n" + str(working["path"]))
                     print("\nBluebeam Revu MCP candidate registration (NOT LIVE_TESTED):\n" + str(bluebeam["claude_command"]))
                 else:
                     print("\nBluebeam Revu MCP: not discovered on this machine.")
-                print("\nThen verify both servers with `/mcp` before running the takeoff prompt.")
+                print("\nThen verify connected servers with `/mcp` before running the takeoff prompt.")
             return 0
 
         if command == "mcp":
