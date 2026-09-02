@@ -52,12 +52,18 @@ def environment_report(*, deep: bool = False) -> dict[str, Any]:
     for name, required in (
         ("tkinter", True),
         ("pypdf", True),
+        ("pypdfium2", True),
+        ("PIL", True),
         ("openpyxl", True),
         ("mcp", True),
         ("defusedxml", True),
     ):
         checks.append(_module(name, required=required))
-    checks.append(_executable("pdftoppm", required=True))
+
+    # The Claude/operator path uses bundled PDFium through pypdfium2. Poppler
+    # remains a supported legacy renderer fallback, but is no longer a hard
+    # prerequisite for the operator pilot.
+    checks.append(_executable("pdftoppm", required=False))
     checks.append(_executable("tesseract", required=False))
     checks.append(_executable("claude", required=False))
     checks.append(_executable("node", required=False))
