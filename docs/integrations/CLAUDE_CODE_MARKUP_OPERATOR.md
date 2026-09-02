@@ -39,12 +39,16 @@ $env:PYTHONPATH = (Resolve-Path .\src)
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor
 ```
 
-PDF image viewing requires Poppler `pdftoppm` on `PATH`. Tesseract is optional for OCR. Node/OpenTakeoff are optional for manual Claude proposals but required for `auto_trace_area`.
+The Claude/operator `view_sheet` path uses the pinned `pypdfium2` + Pillow
+packages installed by `requirements-civil.txt`; a separate Poppler install is
+not required for this pilot. Poppler `pdftoppm` is retained only as a supported
+legacy/fallback renderer. Tesseract is optional for OCR. Node/OpenTakeoff are
+optional for manual Claude proposals but required for `auto_trace_area`.
 
 Optional OpenTakeoff install. The public package version exercised by this branch's Windows CI is pinned for reproducibility:
 
 ```powershell
-npm install -g opentakeoff-mcp@0.9.65
+npm install -g opentakeoff-mcp@0.9.68
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
@@ -158,6 +162,8 @@ After proposal review:
 This writes `*.bluebeam-markup-plan.json` beside the session. It contains Subject/Label/Comment traceability, canonical geometry, render coordinates, OpenTakeoff coordinates, flags, preview quantity, and the rule that an anchor is reference-only.
 
 The JSON is **not** evidence that native Revu markups were created. The final operator step must create or edit native Bluebeam measurements and read them back from the saved PDF/session. For scale-dependent measurements, final QA requires both `SCALE_RESOLVED=Y` and `SCALE_VERIFIED=Y`.
+
+If Claude Code has a Bluebeam/Revu MCP server connected, use the acceptance procedure in `BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md` before allowing mass native measurement creation on the owner machine. If no live-tested native creation path exists in Claude Code, the Screen2XYZ pilot still produces the reviewed geometry/markup plan, but native Revu placement must use the proven GUI/operator route.
 
 ## 8. Test/acceptance sequence
 
