@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from screen2xyz_civil.pattern_edge import flatten_to_envelope
 from screen2xyz_civil.bluebeam_bridge import (
     BridgeError,
     MAX_LABEL_CHARS,
@@ -295,6 +296,48 @@ class ReconcileTests(unittest.TestCase):
         report = reconcile(session, [])
         statuses = {row["status"] for row in report["rows"]}
         self.assertIn("NO_HOST_LINK", statuses)
+
+
+class PatternChaseGateTests(unittest.TestCase):
+    # A boundary taken from a hatch's extent oscillates at the hatch pitch for
+    # ever. It reached the host on 2026-09-03 and sat there wrong by 0.57 m
+    # along a whole edge while the area reconciled, the overlap was zero and
+    # the sliver ratio stayed well under threshold. Nothing else here can see
+    # it, so the gate now does.
+    PITCH = 13.6
+
+    def _sawtooth_band(self, n=14):
+        run = [(i * self.PITCH, 100.0 if i % 2 else 106.4) for i in range(n)]
+        return run + [(run[-1][0], 60.0), (run[0][0], 60.0)]
+
+    def test_a_pattern_chasing_boundary_is_refused(self):
+        report = polygon_health(self._sawtooth_band(), pattern_pitch_pt=self.PITCH)
+        self.assertFalse(report["safe_to_write"])
+        codes = {f["code"] for f in report["findings"]}
+        self.assertIn("BOUNDARY_CHASES_A_PATTERN", codes)
+
+    def test_the_refusal_names_the_repair(self):
+        report = polygon_health(self._sawtooth_band(), pattern_pitch_pt=self.PITCH)
+        detail = next(f["detail"] for f in report["findings"]
+                      if f["code"] == "BOUNDARY_CHASES_A_PATTERN")
+        self.assertIn("flatten_to_envelope", detail)
+        self.assertIn("vector_fill", detail)
+
+    def test_the_repaired_boundary_passes(self):
+        fixed = flatten_to_envelope(self._sawtooth_band(), keep="inner")["ring"]
+        self.assertTrue(polygon_health(fixed, pattern_pitch_pt=self.PITCH)["safe_to_write"])
+
+    def test_the_sliver_ratio_alone_would_have_let_it_through(self):
+        # Why a new check was needed rather than a tighter old one.
+        report = polygon_health(self._sawtooth_band(), pattern_pitch_pt=self.PITCH)
+        self.assertLess(report["compactness_ratio"], 25.0)
+
+    def test_a_clean_boundary_is_unaffected(self):
+        self.assertTrue(polygon_health(CLEAN_RECT)["safe_to_write"])
+
+    def test_the_check_can_be_turned_off_deliberately(self):
+        report = polygon_health(self._sawtooth_band(), check_pattern_chase=False)
+        self.assertTrue(report["safe_to_write"])
 
 
 if __name__ == "__main__":

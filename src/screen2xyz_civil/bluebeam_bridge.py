@@ -40,6 +40,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
+from . import pattern_edge
+
 
 Point = tuple[float, float]
 
@@ -187,6 +189,8 @@ def polygon_health(
     *,
     metres_per_unit: float | None = None,
     sliver_ratio_threshold: float = 25.0,
+    pattern_pitch_pt: float | None = None,
+    check_pattern_chase: bool = True,
 ) -> dict[str, Any]:
     """Check a polygon before it is written to Bluebeam.
 
@@ -246,6 +250,33 @@ def polygon_health(
                 blocking=True,
             )
         )
+
+    # A boundary that oscillates evenly is following a fill pattern's extent,
+    # not a drawn line, and no other check here can see it: a sawtooth raises
+    # the perimeter but stays under the sliver ratio on a band that is already
+    # long and thin, and the area reconciles perfectly with itself. Blocking,
+    # because on DEMO-001-05 it reached the host and sat there being wrong by
+    # 0.57 m along the whole edge while every number agreed.
+    if check_pattern_chase and len(rows) >= 8:
+        chase = pattern_edge.pattern_chase_report(
+            rows, pitch_pt=pattern_pitch_pt, metres_per_unit=metres_per_unit
+        )
+        if chase["chasing_pattern"]:
+            findings.append(
+                Finding(
+                    code="BOUNDARY_CHASES_A_PATTERN",
+                    severity="ERROR",
+                    detail=(
+                        f"{chase['detail']}. A hatch is a fill, not an edge - its extent "
+                        "oscillates at its own pitch for ever, so a boundary taken from it "
+                        "can never be the drawn line. Take the edge from the drawing's own "
+                        "geometry (vector_fill), or repair this one with "
+                        "pattern_edge.flatten_to_envelope and render the result against the "
+                        "sheet before writing."
+                    ),
+                    blocking=True,
+                )
+            )
 
     report: dict[str, Any] = {
         "vertex_count": len(rows),

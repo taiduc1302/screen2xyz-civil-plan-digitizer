@@ -47,6 +47,39 @@ across paths: read geometry back with `get_markup_shape` and render from that,
 or pin a position against something the write never touched. Use
 `screen2xyz_civil.host_frame` rather than open-coding a coordinate flip.
 
+## Where a boundary comes from (blocking)
+
+**A boundary is a drawn line. It is never the extent of a fill pattern.**
+
+A hatch or a stipple is a fill: separate strokes with gaps between them. "How
+far the hatch reaches" is not a line - it oscillates between the strokes and
+the gaps, at the pattern's own pitch, for ever. Tracing that extent can only
+produce a sawtooth, however carefully it is traced. The pattern stops *at* the
+edge; the edge is drawn separately.
+
+So, in order of preference:
+
+1. the drawing's own vector geometry - `vector_fill` reads the filled paths and
+   gives a smooth edge;
+2. a printed dimension;
+3. only then a mask, and only to **find** what is on a sheet, never to place
+   its boundary.
+
+`polygon_health` refuses a boundary that oscillates evenly
+(`BOUNDARY_CHASES_A_PATTERN`) because nothing else can see it: a sawtooth
+raises the perimeter but stays under the sliver ratio on a band that is already
+long and thin, and the area reconciles perfectly with itself. Measured on
+DEMO-001-05 - period 12.7 pt against a 13.6 pt hatch pitch, amplitude 6.4 pt
+(0.57 m) along the whole edge, and every numeric check passed.
+
+If you have already written one, `pattern_edge.flatten_to_envelope` repairs it:
+it snaps each oscillating run to the side that repeats, which is the drawn line
+the strokes are clipped against, and leaves corners and tapers alone. When
+**both** sides of the oscillation are constant it refuses and returns
+`needs_a_scope_decision`, because an edge running between two real drawn lines
+is a scope question the drawing answers, not one a tolerance should. Render the
+repair against the sheet and record the area change before writing it.
+
 ## Parent-agent orchestration
 
 Future Codex runs must:

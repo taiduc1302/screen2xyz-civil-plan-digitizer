@@ -108,6 +108,16 @@ Do not treat OpenTakeoff confidence as verification. Do not let OpenTakeoff beco
 
 For simple pipe/shoulder/ditch centerlines or an area whose vertices are visually obvious, using `propose_line_takeoff` or `propose_polygon_takeoff` directly is acceptable and often preferable.
 
+**A boundary is a drawn line, never the extent of a fill pattern.** A hatch is
+separate strokes with gaps, so its extent oscillates at its own pitch for ever
+and can never be an edge. Take a boundary from the drawing's vector geometry
+(`vector_fill`) or a printed dimension; use a colour mask only to find what is
+on a sheet. `polygon_health` refuses an evenly oscillating outline
+(`BOUNDARY_CHASES_A_PATTERN`) - no other check sees it, because the sawtooth
+stays under the sliver ratio and the area reconciles with itself. Repair one
+with `pattern_edge.flatten_to_envelope`, which snaps to the side that repeats
+and refuses when both sides are constant, since that is a scope question.
+
 ## Uncertainty policy
 
 Never make up missing scope, scale, bid-item mapping, or geometry.
