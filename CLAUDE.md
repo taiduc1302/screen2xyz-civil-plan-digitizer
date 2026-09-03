@@ -73,6 +73,15 @@ stays under the sliver ratio and the area reconciles with itself.
 boundary on a pattern extreme, not on the drawn line - so use it only where the
 drawing genuinely draws no boundary.
 
+**Say what identified the feature and, separately, what fixed its edge.**
+`feature_identity.identification_report` refuses a boundary taken from a pen,
+an identification resting only on a pen or a curve fit, and any claim where one
+source both finds the item and draws its edge - the mistake that hid the hatch
+outline. `fill_layers` regions arrive refused by construction. Before building a
+tool, check that the thing you are measuring is the thing the drawing means: the
+four printed curb points on sheet 04 bracket the intersection mouth, where there
+is no curb, so a tracer joining each pair would have measured the mouth.
+
 `ANCHOR_ROADWORKS_EXTENT` / `ANCHOR - DO NOT SUM` is QA/reference geometry and must never be included in bid totals.
 
 Automation may advance work only through proposal/QA states. `ESTIMATOR_REVIEWED` and `APPROVED` are human-only.

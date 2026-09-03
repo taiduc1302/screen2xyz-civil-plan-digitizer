@@ -64,6 +64,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from . import feature_identity
 from .bluebeam_bridge import polygon_health
 from .plan_layers import Viewport
 
@@ -141,6 +142,7 @@ class FillRegion:
     compactness_ratio: float = 0.0  # perimeter / sqrt(area); a square is 4
     pattern_fractions: dict[str, float] = field(default_factory=dict)
     dominant_pattern: str = ""
+    identification: dict[str, Any] = field(default_factory=dict)
     findings: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -161,6 +163,7 @@ class FillRegion:
             "compactness_ratio": self.compactness_ratio,
             "pattern_fractions": dict(self.pattern_fractions),
             "dominant_pattern": self.dominant_pattern,
+            "identification": dict(self.identification),
             "vertex_count": len(self.polygon_raw),
             "polygon_raw": [list(p) for p in self.polygon_raw],
             "holes_raw": [[list(p) for p in h] for h in self.holes_raw],
@@ -694,6 +697,15 @@ def _finish_region(
             fractions[name] = count / total
     dominant = max(fractions, key=fractions.get) if fractions else ""
 
+    # A region here is found by a colour and bounded by the same colour's mask.
+    # That is exactly the pairing that hid the hatch outline, so every region
+    # says so about itself and arrives refused. Attach a legend swatch or a
+    # callout, take the edge from the drawing's outline object, and re-declare.
+    identity = feature_identity.identification_report(
+        identified_by=[feature_identity.PEN_ONLY],
+        boundary_from=[feature_identity.PEN_ONLY],
+    )
+
     region = FillRegion(
         index=n, pixel_count=painted, area_m2_pixels=area_pixels,
         area_m2_polygon=area_polygon, polygon_raw=outer_raw, holes_raw=holes_raw,
@@ -703,6 +715,7 @@ def _finish_region(
         health_safe=bool(health.get("safe_to_write", False)), health_codes=health_codes,
         compactness_ratio=float(health.get("compactness_ratio") or 0.0),
         pattern_fractions=fractions, dominant_pattern=dominant,
+        identification=identity,
         findings=findings,
     )
     return findings, region

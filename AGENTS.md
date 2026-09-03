@@ -84,6 +84,39 @@ stays under the sliver ratio and the area reconciles with itself.
 boundary on a pattern extreme, not on the drawn line - so use it only where the
 drawing genuinely draws no boundary.
 
+## Name what identified the feature, and what fixed its edge (blocking)
+
+Two failures had the same shape and neither was visible in any coordinate. An
+angle filter kept 30-60/120-150 degrees, correctly found the hatch, and
+silently discarded the region's **outline** drawn in the same pen - so the edge
+could only ever be the hatch envelope. Five arcs were identified by a
+least-squares radius of 10.00 m against a printed 10.0 at 0.01 pt rms, and one
+was the storm line and two were gas: utilities are laid concentric with the
+curb, so they share its centre and radius.
+
+`feature_identity.identification_report` makes this a gate rather than a note.
+Declare two things separately:
+
+* `identified_by` - what told you this is the feature. A `LEGEND_SWATCH`, a
+  `CALLOUT_LEADER` whose arrow ends on it, or a `DRAWING_TABLE` row.
+* `boundary_from` - what told you where its edge runs. A `DRAWN_OUTLINE`
+  object, a `PRINTED_STATION_OFFSET`, or a table row.
+
+`PEN_ONLY` and `GEOMETRIC_FIT` narrow a field of candidates and never identify
+anything on their own. A boundary from a pen is refused outright, and so is a
+claim where identity and boundary rest on the same single source - that is the
+specific mistake that hid the outline. `fill_layers` regions declare
+`PEN_ONLY`/`PEN_ONLY` about themselves and therefore arrive refused; attach the
+legend swatch or callout, take the edge from the drawing's outline object, and
+re-declare.
+
+**And before building a tool, check that the thing you are about to measure is
+the thing the drawing means.** The four printed curb points on DEMO-001-04 are
+the outer limits of curb work on either side of the Example Avenue mouth, not the two
+ends of one run - there is no curb between them. A tracer built to join each
+pair would have measured the intersection mouth. Exact endpoints and a verified
+transform are not the same as knowing what lies between them.
+
 ## Parent-agent orchestration
 
 Future Codex runs must:
