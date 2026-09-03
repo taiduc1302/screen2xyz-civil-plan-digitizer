@@ -38,6 +38,61 @@ def _rounded_box(box: tuple[float, float, float, float]) -> list[float]:
     return [round(value, 6) for value in box]
 
 
+def _xobject_stream_digest(page: Any, *, max_depth: int = 6) -> tuple[str, int]:
+    """Digest Form/Image XObject streams referenced by a page.
+
+    A CAD-exported sheet often draws everything inside one Form XObject, leaving
+    the page content stream as a few bytes of wrapper. Hashing only that wrapper
+    would let a different drawing revision pass as the same page, so the
+    referenced XObject streams are folded into the fingerprint as well.
+    """
+
+    digest = hashlib.sha256()
+    total = 0
+    seen: set[int] = set()
+
+    def walk(resources: Any, depth: int) -> None:
+        nonlocal total
+        if resources is None or depth > max_depth:
+            return
+        try:
+            xobjects = resources.get_object().get("/XObject")
+        except Exception:
+            return
+        if xobjects is None:
+            return
+        try:
+            xobjects = xobjects.get_object()
+            names = sorted(str(name) for name in xobjects.keys())
+        except Exception:
+            return
+        for name in names:
+            try:
+                reference = xobjects.raw_get(name)
+                idnum = getattr(reference, "idnum", None)
+                if idnum is not None:
+                    if idnum in seen:
+                        continue
+                    seen.add(idnum)
+                stream = xobjects[name].get_object()
+                raw = bytes(stream.get_data())
+            except Exception:
+                continue
+            digest.update(name.encode("utf-8", "replace"))
+            digest.update(raw)
+            total += len(raw)
+            try:
+                walk(stream.get("/Resources"), depth + 1)
+            except Exception:
+                continue
+
+    try:
+        walk(page.get("/Resources"), 0)
+    except Exception:
+        pass
+    return digest.hexdigest(), total
+
+
 def page_drawing_fingerprint(path: Path, page_index: int) -> dict[str, Any]:
     """Fingerprint page drawing content while intentionally ignoring annotations.
 
@@ -70,6 +125,7 @@ def page_drawing_fingerprint(path: Path, page_index: int) -> dict[str, Any]:
             raise WorkingCopyError(
                 f"unable to read decoded page content stream: {type(exc).__name__}: {exc}"
             ) from exc
+    resource_sha, resource_bytes = _xobject_stream_digest(page)
     media = _box_tuple(page.mediabox)
     crop = _box_tuple(page.cropbox)
     rotation = int(page.get("/Rotate", 0) or 0) % 360
@@ -80,10 +136,13 @@ def page_drawing_fingerprint(path: Path, page_index: int) -> dict[str, Any]:
     digest.update(repr(tuple(round(value, 6) for value in media)).encode("ascii"))
     digest.update(repr(tuple(round(value, 6) for value in crop)).encode("ascii"))
     digest.update(str(rotation).encode("ascii"))
+    digest.update(resource_sha.encode("ascii"))
     return {
         "sha256": digest.hexdigest(),
         "content_stream_sha256": hashlib.sha256(data).hexdigest(),
         "content_bytes": len(data),
+        "resource_stream_sha256": resource_sha,
+        "resource_bytes": resource_bytes,
         "media_box": _rounded_box(media),
         "crop_box": _rounded_box(crop),
         "rotation": rotation,

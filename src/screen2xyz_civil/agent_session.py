@@ -246,6 +246,7 @@ class AgentTakeoffSession:
         *,
         coordinate_frame: str,
         render_dpi: float | None = None,
+        render_size: Iterable[float] | None = None,
     ) -> tuple[TakeoffVertex, ...]:
         frame = coordinate_frame.strip().lower()
         rows = [tuple(float(v) for v in point) for point in points]
@@ -254,10 +255,28 @@ class AgentTakeoffSession:
         if frame in {"pdf", "pdf_points", "canonical"}:
             factor = 1.0
         elif frame in {"render", "render_px", "pixels"}:
-            dpi = float(render_dpi or self.render_dpi)
-            if not math.isfinite(dpi) or dpi <= 0:
-                raise AgentSessionError("render DPI must be positive")
-            factor = POINTS_PER_INCH / dpi
+            if render_size is not None:
+                # Derive the factor from the raster the caller actually measured
+                # on. An assumed DPI is unsafe: any host that rescales the sheet
+                # image silently rescales every quantity read off it.
+                size = [float(value) for value in render_size]
+                if len(size) != 2:
+                    raise AgentSessionError("render_size must be width and height in pixels")
+                width_px, height_px = size
+                if not all(math.isfinite(value) and value > 0 for value in size):
+                    raise AgentSessionError("render_size must be positive pixel dimensions")
+                factor = self.page_width_points / width_px
+                vertical = self.page_height_points / height_px
+                if abs(factor - vertical) > max(factor, vertical) * 0.02:
+                    raise AgentSessionError(
+                        "render_size does not match this sheet's aspect ratio; "
+                        "the image is not a plain scale of the selected page"
+                    )
+            else:
+                dpi = float(render_dpi or self.render_dpi)
+                if not math.isfinite(dpi) or dpi <= 0:
+                    raise AgentSessionError("render DPI must be positive")
+                factor = POINTS_PER_INCH / dpi
         elif frame in {"opentakeoff", "opentakeoff_px"}:
             # OpenTakeoff's reviewed contract is PDF point x 2.
             factor = 0.5
@@ -419,6 +438,7 @@ class AgentTakeoffSession:
         count: int | None = None,
         coordinate_frame: str = "pdf_points",
         render_dpi: float | None = None,
+        render_size: Iterable[float] | None = None,
         now: str,
         source_engine: str,
         source_method: str,
@@ -445,6 +465,7 @@ class AgentTakeoffSession:
                 points,
                 coordinate_frame=coordinate_frame,
                 render_dpi=render_dpi,
+                render_size=render_size,
             )
         geometry = TakeoffGeometry(geometry_kind, vertices=vertices, count=count)
         cleaned_flags = {str(flag).strip().upper() for flag in flags if str(flag).strip()}
@@ -498,6 +519,7 @@ class AgentTakeoffSession:
         reason: str,
         actor: str = "agent",
         render_dpi: float | None = None,
+        render_size: Iterable[float] | None = None,
     ) -> TakeoffMeasurement:
         item = self.measurement(takeoff_id)
         if item.approved:
@@ -508,6 +530,7 @@ class AgentTakeoffSession:
             points,
             coordinate_frame=coordinate_frame,
             render_dpi=render_dpi,
+            render_size=render_size,
         )
         corrected = TakeoffGeometry(item.geometry.kind, vertices=vertices)
         try:
@@ -644,21 +667,21 @@ class AgentTakeoffSession:
         rows: list[dict[str, Any]] = []
         for item in self.measurements:
             rule = item.rule
-            subject_prefix = item.bid_item.strip() or "UNMAPPED"
+            subject_prefix = _safe_token_value(item.bid_item) or "UNMAPPED"
             subject = f"{subject_prefix} | {item.id} | {rule.display_name}"
             comment_parts = [
                 f"PLAN_ID={item.id}",
                 f"SHEET={self.page_label}",
                 f"SOURCE={self.source_identity.get('display_name', '')}",
                 f"SOURCE_SHA256={self.source_sha256}",
-                f"BIDITEM={item.bid_item or 'UNMAPPED'}",
+                f"BIDITEM={_safe_token_value(item.bid_item) or 'UNMAPPED'}",
                 "STATUS=AI_PROPOSED",
                 f"SCALE_RESOLVED={scale_resolved}",
                 f"SCALE_VERIFIED={scale_verified}",
                 "CREATED_BY=Screen2XYZ+AI",
             ]
             if item.notes.strip():
-                comment_parts.append(f"NOTE={item.notes.strip()}")
+                comment_parts.append(f"NOTE={_safe_token_value(item.notes)}")
             rows.append(
                 {
                     "takeoff_id": item.id,
@@ -798,6 +821,65 @@ def load_agent_session(path: Path, *, verify_source: bool = True) -> AgentTakeof
         TakeoffContextError,
     ) as exc:
         raise AgentSessionError("agent session load failed") from exc
+
+
+def _safe_token_value(value: str) -> str:
+    """Strip the delimiters that carry meaning in a traceability comment.
+
+    `notes` and `bid_item` originate from an agent or from drawing text, which
+    is untrusted evidence. Left raw they can inject extra `;KEY=VALUE` pairs and
+    forge a review status a reviewer reads in Revu.
+    """
+
+    return value.replace(";", ",").replace("=", ":").strip()
+
+
+def resolve_markup_plan_target(
+    session: AgentTakeoffSession,
+    session_path: Path,
+    output_path: str | Path | None = None,
+    *,
+    confine_to_session_dir: bool,
+) -> Path:
+    """Resolve where a Bluebeam markup plan may be written, and refuse the rest.
+
+    The plan is JSON. Writing it over the immutable source PDF, the governed
+    session, or a registered Bluebeam working copy destroys the very evidence the
+    session exists to protect, so those targets are refused outright. Agent-driven
+    callers are additionally confined to the session directory, because the output
+    path can be influenced by untrusted drawing text.
+    """
+
+    base = Path(session_path).expanduser().resolve()
+    if base.name.endswith(".s2a.json"):
+        default = base.with_name(base.name[: -len(".s2a.json")] + ".bluebeam-markup-plan.json")
+    else:
+        default = base.with_suffix(".bluebeam-markup-plan.json")
+
+    raw = str(output_path or "").strip()
+    target = Path(raw).expanduser().resolve() if raw else default
+
+    if target.suffix.lower() != ".json":
+        raise AgentSessionError("markup plan target must be a .json file")
+
+    protected: set[Path] = {base, Path(session.source_path).expanduser().resolve()}
+    registered = session.source_identity.get("bluebeam_working_copy")
+    if isinstance(registered, dict):
+        local = str(registered.get("local_path", "")).strip()
+        if local:
+            protected.add(Path(local).expanduser().resolve())
+    if target in protected:
+        raise AgentSessionError(
+            "refusing to write the markup plan over the immutable source, the session, "
+            "or the registered Bluebeam working copy"
+        )
+
+    if confine_to_session_dir and target.parent != base.parent:
+        raise AgentSessionError(
+            "markup plan must be written inside the session directory"
+        )
+
+    return target
 
 
 def export_bluebeam_plan(

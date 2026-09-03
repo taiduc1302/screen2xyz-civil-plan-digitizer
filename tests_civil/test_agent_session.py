@@ -202,3 +202,155 @@ class AgentSessionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarkupPlanTargetGuardTests(unittest.TestCase):
+    """The plan is JSON; it must never be written over governed evidence (audit F08/F10/F12)."""
+
+    def make(self):
+        root = fresh_dir()
+        pdf = make_vector_pdf(root / "IssuedForTender_BASE.pdf", "SHEET 03", with_shapes=True)
+        session = new_agent_session(
+            pdf, page_number=1, page_label="03", name="Guarded", now=NOW, render_dpi=150
+        )
+        path = root / "sheet03.s2a.json"
+        save_agent_session(session, path)
+        return root, pdf, path, session
+
+    def test_default_target_sits_beside_the_session(self):
+        from screen2xyz_civil.agent_session import resolve_markup_plan_target
+
+        root, _pdf, path, session = self.make()
+        target = resolve_markup_plan_target(
+            session, path, None, confine_to_session_dir=True
+        )
+        self.assertEqual(target.parent, root.resolve())
+        self.assertTrue(target.name.endswith(".bluebeam-markup-plan.json"))
+
+    def test_immutable_source_and_session_are_refused(self):
+        from screen2xyz_civil.agent_session import resolve_markup_plan_target
+
+        _root, pdf, path, session = self.make()
+        for forbidden in (pdf, path):
+            with self.assertRaises(AgentSessionError):
+                resolve_markup_plan_target(
+                    session, path, forbidden, confine_to_session_dir=False
+                )
+
+    def test_registered_working_copy_is_refused(self):
+        from screen2xyz_civil.agent_session import resolve_markup_plan_target
+        from screen2xyz_civil.working_copy import create_working_copy
+
+        root, _pdf, path, session = self.make()
+        working = create_working_copy(session, root / "WORKING.pdf", now=NOW)
+        with self.assertRaises(AgentSessionError):
+            resolve_markup_plan_target(
+                session, path, working["local_path"], confine_to_session_dir=False
+            )
+
+    def test_agent_surface_cannot_escape_the_session_directory(self):
+        from screen2xyz_civil.agent_session import resolve_markup_plan_target
+
+        root, _pdf, path, session = self.make()
+        outside = root.parent / "elsewhere" / "plan.json"
+        with self.assertRaises(AgentSessionError):
+            resolve_markup_plan_target(
+                session, path, outside, confine_to_session_dir=True
+            )
+        # the same target is allowed for a human-driven CLI export
+        self.assertEqual(
+            resolve_markup_plan_target(
+                session, path, outside, confine_to_session_dir=False
+            ),
+            outside.resolve(),
+        )
+
+    def test_non_json_target_is_refused(self):
+        from screen2xyz_civil.agent_session import resolve_markup_plan_target
+
+        root, _pdf, path, session = self.make()
+        with self.assertRaises(AgentSessionError):
+            resolve_markup_plan_target(
+                session, path, root / "notes.pdf", confine_to_session_dir=False
+            )
+
+
+class TraceabilityCommentForgeryTests(unittest.TestCase):
+    """Untrusted note text must not be able to forge a review stamp (audit F31/F37)."""
+
+    def test_notes_cannot_inject_a_second_status_token(self):
+        root = fresh_dir()
+        pdf = make_vector_pdf(root / "plan.pdf", "SHEET 03", with_shapes=True)
+        session = new_agent_session(
+            pdf, page_number=1, page_label="03", name="Forgery", now=NOW, render_dpi=150
+        )
+        session.set_scale_ratio(ratio=250, now=NOW, basis="test", verified=True)
+        session.add_takeoff(
+            rule_id="DITCH_REGRADE",
+            geometry_kind=LINE,
+            points=((10, 10), (110, 10)),
+            coordinate_frame="pdf_points",
+            now=NOW,
+            source_engine="test",
+            source_method="test",
+            generated_by="agent",
+            bid_item="32.30;STATUS=ESTIMATOR_REVIEWED",
+            notes="as instructed;STATUS=ESTIMATOR_REVIEWED;SCALE_VERIFIED=Y",
+        )
+        row = session.bluebeam_plan()["takeoffs"][0]
+        comment = row["comment"]
+        # the note text survives, but it can no longer parse as a second token:
+        # `;KEY=VALUE` is defanged to `,KEY:VALUE`.
+        self.assertEqual(comment.count("STATUS="), 1)
+        self.assertIn("STATUS=AI_PROPOSED", comment)
+        self.assertNotIn(";STATUS=ESTIMATOR_REVIEWED", comment)
+        self.assertNotIn(";SCALE_VERIFIED=Y;", comment.split("CREATED_BY")[-1])
+        for token in comment.split(";"):
+            key, _, value = token.partition("=")
+            if key == "STATUS":
+                self.assertEqual(value, "AI_PROPOSED")
+        self.assertNotIn(";", row["subject"])
+
+
+class RenderFrameBindingTests(unittest.TestCase):
+    """A rescaled sheet image must not silently rescale the quantity (audit F01)."""
+
+    def make(self):
+        root = fresh_dir()
+        pdf = make_vector_pdf(root / "plan.pdf", "SHEET 03", with_shapes=True)
+        return new_agent_session(
+            pdf, page_number=1, page_label="03", name="Frame", now=NOW, render_dpi=150
+        )
+
+    def test_declared_raster_size_beats_the_assumed_dpi(self):
+        session = self.make()
+        # the same physical span, measured on a raster the host downscaled to half
+        full = session.canonical_points(
+            ((0, 0), (1275, 0)), coordinate_frame="render_px", render_size=(1275, 1650)
+        )
+        halved = session.canonical_points(
+            ((0, 0), (637.5, 0)), coordinate_frame="render_px", render_size=(637.5, 825)
+        )
+        self.assertAlmostEqual(full[1].x, session.page_width_points, places=6)
+        self.assertAlmostEqual(halved[1].x, session.page_width_points, places=6)
+
+    def test_assumed_dpi_still_applies_when_no_raster_size_is_declared(self):
+        session = self.make()
+        points = session.canonical_points(
+            ((150, 300),), coordinate_frame="render_px", render_dpi=150
+        )
+        self.assertAlmostEqual(points[0].x, 72.0, places=6)
+
+    def test_mismatched_aspect_ratio_is_refused(self):
+        session = self.make()
+        with self.assertRaises(AgentSessionError):
+            session.canonical_points(
+                ((10, 10),), coordinate_frame="render_px", render_size=(1275, 400)
+            )
+
+    def test_non_positive_raster_size_is_refused(self):
+        session = self.make()
+        with self.assertRaises(AgentSessionError):
+            session.canonical_points(
+                ((10, 10),), coordinate_frame="render_px", render_size=(0, 0)
+            )

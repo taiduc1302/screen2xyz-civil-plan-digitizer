@@ -131,3 +131,99 @@ class WorkingCopyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def _form_xobject_pdf(path, drawing: str):
+    """Build a page whose entire drawing lives inside one Form XObject.
+
+    This is how CAD exporters emit civil sheets: the page content stream is a few
+    bytes of wrapper, so a fingerprint that hashes only that wrapper cannot tell
+    two drawing revisions apart.
+    """
+
+    from pypdf.generic import (
+        ArrayObject,
+        DecodedStreamObject,
+        DictionaryObject,
+        FloatObject,
+        NameObject,
+        NumberObject,
+    )
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+
+    form = DecodedStreamObject()
+    form.set_data(drawing.encode("ascii"))
+    form[NameObject("/Type")] = NameObject("/XObject")
+    form[NameObject("/Subtype")] = NameObject("/Form")
+    form[NameObject("/BBox")] = ArrayObject(
+        [FloatObject(0), FloatObject(0), FloatObject(612), FloatObject(792)]
+    )
+    form_ref = writer._add_object(form)
+
+    xobjects = DictionaryObject()
+    xobjects[NameObject("/Fm0")] = form_ref
+    resources = DictionaryObject()
+    resources[NameObject("/XObject")] = xobjects
+    page[NameObject("/Resources")] = resources
+
+    stream = DecodedStreamObject()
+    stream.set_data(b"q /Fm0 Do Q")
+    stream[NameObject("/Length")] = NumberObject(len(b"q /Fm0 Do Q"))
+    page[NameObject("/Contents")] = writer._add_object(stream)
+
+    with open(path, "wb") as handle:
+        writer.write(handle)
+    return path
+
+
+class FormXObjectFingerprintTests(unittest.TestCase):
+    """A drawing inside a Form XObject must still be fingerprinted (audit F11/F15)."""
+
+    def test_same_drawing_inside_a_form_xobject_still_matches(self):
+        root = fresh_dir()
+        drawing = "1 w 100 100 m 500 100 l S 100 100 m 100 400 l S "
+        first = _form_xobject_pdf(root / "base.pdf", drawing)
+        second = _form_xobject_pdf(root / "copy.pdf", drawing)
+        from screen2xyz_civil.working_copy import page_drawing_fingerprint
+
+        self.assertEqual(
+            page_drawing_fingerprint(first, 0)["sha256"],
+            page_drawing_fingerprint(second, 0)["sha256"],
+        )
+
+    def test_different_revision_inside_a_form_xobject_is_detected(self):
+        root = fresh_dir()
+        base = _form_xobject_pdf(
+            root / "revA.pdf", "1 w 100 100 m 500 100 l S 100 100 m 100 400 l S "
+        )
+        revised = _form_xobject_pdf(
+            root / "revB.pdf",
+            "20 w 100 100 m 500 700 l S 50 50 300 300 re S ",
+        )
+        from screen2xyz_civil.working_copy import page_drawing_fingerprint
+
+        first = page_drawing_fingerprint(base, 0)
+        second = page_drawing_fingerprint(revised, 0)
+        self.assertEqual(first["content_bytes"], second["content_bytes"])
+        self.assertEqual(
+            first["content_stream_sha256"], second["content_stream_sha256"]
+        )
+        self.assertNotEqual(first["resource_stream_sha256"], second["resource_stream_sha256"])
+        self.assertNotEqual(first["sha256"], second["sha256"])
+
+    def test_form_xobject_revision_cannot_be_registered_as_the_working_copy(self):
+        root = fresh_dir()
+        source = _form_xobject_pdf(
+            root / "IssuedForTender_BASE.pdf",
+            "1 w 100 100 m 500 100 l S 100 100 m 100 400 l S ",
+        )
+        revised = _form_xobject_pdf(
+            root / "ADDENDUM_2_WORKING.pdf",
+            "20 w 100 100 m 500 700 l S 50 50 300 300 re S ",
+        )
+        session = new_agent_session(
+            source, page_number=1, page_label="03", name="Form XObject sheet", now=NOW
+        )
+        with self.assertRaises(WorkingCopyError):
+            register_working_copy(session, revised, now=NOW)
