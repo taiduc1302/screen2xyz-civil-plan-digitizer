@@ -355,7 +355,19 @@ the Example Road manifests and thumbnails stay in the project folder.
   that write: Revu silently bridges a two-ring SVG path into one invalid
   polygon - one ring per Polygon markup, holed or split items as separate
   markups.
-- Civil suite **405**, green locally.
+- **`symbols.py` - the first tool for a COUNT rule.** Circle symbols found in
+  the vector content by shape, size and colour (a manhole here is a 4.2 pt
+  black circle, a hydro pole a 5.6 pt grey one), returned in the raw frame and
+  grouped, with a crop per candidate for the label beside it. On DEMO-001-12 it
+  finds exactly three, labelled D1-D3 in the crops, and the same three in
+  DEMO-001-11's profile - the count the ledger had as "2 marked, likely 3".
+- **CI is green on this branch for the first time** (`workflow_dispatch` run
+  33727960634, all three jobs), after adding numpy to
+  `requirements-civil.txt` and removing one employer-identifying colour
+  nickname that the sanitization scan caught in the inventory prose. PyMuPDF
+  (AGPL) is deliberately not a requirement: the three render/vector entry
+  points import it lazily and the whole Civil suite runs with it blocked.
+- Civil suite **415**, green locally and in CI at 405.
 
 ## Current limitations / remaining gates
 
