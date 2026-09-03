@@ -12,7 +12,7 @@
 | Clean review PR | Draft PR #8 -> `integration/open-source-takeoff-stack`; keep Draft until owner-machine acceptance |
 | CI harness PR | Draft PR #9 -> `main`; CI-only, **DO NOT MERGE** |
 | Civil authorization | OD-006; implementation/tests/docs/feature commits and justified dependencies authorized; default-branch merge/release remain owner gates |
-| Latest fully green complete verification | GitHub CI run **#183** on `35d67d87632d43dd1c93f4c5cd952f2207ec4ed9`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count **240**, retained-evidence/privacy PASS, headless Windows integration PASS, external Claude-style Screen2XYZ stdio MCP PASS, real OpenTakeoff 0.9.68 stdio/One-Click synthetic smoke PASS |
+| Latest fully green complete verification | GitHub CI run **#183** on `35d67d87632d43dd1c93f4c5cd952f2207ec4ed9`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count **246**, retained-evidence/privacy PASS, headless Windows integration PASS, external Claude-style Screen2XYZ stdio MCP PASS, real OpenTakeoff 0.9.68 stdio/One-Click synthetic smoke PASS |
 | Output classification | Conceptual/preliminary estimating data until estimator review; no real-plan accuracy or native-Bluebeam certification claim |
 
 ## Current sources of truth
@@ -174,9 +174,10 @@ Direct production PDF `/Measure` dictionary injection remains out of bounds.
   - I6 estimating geometry is absent entirely — no holes/deducts, no split, no
     duplicate/overlap QA, so two proposals of the same region double-count with a
     clean QA report;
-  - I7 scope completeness is enforced by prompt text only —
-    `ready_for_coverage_review` has no reader in production code, export succeeds
-    with rules still `UNSEARCHED`, and the exported plan carries no scope ledger;
+  - I7 scope completeness is now enforced in code: an unsearched rule raises a
+    blocking `SCOPE_NOT_SEARCHED` QA error and the exported markup plan carries the
+    scope ledger. It remains rule-level, so a second instance of an already-proposed
+    rule is still only caught by instance-level visual reconciliation;
   - I10 records no approval actor and pins no evidence set at approval.
   Treat these as advisory reporting until each has a fail-closed guard and test.
 - Scope ledger is rule-level; instance-level visual reconciliation remains required.

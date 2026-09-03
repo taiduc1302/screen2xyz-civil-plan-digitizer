@@ -151,3 +151,74 @@ class ScopeLedgerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoverageEnforcementTests(unittest.TestCase):
+    """An unsearched scope must be visible in QA and in the delivered plan."""
+
+    def _session(self):
+        from screen2xyz_civil.agent_session import new_agent_session
+        from .helpers_civil import fresh_dir, make_vector_pdf
+
+        root = fresh_dir()
+        pdf = make_vector_pdf(root / "plan.pdf", "SHEET 03", with_shapes=True)
+        session = new_agent_session(
+            pdf,
+            page_number=1,
+            page_label="03",
+            name="coverage",
+            now="2026-09-03T00:00:00+00:00",
+        )
+        session.set_scale_ratio(
+            ratio=250, now="2026-09-03T00:00:00+00:00", basis="test", verified=True
+        )
+        return session
+
+    def test_unsearched_rules_raise_a_blocking_qa_issue(self):
+        from screen2xyz_civil.takeoff import LINE
+
+        session = self._session()
+        session.add_takeoff(
+            rule_id="DITCH_REGRADE",
+            geometry_kind=LINE,
+            points=((10.0, 10.0), (110.0, 10.0)),
+            coordinate_frame="pdf_points",
+            now="2026-09-03T00:00:00+00:00",
+            source_engine="test",
+            source_method="test",
+            generated_by="agent",
+        )
+        qa = session.qa_summary()
+        codes = {issue["code"] for issue in qa["issues"]}
+        self.assertIn("SCOPE_NOT_SEARCHED", codes)
+        self.assertGreaterEqual(qa["issue_counts"]["ERROR"], 1)
+        self.assertGreater(qa["scope"]["unsearched_count"], 0)
+
+    def test_exported_plan_carries_the_scope_ledger(self):
+        session = self._session()
+        plan = session.bluebeam_plan()
+        self.assertIn("scope", plan)
+        self.assertEqual(
+            plan["scope"]["unsearched_count"], plan["qa"]["scope"]["unsearched_count"]
+        )
+
+    def test_overlapping_polygons_of_one_rule_are_flagged(self):
+        from screen2xyz_civil.takeoff import POLYGON
+
+        session = self._session()
+        for ring in (
+            ((0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)),
+            ((10.0, 10.0), (90.0, 10.0), (90.0, 90.0), (10.0, 90.0)),
+        ):
+            session.add_takeoff(
+                rule_id="ROAD_WIDENING_FULL_STRUCTURE",
+                geometry_kind=POLYGON,
+                points=ring,
+                coordinate_frame="pdf_points",
+                now="2026-09-03T00:00:00+00:00",
+                source_engine="test",
+                source_method="test",
+                generated_by="agent",
+            )
+        codes = {issue["code"] for issue in session.qa_summary()["issues"]}
+        self.assertIn("POSSIBLE_DUPLICATE_TAKEOFF", codes)
