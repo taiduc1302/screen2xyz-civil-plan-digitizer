@@ -253,6 +253,146 @@ RULES: dict[str, CivilTakeoffRule] = {
             "drawing boundary with a generic rectangle."
         ),
     ),
+    # --- added 2026-09-03 -------------------------------------------------
+    # The Sheet 03 pass produced a list of features that are plainly drawn,
+    # plainly paid for, and had no rule to be recorded under: curb, sawcut,
+    # fence, hydroseed, topsoil, storm structures, clearing and slope limits.
+    # A rule-level scope ledger cannot report a silent miss for scope it has no
+    # rule for, so the omission was invisible by construction. Units follow the
+    # tender Schedule of Quantities (Addendum #3).
+    "CONCRETE_CURB": CivilTakeoffRule(
+        "CONCRETE_CURB",
+        "Concrete curb - MMCD C6 (item 3.01)",
+        LINE,
+        UNIT_M,
+        guidance=(
+            "Measure along the curb face. On a rural ditched section confirm the "
+            "curb is genuinely built before proposing: profile labels such as "
+            "PROP. NORTH CURB may be grade references rather than a curb run."
+        ),
+    ),
+    "HANDRAIL": CivilTakeoffRule(
+        "HANDRAIL",
+        "Handrail c/w excavation, grout, footing (item 3.07)",
+        LINE,
+        UNIT_M,
+        guidance=(
+            "Added by Addendum #3. Normally runs with the Allan Block wall cap; "
+            "check its length against item 3.05 rather than assuming they match."
+        ),
+    ),
+    "SAWCUT": CivilTakeoffRule(
+        "SAWCUT",
+        "Sawcut asphaltic or concrete pavement (item 32.24, incidental)",
+        LINE,
+        UNIT_M,
+        guidance=(
+            "Incidental to the contract, so it earns no separate payment, but it "
+            "is real cost and must still be measured - typically across each "
+            "tie-in to existing pavement."
+        ),
+    ),
+    "WIRE_FENCE_RELOCATION": CivilTakeoffRule(
+        "WIRE_FENCE_RELOCATION",
+        "Remove and relocate existing wire fence (item 32.27)",
+        LINE,
+        UNIT_M,
+        guidance="Measure the existing fence run to be removed and relocated.",
+    ),
+    "CLEARING_LIMIT": CivilTakeoffRule(
+        "CLEARING_LIMIT",
+        "Vegetation / tree line extent (supports item 31.01)",
+        LINE,
+        UNIT_M,
+        summable=False,
+        guidance=(
+            "Extent of the vegetation or tree line, recorded so clearing scope is "
+            "visible. Not itself a paid line: 31.01 Shrub and Tree Preservation is "
+            "incidental, and removal may fall under the SCS 11 clause. Record the "
+            "extent, leave the pay treatment to the estimator."
+        ),
+    ),
+    "EARTHWORK_SLOPE_LIMIT": CivilTakeoffRule(
+        "EARTHWORK_SLOPE_LIMIT",
+        "New top / bottom of slope (earthwork limit)",
+        LINE,
+        UNIT_M,
+        summable=False,
+        guidance=(
+            "The drawn limit of earthworks. Not a paid quantity by itself - it "
+            "bounds the excavation and embankment that are measured from the "
+            "cross sections, and it is the reference that says whether a section "
+            "is in cut or fill."
+        ),
+    ),
+    "HYDROSEEDING": CivilTakeoffRule(
+        "HYDROSEEDING",
+        "Hydro seeding (item 32.28)",
+        POLYGON,
+        UNIT_M2,
+        guidance=(
+            "Restoration area. Check against imported topsoil (32.29): the two "
+            "often cover the same ground but are separate pay items, and the "
+            "topsoil depth called up in the ditch item may differ from the "
+            "typical section."
+        ),
+    ),
+    "IMPORTED_TOPSOIL": CivilTakeoffRule(
+        "IMPORTED_TOPSOIL",
+        "Imported topsoil 150 mm for restoration (item 32.29)",
+        POLYGON,
+        UNIT_M2,
+        guidance=(
+            "Paid by area, so record the depth called up on the drawing in the "
+            "notes: the typical section and the ditch item have been seen to "
+            "state different thicknesses on this project."
+        ),
+    ),
+    "STORM_CULVERT": CivilTakeoffRule(
+        "STORM_CULVERT",
+        "Storm culvert - measure by diameter (items 33.01-33.03)",
+        LINE,
+        UNIT_M,
+        guidance=(
+            "Trace the pipe centreline end to end and record the diameter in the "
+            "bid item, because 300/450/600 mm are three separate pay items. "
+            "DRIVEWAY_CULVERT_300 stays separate: it is the driveway crossing "
+            "specifically. A printed driveway width is not a pipe length."
+        ),
+    ),
+    "STORM_MANHOLE_RISER": CivilTakeoffRule(
+        "STORM_MANHOLE_RISER",
+        "1200 mm manhole riser section (item 33.06)",
+        LINE,
+        UNIT_M,
+        guidance="Paid by length of riser, not per structure.",
+    ),
+    "STORM_STRUCTURE_COUNT": CivilTakeoffRule(
+        "STORM_STRUCTURE_COUNT",
+        "Storm structure count - manholes and headwalls (items 33.04, 33.05, 33.07, 33.08)",
+        COUNT,
+        UNIT_EA,
+        guidance=(
+            "One record per structure type, with the bid item naming which: "
+            "1200 mm manhole, overbuild manhole, Langley headwall Type II, or "
+            "Langley mini headwall are four separate pay items. Native Bluebeam "
+            "Count markups cannot be created through the current MCP surface, so "
+            "record the count here and place static markers or use the Revu GUI "
+            "if a visual count is also needed."
+        ),
+    ),
+    "UTILITY_PROTECTION_COUNT": CivilTakeoffRule(
+        "UTILITY_PROTECTION_COUNT",
+        "Existing utility to remain / be protected - count",
+        COUNT,
+        UNIT_EA,
+        summable=False,
+        guidance=(
+            "Hydro poles and similar marked TO REMAIN. Not a pay item on this "
+            "schedule; counted because protection is real cost and because a pole "
+            "marked for relocation by others is a coordination risk."
+        ),
+    ),
 }
 
 
