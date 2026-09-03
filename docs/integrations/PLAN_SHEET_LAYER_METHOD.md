@@ -1,0 +1,183 @@
+# Plan-sheet layer method
+
+How to get quantities off a civil plan sheet so that the numbers survive review.
+
+Written after the Example Road Sheet 03 pass of 2026-09-03. Three earlier attempts at
+the same quantities each produced a plausible, wrong answer. The steps below are
+ordered the way they have to happen, and each one names the failure it prevents.
+Code support: `src/screen2xyz_civil/plan_layers.py`, tests in
+`tests_civil/test_plan_layers.py`.
+
+---
+
+## 0. Look at the sheet
+
+Render the page to PNG and **actually view it** before writing a line of analysis.
+
+This is first because skipping it cost the most. Two full sessions reasoned about
+"the road-widening band" purely through text search and coordinate arithmetic and
+placed it in the wrong half of the sheet. One render answered it in seconds.
+
+Render at a low DPI for the whole sheet to orient, then crop and re-render at
+200-700 DPI for anything being measured.
+
+## 1. Read the legend, and read it as the sheet's own dictionary
+
+The legend defines what each fill and hatch means **on this drawing set**. Do not
+assume from experience.
+
+On Example Road the legend's first swatch is a solid light-grey box meaning *40 mm
+mill and overlay*. An earlier pass searched for a mill-and-overlay **hatch**, found
+none, and recorded the item `NOT_PRESENT` - while the solid grey fill covering the
+entire roadway was exactly that item, and the largest area on the sheet.
+
+## 2. Establish the viewports before measuring anything
+
+A plan-and-profile sheet carries at least two measurement contexts with different
+scales - typically an isotropic plan (1:250 / 1:250) and an anisotropic profile
+(1:250 horizontal, 1:50 vertical).
+
+Record each as a `Viewport` and run `single_viewport_check` on every polygon and
+polyline **before** writing it to the host.
+
+The failure this prevents: a polygon written with profile-region coordinates
+returned a host area exactly 5.00x smaller than the independent calculation. That
+was recorded for two days as an unexplained "x5 Bluebeam artifact". It was not a
+host defect at all - the host correctly applied the profile viewport's vertical
+scale to geometry that had been drawn there by mistake, and the "independent"
+check had assumed the plan viewport's isotropic scale. Both numbers were right for
+their own viewport and both were meaningless for the bid.
+
+`0.0881944 / 0.0176389 = 5.00` exactly. If a discrepancy is a clean ratio, suspect
+the scale context before suspecting the software.
+
+## 3. Calibrate stations from at least three chainage labels
+
+Use `fit_station_frame`. It refuses fewer than three samples and refuses a fit
+whose worst sample is more than 0.5 m off the line, because that is what a
+mis-read label looks like.
+
+Note that a page's own text layer may be unreadable by a PDF library while the
+viewer's OCR layer reads it fine. Take the labels from whichever source actually
+returns them, then check the fit.
+
+## 4. Census the colours over the *whole* viewport, with anti-aliasing off
+
+Render with anti-aliasing disabled so page content keeps exact colours, then take
+an exact-colour histogram of the **entire** viewport.
+
+Two failures this prevents:
+
+* With anti-aliasing on, every edge invents intermediate colours and no colour
+  mask is reliable.
+* Sampling a guessed sub-window hides layers. The first Sheet 03 census covered
+  about 55 % of the plan viewport by height. The fills happened to be inside it,
+  but a third of the linework - ditches, slopes, right-of-way - was outside and
+  simply never appeared.
+
+Match every significant colour to a legend entry. A colour you cannot name is
+either a layer you have not accounted for or a false trail; resolve it either way.
+
+## 5. Take outer boundaries from fills, inner boundaries from drawn lines
+
+A solid fill has a clean edge; use it. A **sparse hatch does not** - its outer
+tips zigzag, and an envelope built from them is both noisy and systematically
+wrong at tapers.
+
+Where the drawing draws the boundary as a line, use that line. On Sheet 03 the two
+widening strips have their own grey polylines along the existing-pavement edge,
+each ending in a short cap that meets the fill edge to within 0.4 pt. Two
+independent sources closing on each other is the confirmation.
+
+## 6. Validate against printed dimensions before writing
+
+Find the drawn centreline, take the offsets of every candidate boundary line from
+it with `offsets_from_centreline`, and match them against the printed callouts
+using `check_against_printed`.
+
+On Sheet 03 this tied the outer boundary to `OFFSET: 6.2 m` (measured 6.16) and
+`OFFSET: 7.3 m R` (measured 7.20), the tie-in to `O/S 5.16 m L` (measured 5.19),
+and the two driveways to their `9.70m` / `8.90m` dimension arrows (measured 9.69
+and 8.89 - one centimetre each).
+
+**A measurement that cannot be tied to a printed dimension is a hypothesis.** Say
+so in the markup rather than presenting it as a quantity.
+
+## 7. Separate similar symbols by shape, not by neighbourhood
+
+Ditch flow arrows and vegetation scallops are both small curved glyphs sitting
+along the verge. Use `classify_glyph`: on this set the arrow runs about 4.0
+wide-to-high and the scallop about 1.9.
+
+Read together they gave a "south ditch" of 123 m. Separated, the ditch is 22 m and
+the vegetation is 102 m - a different item entirely, and one no takeoff had.
+
+## 8. Break symbol chains at gaps - the gap is the information
+
+Use `split_runs`. A gap in a chain of symbols normally means the feature is
+interrupted: a driveway crossing, a structure, a culvert.
+
+Fitting one line through all eight south-ditch arrows gave 22.18 m. The arrows
+actually fall in two runs either side of a 12.3 m gap, and that gap is exactly the
+south driveway crossing where the culvert carries the ditch. Spanning it would
+have overstated the ditch by 2.6x - and would have overwritten a previous
+session's 8.59 m, which was correct.
+
+## 9. Resolve sheet overlaps before summing anything
+
+Adjacent sheets do not necessarily share a matchline station. Measure both
+matchlines and run `sheet_overlap_report`.
+
+Sheets 03 and 04 have matchlines at STA ~1+157 and ~1+137.8 - about 20 m drawn
+twice. Everything in that band was cut at an agreed STA 1+140 and the remainder
+marked separately as `OVERLAP - DO NOT SUM`. Discrete features that fall inside
+the overlap (here: both driveways, both driveway culverts and a landscape area)
+are the real double-count risk, because each sheet's reviewer assumes the other
+covered them.
+
+## 10. Write, read back, cross-check, then look again
+
+1. Run `single_viewport_check` and the repository's `polygon_health`.
+2. Write to the host.
+3. Read the quantity **back from the host** and compare with an independent
+   shoelace / polyline computation via `cross_check_quantity`. On Sheet 03 all
+   agreed to within 0.19 %.
+4. Render the sheet and overlay the geometry **read back out of the host** - not
+   the geometry you intended to write. Reading a number back is circular; it only
+   proves the host measured the path you gave it, never that the path lies on the
+   feature.
+
+Step 4 is what finally exposed a driveway polygon that was 15.87 m wide where the
+drawing prints 9.70 m, because it had swallowed the landscape area beside it.
+
+## 11. Keep provenance off the drawing
+
+The host renders the `label` field onto the sheet. Long provenance text there
+covers the drawing. Keep `label` empty or minimal, put a short basis in `subject`,
+and the full reasoning in the scope ledger.
+
+## 12. Do not overwrite a prior measurement without a drawing-based reason
+
+Twice in this work an existing number turned out to be right and a re-measure
+turned out to be wrong. Confirming an earlier figure independently is a result
+worth recording. Replace a number only when a printed dimension or a drawn
+boundary says the old one is wrong - and record which.
+
+---
+
+## Order of work for a new sheet
+
+```
+render + view  ->  legend  ->  viewports  ->  stations  ->  colour census
+   ->  boundaries (fill edges + drawn lines)  ->  validate vs printed dims
+   ->  symbol layers (split by shape, break at gaps)  ->  matchline/overlap
+   ->  viewport + health checks  ->  write  ->  read back  ->  cross-check
+   ->  overlay from host  ->  ledger
+```
+
+## What still needs a human
+
+Nothing above decides scope. Which pay item a measured area belongs to, whether a
+disputed extent counts as reinstatement, and which sheet owns an overlap band are
+estimator decisions. The method's job is to make the geometry and the arithmetic
+defensible so those decisions are made on real numbers.

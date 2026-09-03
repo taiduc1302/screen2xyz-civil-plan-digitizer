@@ -200,6 +200,59 @@ Direct production PDF `/Measure` dictionary injection remains out of bounds.
 - ConstructDrawingAI is PolyForm Noncommercial and is **not** copied into Screen2XYZ.
 - Independently implemented ideas include evidence relationships, explicit withheld questions, synthetic-vs-real evaluation separation, data-reuse classification, and silent-miss accounting.
 
+## 2026-09-03 follow-up on the Example Road Sheet 03 pilot
+
+Continuing the 2026-09-02 owner-machine session (new Claude Code session; verified live
+that the Bluebeam file had not changed since, and that the owner cleared this session
+as the sole writer per the Example Road project's own single-writer rule before touching
+anything). Full detail: `SCOPE_LEDGER_Sheet03_page3_2026-09-02.md` ("Follow-up pass"
+section) and Example Road `_STATUS_example_plan.md` §32.
+
+- Re-ran the frozen Civil suite locally (`.venv-operator`): still **255/255, 0 failures,
+  0 errors, 3 skipped** — no regression since the 2026-09-02 run. Still not re-run in CI.
+- Scope ledger confirmed still 10/10 rules accounted for, 0 `UNSEARCHED`.
+- Fixed a stale cross-reference: two ditch markups cited "RFI Q10" from the original
+  question draft; the question survived into the RFI actually being sent but was
+  renumbered to Q13 during consolidation. Corrected via `set_markup_property`, read
+  back, confirmed. `DITCH_INFILL`'s bid-item gap was likewise connected to the RFI
+  that actually governs it (Q4), rather than reading as an unexplained miss.
+- **Root-caused and corrected, same day.** The owner looked at the live Revu window and
+  reported nothing visible for `ROAD_WIDENING_FULL_STRUCTURE`. Checking
+  `get_markup_shape` against the sheet's declared viewport bounds showed that polygon
+  and both `GRAVEL_SHOULDER_030` lines had y-coordinates inside the **PROFILE**
+  viewport (30-790), not the **PLAN** viewport (815-1515) where the actual road
+  drawing is — not unverified, actually wrong. This also fully explains the x5 "area
+  artifact": Revu was correctly using the PROFILE viewport's real anisotropic scale
+  (1:250H/1:50V) for geometry that sits there; the 2026-09-02 "independent" 1,682 sq m
+  figure wrongly assumed the PLAN viewport's isotropic scale. There was no Bluebeam
+  defect. All three were deleted (confirmed by re-listing). Full detail: `SCOPE_LEDGER_
+  Sheet03_page3_2026-09-02.md`, "Correction" section.
+- **Resolved the same day — the sheet is now measured and marked up.** The decisive step
+  was one this pilot had never taken: *rendering the sheet and looking at it*. Method now
+  proven on real work: render the immutable base page with anti-aliasing **off** so page
+  content carries exact colours, mask by colour (`#E5E5E5` solid = 40 mm mill & overlay
+  per the sheet legend, `#808080` = the road-widening X-hatch), take outer boundaries
+  from the solid-fill edge and **inner** boundaries from the drawing's own vector edge
+  polylines rather than the hatch envelope. OpenTakeoff `one_click` was tried first and
+  is *not* usable for this: it returns a ~1.3 sq m local patch on a sparse hatch
+  regardless of sensitivity. `color_process_analyze` returns a page-wide colour list with
+  no geometry; `add_markup_capture` attaches images and is unrelated.
+- Written and read back from Revu, cross-checked against independent shoelace
+  computation (all ≤0.19 %, `cross_check_quantity` `agrees=true`, `polygon_health`
+  `safe_to_write=true`): road widening north **157.23 sq m**, south **171.32 sq m**,
+  mill & overlay **978.81 sq m**, gravel shoulder north **99.08 m**, south **80.26 m**.
+  Verified visually by overlaying geometry *read back out of the host* on the render.
+- Three findings the ledger did not have: `MILL_OVERLAY_40MM` had been recorded
+  `NOT_PRESENT` and is in fact the largest area on the sheet (a genuine silent miss);
+  `FULL_DEPTH_ASPHALT_RR` `NOT_PRESENT` is confirmed numerically (hatch strokes split
+  102/101 between 45° and 135°, no single-direction excess); and sheets 03/04 overlap by
+  ~20 m (matchlines at STA ~1+157 and ~1+137.8), so all quantities were cut at STA 1+140.
+- `DITCH_REGRADE`/`DITCH_RELOCATION` and `DITCH_INFILL` remain correctly `WITHHELD` —
+  both need the City's RFI answer (Q13, Q4), not further AI inference.
+- File still not saved to disk (no Bluebeam MCP save tool exists; `Ctrl+S` in Revu is
+  the owner's action). This remains the single largest risk to today's and the prior
+  session's work.
+
 ## Current limitations / remaining gates
 
 - Pilot is intentionally one PDF page / one compatible scale context.
