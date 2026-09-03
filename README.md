@@ -201,7 +201,7 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
-The current branch freezes the Civil suite at **240 discovered tests**. Separate Windows protocol smoke tests launch the same external stdio Screen2XYZ server an MCP host uses and real OpenTakeoff 0.9.68 against owned synthetic PDFs. Synthetic/unit/protocol results are pipeline evidence, not real-drawing accuracy.
+The current branch freezes the Civil suite at **246 discovered tests**. Separate Windows protocol smoke tests launch the same external stdio Screen2XYZ server an MCP host uses and real OpenTakeoff 0.9.68 against owned synthetic PDFs. Synthetic/unit/protocol results are pipeline evidence, not real-drawing accuracy.
 
 The private acceptance gate is an estimator-reviewed plan such as Example Road Sheet 03 compared against Bluebeam, with expected-item coverage, silent misses, rule correctness, quantity error, geometry corrections, withheld items, working-copy integrity, and native Revu readback recorded without committing proprietary drawings.
 

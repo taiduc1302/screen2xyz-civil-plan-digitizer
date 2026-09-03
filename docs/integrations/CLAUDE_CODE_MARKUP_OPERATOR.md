@@ -220,7 +220,7 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m screen2xyz_civil doctor --deep
 ```
 
-The frozen Civil suite is **240 discovered tests**. The separate Windows protocol lane also launches the same external stdio Screen2XYZ process a real MCP host uses and a real OpenTakeoff 0.9.68 process against owned synthetic PDFs.
+The frozen Civil suite is **246 discovered tests**. The separate Windows protocol lane also launches the same external stdio Screen2XYZ process a real MCP host uses and a real OpenTakeoff 0.9.68 process against owned synthetic PDFs.
 
 Then run a private owner-machine acceptance on Sheet 03. Record at minimum:
 

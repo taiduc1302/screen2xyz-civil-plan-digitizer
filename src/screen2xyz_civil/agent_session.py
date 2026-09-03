@@ -634,7 +634,32 @@ class AgentTakeoffSession:
         base["scale"] = self.scale.to_dict()
         base["unresolved"] = self.context.unresolved_summary()
         base["source_sha256"] = self.source_sha256
+        base["scope"] = self.scope_summary()
+        unsearched = base["scope"].get("unsearched_rule_ids") or []
+        if unsearched:
+            # Coverage was previously computed and then ignored: nothing read
+            # ready_for_coverage_review, so a half-finished pass reported clean.
+            base.setdefault("issues", []).append(
+                {
+                    "severity": "ERROR",
+                    "code": "SCOPE_NOT_SEARCHED",
+                    "unsearched_rule_ids": sorted(unsearched),
+                    "detail": (
+                        "Scope rules were never searched. Propose, withhold, or record "
+                        "them as not-present with evidence before reporting completion."
+                    ),
+                }
+            )
+            base["issue_counts"] = _recount_issues(base.get("issues", []))
+            base["blocked"] = base.get("blocked", 0) + 1
         return base
+
+    def scope_summary(self) -> dict[str, Any]:
+        """Rule-level coverage. Imported locally: scope_ledger imports this module."""
+
+        from .scope_ledger import scope_summary as _scope_summary
+
+        return _scope_summary(self)
 
     def takeoff_summary(self, item: TakeoffMeasurement) -> dict[str, Any]:
         return {
@@ -729,6 +754,7 @@ class AgentTakeoffSession:
             },
             "takeoffs": rows,
             "qa": self.qa_summary(),
+            "scope": self.scope_summary(),
         }
 
 
@@ -821,6 +847,15 @@ def load_agent_session(path: Path, *, verify_source: bool = True) -> AgentTakeof
         TakeoffContextError,
     ) as exc:
         raise AgentSessionError("agent session load failed") from exc
+
+
+def _recount_issues(issues: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"CRITICAL": 0, "ERROR": 0, "WARNING": 0, "INFO": 0}
+    for issue in issues:
+        severity = str(issue.get("severity", "INFO"))
+        if severity in counts:
+            counts[severity] += 1
+    return counts
 
 
 def _safe_token_value(value: str) -> str:

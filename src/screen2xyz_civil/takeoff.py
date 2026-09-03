@@ -71,6 +71,35 @@ class TakeoffVertex:
         return cls(float(value["x"]), float(value["y"]))
 
 
+def _segments_cross(a1, a2, b1, b2) -> bool:
+    """True when two open segments properly intersect (shared endpoints ignored)."""
+
+    def orient(p, q, r) -> float:
+        return (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+
+    d1, d2 = orient(b1, b2, a1), orient(b1, b2, a2)
+    d3, d4 = orient(a1, a2, b1), orient(a1, a2, b2)
+    if ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0)):
+        return True
+    return False
+
+
+def _ring_self_intersects(vertices) -> bool:
+    """Detect a crossed (non-simple) closed ring."""
+
+    count = len(vertices)
+    if count < 4:
+        return False
+    edges = [(vertices[i], vertices[(i + 1) % count]) for i in range(count)]
+    for i in range(count):
+        for j in range(i + 1, count):
+            if j == i or (j + 1) % count == i or (i + 1) % count == j:
+                continue
+            if _segments_cross(edges[i][0], edges[i][1], edges[j][0], edges[j][1]):
+                return True
+    return False
+
+
 @dataclass(frozen=True)
 class TakeoffGeometry:
     """Normalized geometry before conversion from pixels to real units."""
@@ -87,6 +116,11 @@ class TakeoffGeometry:
                 raise TakeoffError("line takeoff requires at least two vertices")
             if self.count is not None:
                 raise TakeoffError("line takeoff cannot carry a count")
+            if self.length_px <= 0:
+                # A zero-length line measures nothing yet still marks its rule
+                # PROPOSED, which is how an agent could "cover" a scope it never
+                # searched. Coverage must be earned by real geometry.
+                raise TakeoffError("line takeoff must have positive length")
         elif self.kind == POLYGON:
             if len(self.vertices) < 3:
                 raise TakeoffError("polygon takeoff requires at least three vertices")
@@ -94,6 +128,12 @@ class TakeoffGeometry:
                 raise TakeoffError("polygon takeoff cannot carry a count")
             if self.area_px2 <= 0:
                 raise TakeoffError("polygon takeoff must have positive area")
+            if _ring_self_intersects(self.vertices):
+                # The shoelace area of a crossed ring cancels the reversed lobe,
+                # so an out-of-order boundary yields a confident wrong quantity.
+                raise TakeoffError(
+                    "polygon takeoff boundary crosses itself; re-order the vertices"
+                )
         else:
             if self.vertices:
                 raise TakeoffError("count takeoff cannot carry vertices")
@@ -642,6 +682,67 @@ def approved_totals(
     return totals
 
 
+def _point_in_ring(x: float, y: float, vertices) -> bool:
+    inside = False
+    count = len(vertices)
+    for i in range(count):
+        a, b = vertices[i], vertices[(i + 1) % count]
+        if (a.y > y) != (b.y > y):
+            crossing = a.x + (y - a.y) * (b.x - a.x) / (b.y - a.y)
+            if x < crossing:
+                inside = not inside
+    return inside
+
+
+def _overlap_issues(records: list[TakeoffMeasurement]) -> list[dict[str, Any]]:
+    """Flag two summable polygons of one rule that plausibly cover the same work.
+
+    This is a containment heuristic, not exact polygon intersection: it reports a
+    pair when one polygon's centroid falls inside the other. It exists because
+    nothing else in the product notices double-counting.
+    """
+
+    issues: list[dict[str, Any]] = []
+    polygons = [
+        record
+        for record in records
+        if record.geometry.kind == POLYGON and record.summable
+    ]
+    for index, first in enumerate(polygons):
+        for second in polygons[index + 1 :]:
+            if first.rule_id != second.rule_id:
+                continue
+            first_centre = _centroid(first.geometry.vertices)
+            second_centre = _centroid(second.geometry.vertices)
+            if _point_in_ring(
+                first_centre[0], first_centre[1], second.geometry.vertices
+            ) or _point_in_ring(
+                second_centre[0], second_centre[1], first.geometry.vertices
+            ):
+                issues.append(
+                    {
+                        "severity": "WARNING",
+                        "code": "POSSIBLE_DUPLICATE_TAKEOFF",
+                        "takeoff_id": first.id,
+                        "other_takeoff_id": second.id,
+                        "rule_id": first.rule_id,
+                        "detail": (
+                            "Two summable polygons of the same rule overlap; "
+                            "confirm this is not the same work counted twice."
+                        ),
+                    }
+                )
+    return issues
+
+
+def _centroid(vertices) -> tuple[float, float]:
+    count = len(vertices)
+    return (
+        sum(vertex.x for vertex in vertices) / count,
+        sum(vertex.y for vertex in vertices) / count,
+    )
+
+
 def takeoff_qa_summary(
     measurements: Iterable[TakeoffMeasurement],
 ) -> dict[str, Any]:
@@ -694,6 +795,7 @@ def takeoff_qa_summary(
                     "detail": "Takeoff is excluded from final totals until estimator review.",
                 }
             )
+    issues.extend(_overlap_issues(records))
     return {
         "count": len(records),
         "approved": sum(record.approved for record in records),
