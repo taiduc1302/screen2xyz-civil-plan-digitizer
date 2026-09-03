@@ -380,9 +380,18 @@ the Example Road manifests and thumbnails stay in the project folder.
   asphalt R&R, sum 1 213.90 sq m, pads and grey-153 withheld), the sheet 05
   full-depth split (M&O east/west 420.43 + 61.89, full-depth 74.60, all
   reconciling to the original 559.01), the rewritten sheet 04 clean segment,
-  and the third manhole. Still open: sheet 06's two Example Avenue end bands.
-- Civil suite **418**, green locally; CI green on the branch at 405 and 415
-  (runs 33727960634, 33728429939, 33728660462).
+  and the third manhole. Then sheet 06's two Example Avenue end bands (52.24 and
+  68.68 sq m, the manifest's cut totals exactly). **Every sheet of DEMO-001 is
+  now measured or closed with stated evidence.**
+- **Three rules for scope that had nowhere to go**, found once the whole set
+  was measured: `PEDESTRIAN_ASPHALT_PAD` (the grey-153 stipple, POLYGON),
+  `EXISTING_CULVERT_REMOVAL` (LINE) and `EXISTING_HEADWALL_REMOVAL` (COUNT) -
+  demolition and pads are real cost whether or not the schedule names them.
+  Twenty-five rules: 13 LINE, 9 POLYGON, 3 COUNT.
+- Still open, and not code: sheet 06's east retaining wall ("EC STA"
+  ambiguity), a sourced density for 31.06, the pay-item surface for 31.04.
+- Civil suite **421**, green locally; CI green on the branch at 405, 415 and
+  418 (runs 33727960634, 33728429939, 33728660462, 33729104382).
 
 ## Current limitations / remaining gates
 

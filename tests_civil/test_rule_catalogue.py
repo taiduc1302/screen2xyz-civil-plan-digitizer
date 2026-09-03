@@ -88,5 +88,27 @@ class ScopeCoverageRulesTests(unittest.TestCase):
         )
 
 
+class WholeSetScopeRulesTests(unittest.TestCase):
+    # Found on the drawings once the whole set was measured (2026-09-03) and
+    # left "real scope, no catalogue rule" by the session that measured it.
+
+    def test_pedestrian_pads_can_be_recorded_as_an_area(self):
+        rule = takeoff_rule("PEDESTRIAN_ASPHALT_PAD")
+        self.assertEqual(rule.geometry_kind, POLYGON)
+        self.assertEqual(rule.default_unit, UNIT_M2)
+        self.assertTrue(rule.summable)
+
+    def test_existing_culvert_removal_is_a_length_and_a_separate_record_from_new_culverts(self):
+        removal = takeoff_rule("EXISTING_CULVERT_REMOVAL")
+        self.assertEqual(removal.geometry_kind, LINE)
+        self.assertNotEqual(removal.display_name, takeoff_rule("STORM_CULVERT").display_name)
+
+    def test_headwall_removal_is_a_count_distinct_from_headwalls_built(self):
+        removal = takeoff_rule("EXISTING_HEADWALL_REMOVAL")
+        self.assertEqual(removal.geometry_kind, COUNT)
+        self.assertEqual(removal.default_unit, UNIT_EA)
+        self.assertNotEqual(removal.display_name, takeoff_rule("STORM_STRUCTURE_COUNT").display_name)
+
+
 if __name__ == "__main__":
     unittest.main()

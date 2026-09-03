@@ -393,6 +393,44 @@ RULES: dict[str, CivilTakeoffRule] = {
             "marked for relocation by others is a coordination risk."
         ),
     ),
+    # Added 2026-09-03 after the whole set was measured: three kinds of scope
+    # that were found on the drawings and had nowhere to be recorded. A
+    # quantity with no rule is a quantity that gets left out of the summary.
+    "PEDESTRIAN_ASPHALT_PAD": CivilTakeoffRule(
+        "PEDESTRIAN_ASPHALT_PAD",
+        "Pedestrian asphalt pad / asphalt letdown at a curb return",
+        POLYGON,
+        UNIT_M2,
+        guidance=(
+            "The stippled pads at the curb returns ('PROP. PEDESTRIAN ASPHALT PAD "
+            "AND ASPHALT LETDOWNS' on sheet 04; details on sheet 04). No legend "
+            "entry - the pattern is identified from crops, so every proposal keeps "
+            "its crop. Which schedule item pays for it is the estimator's call."
+        ),
+    ),
+    "EXISTING_CULVERT_REMOVAL": CivilTakeoffRule(
+        "EXISTING_CULVERT_REMOVAL",
+        "Existing storm culvert marked TO BE REMOVED - length",
+        LINE,
+        UNIT_M,
+        guidance=(
+            "Demolition, not new work: the existing 450 dia runs and driveway "
+            "culverts drawn with a removal note on sheets 03-06 and 11-12. Use the "
+            "printed length where one exists. Removal is real cost whether or not "
+            "the schedule carries a separate item for it."
+        ),
+    ),
+    "EXISTING_HEADWALL_REMOVAL": CivilTakeoffRule(
+        "EXISTING_HEADWALL_REMOVAL",
+        "Existing headwall marked TO BE REMOVED - count",
+        COUNT,
+        UNIT_EA,
+        guidance=(
+            "EX.HW1-4 on sheets 11-12 carry a removal note. One count per headwall, "
+            "each with its position, so a headwall removed and a headwall built "
+            "(STORM_STRUCTURE_COUNT) are never the same record."
+        ),
+    ),
 }
 
 
