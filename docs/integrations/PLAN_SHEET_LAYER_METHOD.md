@@ -179,6 +179,29 @@ and two of them were sitting in the title block. Pair the thumbnail with
 PDF in a window you choose: default margin for a point marker so its
 surroundings show, small margin and 15-20x for one stretch of a long band.
 
+### A read-back only proves something if it returns by a different path
+
+Writing through one API and reading back through the same one is
+self-consistent by construction: it proves the host stored what you sent, and
+nothing else. On 2026-09-03 a set of markers was written through the
+view-frame API, read back through the view-frame API, rendered from those
+values, and every step agreed - while all five sat in the profile instead of
+the plan. The write, the read and the render shared the frame error, so no
+check among them could fail.
+
+That is the third self-consistent wrong answer this project has produced. The
+other two: area totals that reconciled on polygons whose boundary was in the
+wrong place, and `create_markup_thumbnail` on point markers, which auto-zooms
+until only the marker is in frame. All three had the same shape - **the check
+could not have failed.**
+
+So verify across paths, not within one. Read the geometry back with
+`get_markup_shape` (raw frame) and render from that; or pin a position against
+a source the write never touched, the way `search` returns text geometry from
+the page content. And use `host_frame` rather than open-coding the flip: the
+two Bluebeam APIs disagree by rotation, on y for an unrotated page and on x
+for a 180-rotated one.
+
 ### Numeric self-consistency is not placement
 
 Area totals reconciling, zero mutual overlap, `polygon_health` clean, sum equal

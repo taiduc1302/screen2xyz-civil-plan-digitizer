@@ -32,6 +32,8 @@ import re
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from . import host_frame
+
 
 class MarkupViewError(RuntimeError):
     """A markup could not be rendered over its drawing."""
@@ -77,18 +79,20 @@ def to_page(point, *, rotation: int, height: float) -> tuple[float, float]:
 def to_clip(point, *, rotation: int, width: float, height: float) -> tuple[float, float]:
     """Raw frame -> the frame `get_pixmap(clip=...)` uses.
 
-    Clipping happens in displayed coordinates. A 180-rotated page turns the
-    page frame through half a turn, and combined with the bottom-to-top flip
-    that leaves y alone and mirrors x. An unrotated page only carries the
-    flip.
+    Clipping happens in displayed coordinates, and pymupdf's displayed frame
+    is the same frame `list_markups_in_pdf` reports in, so this is exactly
+    `host_frame.raw_to_view` for a zero-size point. It delegates rather than
+    restating the rule: one arithmetic, one place, one set of tests.
     """
 
-    x, y = point
-    if rotation == 180:
-        return (width - x, y)
-    if rotation == 0:
-        return (x, height - y)
-    raise MarkupViewError(f"page rotation {rotation} is not handled")
+    try:
+        rect = host_frame.raw_to_view(
+            host_frame.Rect(float(point[0]), float(point[1]), 0.0, 0.0),
+            width, height, rotation,
+        )
+    except host_frame.HostFrameError as exc:
+        raise MarkupViewError(str(exc)) from exc
+    return (rect.x, rect.y)
 
 
 def clip_around(points, *, rotation: int, width: float, height: float, margin: float):

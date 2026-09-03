@@ -94,5 +94,30 @@ class FrameTests(unittest.TestCase):
         self.assertAlmostEqual(box[3], 270.0)
 
 
+class DelegationTests(unittest.TestCase):
+    # to_clip and host_frame.raw_to_view are one rule. Two implementations of
+    # one rule is how the two sessions ended up disagreeing about where five
+    # markers were, so this pins them together.
+
+    def test_to_clip_agrees_with_host_frame_on_both_rotations(self):
+        from screen2xyz_civil import host_frame
+
+        for rotation in (0, 180):
+            for point in ((817.9, 1145.7), (1125.0, 583.0), (10.0, 20.0)):
+                rect = host_frame.raw_to_view(
+                    host_frame.Rect(point[0], point[1], 0.0, 0.0), W, H, rotation
+                )
+                self.assertEqual(
+                    to_clip(point, rotation=rotation, width=W, height=H),
+                    (rect.x, rect.y),
+                    (rotation, point),
+                )
+
+    def test_a_rotation_host_frame_refuses_is_refused_here_too(self):
+        for rotation in (90, 270):
+            with self.assertRaises(MarkupViewError):
+                to_clip((1.0, 2.0), rotation=rotation, width=W, height=H)
+
+
 if __name__ == "__main__":
     unittest.main()

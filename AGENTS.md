@@ -39,6 +39,14 @@ drawing's own vector geometry, or the render.
 Do not report a markup as done, verified, or read back until its thumbnail has
 been looked at.
 
+A read-back only proves something if it returns by a **different path** than
+the write. Same-API round trips are self-consistent by construction. A set of
+markers was once written, read back and rendered entirely through one frame's
+API, agreed at every step, and sat on the wrong half of the sheet. Verify
+across paths: read geometry back with `get_markup_shape` and render from that,
+or pin a position against something the write never touched. Use
+`screen2xyz_civil.host_frame` rather than open-coding a coordinate flip.
+
 ## Parent-agent orchestration
 
 Future Codex runs must:
