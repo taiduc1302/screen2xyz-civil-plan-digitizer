@@ -181,3 +181,31 @@ Nothing above decides scope. Which pay item a measured area belongs to, whether 
 disputed extent counts as reinstatement, and which sheet owns an overlap band are
 estimator decisions. The method's job is to make the geometry and the arithmetic
 defensible so those decisions are made on real numbers.
+
+## Addendum: the render-clip flip is not the same transform as the data flip
+
+Found while starting cross-section work on Sheet 09. `page.get_drawings()`
+returns geometry in the page's own content-stream space; `page.get_pixmap(clip=...)`
+expects a rectangle in the *displayed* space, and a 180-degree-rotated page
+does not relate the two by the same single axis flip.
+
+The established relation for this drawing set's 180-rotated pages is
+`raw_x = x_gd`, `raw_y = 1684 - y_gd` (y flips, x does not) - this is the
+frame every markup coordinate in this project uses, and it is correct for
+reading and writing geometry.
+
+**It is not the frame `get_pixmap(clip=...)` wants.** The displayed clip
+needs `disp_x = 2384 - x_gd` (x flips) with `disp_y = 1684 - y_gd` (y flips,
+same as before) - i.e. **both** axes invert for rendering, only one inverts
+for data. Using the data-space x directly as a render clip renders the
+mirror-image region of the page. On an 850-pt-wide panel next to its twin,
+that silently shows the *other* cross-section under the label you asked for.
+
+Confirmed on Sheet 09: a clip built from `x_gd` directly rendered the panel
+labelled `1+160`; the same `x_gd` range rendered through `disp_x = 2384 -
+x_gd` correctly showed `1+080`. Station text is otherwise the giveaway - it
+will not garble from a render bug, but it will name the wrong section.
+
+**Render every panel and check its own printed label before trusting what is
+in it**, on every sheet, every time - this is `PLAN_SHEET_LAYER_METHOD.md`
+step 0 applied per-panel, not just per-sheet, and it is what caught this.
