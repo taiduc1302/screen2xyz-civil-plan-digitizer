@@ -51,6 +51,23 @@ boundary along pixel edges, simplify, return in the raw frame.
 6. `clip_polygon_x` cuts a region at a station; `render_overlay` draws the
    regions over the sheet. The overlay is the acceptance check.
 
+7. **Patterns, by exact colour.** The sheet 04 legend swatches, censused with
+   anti-aliasing off, render as: ROAD WIDENING (FULL ROAD STRUCTURE) X-hatch
+   `(127,127,127)`; FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT `(178,178,178)`;
+   DITCH INFILL `(0,127,0)`. `(128,128,128)` (landing pads) and `(153,153,153)`
+   are on the sheet and not in the legend, and are carried as *unidentified*.
+   One grey level is the whole difference between two pay items, and it is
+   enough: every secondary hatch is closed on its own radius and taken out of
+   both the widening and the mill-and-overlay, so a region is counted once
+   under the pattern drawn on it (`other_hatched`). Every region also reports
+   `pattern_fractions` - what else is drawn inside it - and `dominant_pattern`.
+8. **`polygon_health` on every region at extraction.** The repository's own
+   pre-write gate, so an outline the host would refuse is refused here and
+   left out of every total (`POLYGON_UNHEALTHY`, `REGIONS_EXCLUDED_UNHEALTHY`).
+   A 4-connected region that touches itself at a corner traces as one loop
+   through that corner twice, which the gate calls a self-intersection;
+   `split_pinches` cuts such loops into simple lobes first.
+
 ## Validation, sheet 05, 1+240.1 to 1+367.5
 
 Clipped to the same station range as the host polygons `KHCGMKMCPQKXUBKD-4`,
@@ -58,9 +75,15 @@ Clipped to the same station range as the host polygons `KHCGMKMCPQKXUBKD-4`,
 
 | | traced | host | |
 |---|---|---|---|
-| widening (hatched ring) | 1 008.4 | 1 005.8 | +0.26% |
-| mill and overlay | 562.3 | 559.0 | +0.59% |
-| paved works | 1 584.3 | 1 564.9 | +1.2% (union includes the hatch edge strip and filled label boxes) |
+| widening (hatched ring) | 1 006.1 | 1 005.8 | **+0.03%** |
+| mill and overlay + full-depth patch | 483.1 + 77.1 = 560.2 | 559.0 | +0.2% |
+| paved works | 1 584.4 | 1 564.9 | +1.2% (union includes the hatch edge strip and filled label boxes) |
+
+**The host's mill-and-overlay polygon on sheet 05 contains 77 sq m drawn as
+FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT** (raw x 757-928, y 1190-1249, the
+differently hatched patch near 1+340-1+355). That is a separate pay item
+(`FULL_DEPTH_ASPHALT_RR`), recorded NOT_PRESENT on sheet 03 and never searched
+on 05. Reported to the session that owns the markup.
 
 ## What it found on sheet 04
 
@@ -77,12 +100,22 @@ x-extent = 657.8 sq m (+1.6% on the union). The traced split is widening
 double-counted. Both host quantities are flagged NOT FINAL in the ledger;
 nobody has written a correction, and whichever session does will say so first.
 
+The owning session rewrote the three clean-segment polygons the same day
+(widening N 144.37, S 113.74, M&O 385.53, no overlaps). The trace gives
+widening 257.4 and M&O 392.0 there; the 6.5 sq m on M&O is five fragments under
+1.4 sq m each on the station-tick line that the owning session left out as
+unconfirmed, which is the right call.
+
 **The intersection zone 1+183.4-1+240.0, previously `UNSEARCHED`, is now
-measured:** paved works 1 326.0, widening 315.4, mill and overlay 1 001.8 sq m,
-including the Example Avenue stubs sheet 04 draws (2+017.0 to 2+060.2 - its own
-matchlines at raw y 1424.3 and 934.6, from its 2+020 / 2+040 ticks at raw y
-1390.4 / 1163.5). Overlays and the manifest are in the Example Road pilot folder,
-`07 Claude Operator Pilot/fill_layers/`.
+measured, by pattern:** paved works 1 328.5 sq m = widening 285.5 + mill and
+overlay 777.8 + **full-depth asphalt removal and replacement 194.3** (four
+patches at the curb returns) + unidentified grey-128 4.7 (landing pads) +
+unidentified grey-153 26.9, including the Example Avenue stubs sheet 04 draws
+(2+017.0 to 2+060.2 - its own matchlines at raw y 1424.3 and 934.6, from its
+2+020 / 2+040 ticks at raw y 1390.4 / 1163.5). Sheet 06's second drawing of the
+same intersection gives full-depth 179.9 and widening 223.2 over its own,
+narrower, extent - the two drawings agree on what is there. Overlays and the
+manifest are in the Example Road pilot folder, `07 Claude Operator Pilot/fill_layers/`.
 
 ## Sheet 06 and the 04/06 division
 

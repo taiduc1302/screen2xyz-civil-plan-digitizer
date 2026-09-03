@@ -48,9 +48,22 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from .bluebeam_bridge import polygon_health
 from .plan_layers import Viewport
 
 Colour = tuple[int, int, int]
+
+# Exact rendered colours of the patterns on DEMO-001-04's own legend, censused
+# from the legend swatches at 90 DPI with anti-aliasing off. (128,128,128) and
+# (153,153,153) are on the sheet but not in the legend - landing pads and
+# details - and are named as unidentified so nobody sums them as something.
+EXAMPLE_PLAN_PATTERNS: dict[str, Colour] = {
+    "widening_x_hatch": (127, 127, 127),  # ROAD WIDENING (FULL ROAD STRUCTURE)
+    "full_depth_asphalt_rr": (178, 178, 178),  # FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT
+    "ditch_infill_dots": (0, 127, 0),  # DITCH INFILL
+    "unidentified_grey_128": (128, 128, 128),
+    "unidentified_grey_153": (153, 153, 153),
+}
 
 
 class FillLayerError(RuntimeError):
@@ -103,6 +116,11 @@ class FillRegion:
     bbox_raw: tuple[float, float, float, float]
     linework_inside_m2: float = 0.0  # lines, hatch, text drawn over the fill
     white_inside_m2: float = 0.0  # label boxes or openings closed over
+    health_safe: bool = True  # bluebeam_bridge.polygon_health verdict
+    health_codes: list[str] = field(default_factory=list)
+    compactness_ratio: float = 0.0  # perimeter / sqrt(area); a square is 4
+    pattern_fractions: dict[str, float] = field(default_factory=dict)
+    dominant_pattern: str = ""
     findings: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -117,6 +135,11 @@ class FillRegion:
             "area_m2_polygon": self.area_m2_polygon,
             "linework_inside_m2": self.linework_inside_m2,
             "white_inside_m2": self.white_inside_m2,
+            "health_safe": self.health_safe,
+            "health_codes": list(self.health_codes),
+            "compactness_ratio": self.compactness_ratio,
+            "pattern_fractions": dict(self.pattern_fractions),
+            "dominant_pattern": self.dominant_pattern,
             "vertex_count": len(self.polygon_raw),
             "polygon_raw": [list(p) for p in self.polygon_raw],
             "holes_raw": [[list(p) for p in h] for h in self.holes_raw],
@@ -443,7 +466,9 @@ def extract_fill_regions(
     healed = close(raw_mask, close_radius_px)
     healed, holes_px = fill_holes(healed, int(fill_holes_below_m2 / px_area))
     labels, regions = trace_regions(
-        healed, raw_mask, rgb, frame, px_area=px_area, min_area_m2=min_area_m2, simplify_px=simplify_px
+        healed, raw_mask, rgb, frame, px_area=px_area, min_area_m2=min_area_m2,
+        simplify_px=simplify_px, metres_per_point=viewport.metres_per_point_x,
+        patterns=EXAMPLE_PLAN_PATTERNS,
     )
 
     return {
@@ -480,6 +505,8 @@ def trace_regions(
     px_area: float,
     min_area_m2: float,
     simplify_px: float,
+    metres_per_point: float | None = None,
+    patterns: dict[str, Colour] | None = None,
 ) -> tuple[np.ndarray, list[FillRegion]]:
     """Every connected region of `healed` as a raw-frame polygon with checks.
 
@@ -492,70 +519,219 @@ def trace_regions(
     regions: list[FillRegion] = []
     min_px = int(min_area_m2 / px_area)
     order = [i for i in np.argsort(-sizes) if i != 0 and sizes[i] >= min_px]
-    for n, label in enumerate(order, start=1):
+    n = 0
+    for label in order:
         component = labels == label
-        painted = int((component & raw_mask).sum())
         loops = trace_loops(component)
         if not loops:
             continue
-        loops.sort(key=lambda lp: -abs(signed_area(lp)))
-        outer = simplify_closed([(float(x), float(y)) for x, y in loops[0]], simplify_px)
-        holes = [
-            simplify_closed([(float(x), float(y)) for x, y in lp], simplify_px)
-            for lp in loops[1:]
-            if abs(signed_area(lp)) * px_area >= min_area_m2
-        ]
-        outer_raw = [frame.pixel_to_raw(x, y) for x, y in outer]
-        holes_raw = [[frame.pixel_to_raw(x, y) for x, y in h] for h in holes]
-        area_polygon = (abs(signed_area(outer)) - sum(abs(signed_area(h)) for h in holes)) * px_area
-        area_pixels = painted * px_area
-        xs = [p[0] for p in outer_raw]
-        ys = [p[1] for p in outer_raw]
+        # A 4-connected region can touch itself at a corner; its boundary then
+        # passes one vertex twice and any polygon checker calls that a
+        # self-intersection. Split such loops at the repeated vertex: the lobes
+        # are separate simple polygons of the same paint.
+        simple: list[list[tuple[int, int]]] = []
+        for lp in loops:
+            simple.extend(split_pinches(lp))
+        simple.sort(key=lambda lp: -abs(signed_area(lp)))
+        outers = [lp for lp in simple if signed_area(lp) > 0]
+        holes_all = [lp for lp in simple if signed_area(lp) < 0]
+        for outer_loop in outers:
+            if abs(signed_area(outer_loop)) < min_px:
+                continue
+            n += 1
+            outer_pts = [(float(x), float(y)) for x, y in outer_loop]
+            outer = simplify_closed(outer_pts, simplify_px)
+            lobe = _loop_mask(outer_loop, component.shape) & component
+            painted = int((lobe & raw_mask).sum())
+            holes = [
+                simplify_closed([(float(x), float(y)) for x, y in lp], simplify_px)
+                for lp in holes_all
+                if abs(signed_area(lp)) * px_area >= min_area_m2 and _inside_loop(lp[0], outer_loop)
+            ]
+            outer_raw = [frame.pixel_to_raw(x, y) for x, y in outer]
+            holes_raw = [[frame.pixel_to_raw(x, y) for x, y in h] for h in holes]
+            area_polygon = (abs(signed_area(outer)) - sum(abs(signed_area(h)) for h in holes)) * px_area
+            area_pixels = painted * px_area
+            xs = [p[0] for p in outer_raw]
+            ys = [p[1] for p in outer_raw]
+            findings, region = _finish_region(
+                n, lobe, raw_mask, rgb, frame, px_area=px_area,
+                painted=painted, area_pixels=area_pixels, area_polygon=area_polygon,
+                outer=outer, outer_raw=outer_raw, holes_raw=holes_raw, xs=xs, ys=ys,
+                metres_per_point=metres_per_point, patterns=patterns,
+            )
+            regions.append(region)
+    return labels, regions
 
-        findings: list[dict[str, Any]] = []
-        # What sits inside the traced region that is not the colour itself.
-        # Linework and hatch drawn over a fill are still that fill - the road
-        # does not stop under a lane line - so they explain, rather than
-        # contradict, a polygon larger than its paint. White inside is
-        # different: a label box or a real opening, and it needs eyes.
-        inside = component & ~raw_mask
-        unpainted = int(inside.sum())
-        white = int(np.all(rgb[inside] == 255, axis=1).sum()) if unpainted else 0
-        linework = unpainted - white
-        if area_polygon > 0 and white * px_area > 0.03 * area_polygon:
+
+def _finish_region(
+    n: int,
+    component: np.ndarray,
+    raw_mask: np.ndarray,
+    rgb: np.ndarray,
+    frame: RenderFrame,
+    *,
+    px_area: float,
+    painted: int,
+    area_pixels: float,
+    area_polygon: float,
+    outer: list[tuple[float, float]],
+    outer_raw: list[tuple[float, float]],
+    holes_raw: list[list[tuple[float, float]]],
+    xs: list[float],
+    ys: list[float],
+    metres_per_point: float | None,
+    patterns: dict[str, Colour] | None,
+) -> tuple[list[dict[str, Any]], FillRegion]:
+    """Checks and bookkeeping for one traced lobe."""
+
+    findings: list[dict[str, Any]] = []
+    # What sits inside the traced region that is not the colour itself.
+    # Linework and hatch drawn over a fill are still that fill - the road
+    # does not stop under a lane line - so they explain, rather than
+    # contradict, a polygon larger than its paint. White inside is
+    # different: a label box or a real opening, and it needs eyes.
+    inside = component & ~raw_mask
+    unpainted = int(inside.sum())
+    white = int(np.all(rgb[inside] == 255, axis=1).sum()) if unpainted else 0
+    linework = unpainted - white
+    if area_polygon > 0 and white * px_area > 0.03 * area_polygon:
+        findings.append(_finding(
+            "WHITE_INSIDE_REGION",
+            f"{white * px_area:.1f} sq m of white inside a {area_polygon:.1f} sq m region "
+            "- label boxes or real openings that were closed over. Look at the overlay "
+            "before writing.",
+            blocking=True,
+        ))
+    if area_polygon > 0:
+        unexplained = abs(area_polygon - (area_pixels + unpainted * px_area)) / area_polygon
+        if unexplained > 0.03:
             findings.append(_finding(
-                "WHITE_INSIDE_REGION",
-                f"{white * px_area:.1f} sq m of white inside a {area_polygon:.1f} sq m region "
-                "- label boxes or real openings that were closed over. Look at the overlay "
-                "before writing.",
+                "TRACE_DISAGREES_WITH_PAINT",
+                f"polygon {area_polygon:.1f} sq m against {area_pixels:.1f} sq m painted plus "
+                f"{unpainted * px_area:.1f} sq m under linework ({unexplained * 100:.1f}% "
+                "unexplained) - the trace does not follow the paint.",
                 blocking=True,
             ))
-        if area_polygon > 0:
-            unexplained = abs(area_polygon - (area_pixels + unpainted * px_area)) / area_polygon
-            if unexplained > 0.03:
-                findings.append(_finding(
-                    "TRACE_DISAGREES_WITH_PAINT",
-                    f"polygon {area_polygon:.1f} sq m against {area_pixels:.1f} sq m painted plus "
-                    f"{unpainted * px_area:.1f} sq m under linework ({unexplained * 100:.1f}% "
-                    "unexplained) - the trace does not follow the paint.",
-                    blocking=True,
-                ))
-        if len(outer) > 400:
-            findings.append(_finding(
-                "TRACE_VERY_DETAILED",
-                f"{len(outer)} vertices after simplification - a ragged boundary, likely a "
-                "hatch traced as a fill or a fill full of linework. Consider a larger closing.",
-                blocking=False,
-            ))
-        regions.append(FillRegion(
-            index=n, pixel_count=painted, area_m2_pixels=area_pixels,
-            area_m2_polygon=area_polygon, polygon_raw=outer_raw, holes_raw=holes_raw,
-            holes_filled_px=0, bbox_raw=(min(xs), min(ys), max(xs), max(ys)),
-            linework_inside_m2=linework * px_area, white_inside_m2=white * px_area,
-            findings=findings,
+    if len(outer) > 400:
+        findings.append(_finding(
+            "TRACE_VERY_DETAILED",
+            f"{len(outer)} vertices after simplification - a ragged boundary, likely a "
+            "hatch traced as a fill or a fill full of linework. Consider a larger closing.",
+            blocking=False,
         ))
 
-    return labels, regions
+    # The repository's own pre-write gate, applied at extraction so an
+    # outline that would be refused at the host is refused here, and left
+    # out of every total until someone looks at it.
+    health = polygon_health(outer_raw, metres_per_unit=metres_per_point)
+    health_codes = [
+        (f["code"] if isinstance(f, dict) else getattr(f, "code", str(f)))
+        for f in health.get("findings", [])
+    ]
+    if not health.get("safe_to_write", False):
+        findings.append(_finding(
+            "POLYGON_UNHEALTHY",
+            f"polygon_health refuses this outline ({', '.join(health_codes)}); excluded "
+            "from totals until it is looked at",
+            blocking=True,
+        ))
+
+    # Which other patterns are drawn inside this region. On sheet 04 the
+    # widening hatch is (127,127,127), full-depth asphalt removal is
+    # (178,178,178) and the landing pads carry (128,128,128): one grey level
+    # apart, and the only thing that tells them from each other.
+    fractions: dict[str, float] = {}
+    if patterns and component.any():
+        total = int(component.sum())
+        pixels = rgb[component]
+        for name, colour in patterns.items():
+            count = int(np.all(pixels == np.array(colour, dtype=np.uint8), axis=1).sum())
+            fractions[name] = count / total
+    dominant = max(fractions, key=fractions.get) if fractions else ""
+
+    region = FillRegion(
+        index=n, pixel_count=painted, area_m2_pixels=area_pixels,
+        area_m2_polygon=area_polygon, polygon_raw=outer_raw, holes_raw=holes_raw,
+        holes_filled_px=0, bbox_raw=(min(xs), min(ys), max(xs), max(ys)),
+        linework_inside_m2=linework * px_area, white_inside_m2=white * px_area,
+        health_safe=bool(health.get("safe_to_write", False)), health_codes=health_codes,
+        compactness_ratio=float(health.get("compactness_ratio") or 0.0),
+        pattern_fractions=fractions, dominant_pattern=dominant,
+        findings=findings,
+    )
+    return findings, region
+
+
+def split_pinches(loop: list[tuple[int, int]]) -> list[list[tuple[int, int]]]:
+    """Cut a boundary loop wherever it revisits a vertex.
+
+    Each cut-out sub-loop is a lobe of the region that touched the rest only
+    at that corner. Returned loops are simple; orientation is preserved, so
+    outer lobes stay positive and holes negative under `signed_area`.
+    """
+
+    stack: list[list[tuple[int, int]]] = [list(loop)]
+    out: list[list[tuple[int, int]]] = []
+    while stack:
+        current = stack.pop()
+        seen: dict[tuple[int, int], int] = {}
+        cut = None
+        for i, v in enumerate(current):
+            if v in seen:
+                cut = (seen[v], i)
+                break
+            seen[v] = i
+        if cut is None:
+            if len(current) >= 4:
+                out.append(current)
+            continue
+        a, b = cut
+        inner = current[a:b]
+        rest = current[:a] + current[b:]
+        if len(inner) >= 4:
+            stack.append(inner)
+        if len(rest) >= 4:
+            stack.append(rest)
+    return out
+
+
+def _loop_mask(loop: list[tuple[int, int]], shape: tuple[int, int]) -> np.ndarray:
+    """Pixels enclosed by a pixel-corner loop, by even-odd scanline fill."""
+
+    h, w = shape
+    mask = np.zeros((h, w), dtype=bool)
+    n = len(loop)
+    ys = [p[1] for p in loop]
+    for y in range(max(min(ys), 0), min(max(ys), h)):
+        yc = y + 0.5
+        xs: list[float] = []
+        for i in range(n):
+            (x0, y0), (x1, y1) = loop[i], loop[(i + 1) % n]
+            if y0 == y1:
+                continue
+            if (y0 <= yc < y1) or (y1 <= yc < y0):
+                xs.append(x0 + (yc - y0) * (x1 - x0) / (y1 - y0))
+        xs.sort()
+        for j in range(0, len(xs) - 1, 2):
+            lo = int(math.ceil(xs[j] - 0.5))
+            hi = int(math.floor(xs[j + 1] - 0.5))
+            if hi >= lo:
+                mask[y, max(lo, 0):min(hi, w - 1) + 1] = True
+    return mask
+
+
+def _inside_loop(point: tuple[float, float], loop: list[tuple[int, int]]) -> bool:
+    x, y = point[0] + 0.5, point[1] + 0.5
+    inside = False
+    n = len(loop)
+    for i in range(n):
+        (x0, y0), (x1, y1) = loop[i], loop[(i + 1) % n]
+        if (y0 > y) != (y1 > y):
+            cross = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
+            if cross > x:
+                inside = not inside
+    return inside
 
 
 def hatch_closing_radius(hatch_mask: np.ndarray, *, sample_every: int = 7) -> int:
@@ -594,6 +770,7 @@ def split_pavement(
     min_area_m2: float = 1.0,
     fill_holes_below_m2: float = 12.0,
     simplify_px: float = 1.5,
+    patterns: dict[str, Colour] | None = None,
 ) -> dict[str, Any]:
     """Pavement, and the part of it under the hatch, and the rest.
 
@@ -612,6 +789,7 @@ def split_pavement(
 
     if not viewport.isotropic:
         raise FillLayerError(f"viewport {viewport.name!r} is anisotropic; an area has no meaning in it")
+    patterns = EXAMPLE_PLAN_PATTERNS if patterns is None else patterns
     rgb, frame = render_viewport(pdf_path, page_index, viewport, dpi=dpi)
     m_per_px = frame.points_per_pixel * viewport.metres_per_point_x
     px_area = m_per_px**2
@@ -643,13 +821,45 @@ def split_pavement(
     hatched = close(hatch_raw, radius) if radius else np.zeros_like(hatch_raw)
     if radius:
         hatched, _ = fill_holes(hatched, int(fill_holes_below_m2 / px_area))
+    # Other hatches on the same paint: on sheet 04's legend (178,178,178) is
+    # FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT, its own pay item, and the
+    # landing pads carry an unlisted (128,128,128). Each is closed on its own
+    # radius and taken out of both the widening and the mill-and-overlay, so
+    # a region is counted once, under the pattern actually drawn on it. Where
+    # two closed hatches overlap, the one with more of its own paint there wins.
+    others: dict[str, np.ndarray] = {}
+    for name, colour in (patterns or {}).items():
+        if colour == hatch_colour or colour == fill_colour or name.startswith("ditch"):
+            continue
+        raw = colour_mask(rgb, colour)
+        if raw.sum() * px_area < min_area_m2:
+            continue
+        try:
+            r_other = hatch_closing_radius(raw)
+        except FillLayerError:
+            continue
+        closed_other = close(raw, r_other)
+        closed_other, _ = fill_holes(closed_other, int(fill_holes_below_m2 / px_area))
+        # Priority by paint where the closed regions overlap.
+        contested = closed_other & hatched
+        if contested.any():
+            own = dilate(raw, 2)
+            hatch_own = dilate(hatch_raw, 2)
+            closed_other = closed_other & ~(contested & hatch_own & ~own)
+            hatched = hatched & ~(contested & own & ~hatch_own)
+        others[name] = closed_other
+    other_union = np.zeros_like(hatched)
+    for m in others.values():
+        other_union |= m
+
     # The hatch is drawn to the edge line; the pattern fill under it stops a
     # pixel or two short of that line. The hatched ring is therefore the
-    # widening on its own terms, the pavement less the ring is mill and
+    # widening on its own terms, the pavement less every hatch is mill and
     # overlay, and their union is the paved works - not the grey alone.
-    mill_mask = pavement & ~hatched
-    works = pavement | hatched
-    hatch_outside = hatched & ~pavement
+    widening_mask = hatched & ~other_union
+    mill_mask = pavement & ~hatched & ~other_union
+    works = pavement | hatched | other_union
+    hatch_outside = (hatched | other_union) & ~pavement
     if hatch_outside.sum() * px_area > 25.0:
         findings.append(_finding(
             "HATCH_OUTSIDE_FILL",
@@ -660,16 +870,35 @@ def split_pavement(
             blocking=False,
         ))
 
-    _, total = trace_regions(works, fill_raw | hatch_raw, rgb, frame, px_area=px_area, min_area_m2=min_area_m2, simplify_px=simplify_px)
-    _, widening = trace_regions(hatched, hatch_raw, rgb, frame, px_area=px_area, min_area_m2=min_area_m2, simplify_px=simplify_px)
-    _, mill = trace_regions(mill_mask, fill_raw & ~hatched, rgb, frame, px_area=px_area, min_area_m2=min_area_m2, simplify_px=simplify_px)
+    mpp = viewport.metres_per_point_x
+    common = dict(px_area=px_area, min_area_m2=min_area_m2, simplify_px=simplify_px, metres_per_point=mpp, patterns=patterns)
+    _, total = trace_regions(works, fill_raw | hatch_raw, rgb, frame, **common)
+    _, widening = trace_regions(widening_mask, hatch_raw, rgb, frame, **common)
+    _, mill = trace_regions(mill_mask, fill_raw & ~hatched & ~other_union, rgb, frame, **common)
+    other_regions: dict[str, list[FillRegion]] = {}
+    for name, mask in others.items():
+        _, regs = trace_regions(mask, colour_mask(rgb, patterns[name]), rgb, frame, **common)
+        other_regions[name] = regs
     # A hatch is lines: its paint is a fraction of its region by construction,
-    # so the paint check has no meaning for widening regions.
-    for region in widening:
-        region.findings = [f for f in region.findings if f["code"] != "TRACE_DISAGREES_WITH_PAINT"]
+    # so the paint check has no meaning for hatched regions.
+    for regs in [widening, *other_regions.values()]:
+        for region in regs:
+            region.findings = [f for f in region.findings if f["code"] != "TRACE_DISAGREES_WITH_PAINT"]
 
     def total_of(regions: list[FillRegion]) -> float:
-        return sum(r.area_m2_polygon for r in regions)
+        return sum(r.area_m2_polygon for r in regions if r.health_safe)
+
+    def excluded_of(regions: list[FillRegion]) -> float:
+        return sum(r.area_m2_polygon for r in regions if not r.health_safe)
+
+    excluded = excluded_of(total) + excluded_of(widening) + excluded_of(mill) + sum(excluded_of(r) for r in other_regions.values())
+    if excluded > 0:
+        findings.append(_finding(
+            "REGIONS_EXCLUDED_UNHEALTHY",
+            f"{excluded:.1f} sq m of traced regions fail polygon_health and are left out of "
+            "every total; each carries POLYGON_UNHEALTHY with the reason",
+            blocking=False,
+        ))
 
     return {
         "pdf": Path(pdf_path).name,
@@ -681,15 +910,20 @@ def split_pavement(
         "fill_close_px": fill_close_px,
         "hatch_close_px": radius,
         "metres_per_pixel": m_per_px,
+        "patterns": {k: list(v) for k, v in (patterns or {}).items()},
         "paved_works_m2": total_of(total),
         "widening_m2": total_of(widening),
         "mill_overlay_m2": total_of(mill),
+        "other_hatched_m2": {name: total_of(regs) for name, regs in other_regions.items()},
+        "excluded_unhealthy_m2": excluded,
         "paved_works": [r.to_dict() for r in total],
         "widening": [r.to_dict() for r in widening],
         "mill_overlay": [r.to_dict() for r in mill],
+        "other_hatched": {name: [r.to_dict() for r in regs] for name, regs in other_regions.items()},
         "_paved_works": total,
         "_widening": widening,
         "_mill_overlay": mill,
+        "_other_hatched": other_regions,
         "_frame": frame,
         "findings": findings,
         "note": (

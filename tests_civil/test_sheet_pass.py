@@ -20,7 +20,8 @@ from screen2xyz_civil.sheet_pass import (
 GREY_127 = (127, 127, 127)
 GREY_83 = (83, 83, 83)
 MILL_FILL = (229, 229, 229)
-HATCH = (128, 128, 128)
+HATCH = (127, 127, 127)  # the widening X-hatch renders as 127 - censused from the legend
+FULL_DEPTH = (178, 178, 178)
 PAPER = (255, 255, 255)
 LINEWORK = (0, 0, 0)
 UNKNOWN = (12, 34, 56)
@@ -113,6 +114,15 @@ class KnownLayerTableTests(unittest.TestCase):
     def test_every_known_colour_has_a_non_empty_meaning(self):
         for colour, name in KNOWN_LAYERS.items():
             self.assertTrue(name.strip(), colour)
+
+    def test_full_depth_asphalt_and_the_widening_hatch_are_one_grey_level_apart(self):
+        # Censused from the Sheet 04 legend swatches: widening X-hatch 127,
+        # FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT 178. An earlier table
+        # named 128 as the widening hatch; 128 is on the sheet but not in the
+        # legend, and must stay unidentified rather than summed as something.
+        self.assertIn("ROAD WIDENING", KNOWN_LAYERS[HATCH])
+        self.assertIn("FULL DEPTH", KNOWN_LAYERS[FULL_DEPTH])
+        self.assertIn("unidentified", KNOWN_LAYERS[(128, 128, 128)])
 
     def test_the_unidentified_storm_layer_is_marked_as_unidentified(self):
         # Naming it something plausible would be worse than admitting it is

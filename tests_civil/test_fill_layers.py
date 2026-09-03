@@ -16,8 +16,66 @@ from screen2xyz_civil.fill_layers import (
     label_components,
     signed_area,
     simplify_closed,
+    split_pinches,
     trace_loops,
+    trace_regions,
 )
+
+
+class PinchTests(unittest.TestCase):
+    def test_a_loop_that_revisits_a_vertex_is_cut_into_simple_loops(self):
+        # Two unit squares touching at a corner, traced as one loop through
+        # the shared corner (0,0) twice.
+        loop = [(-1, -1), (0, -1), (0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (-1, 0)]
+        parts = split_pinches(loop)
+        self.assertEqual(len(parts), 2)
+        for part in parts:
+            self.assertEqual(len(set(part)), len(part))  # simple
+            self.assertAlmostEqual(abs(signed_area(part)), 1.0)
+
+    def test_a_simple_loop_is_returned_unchanged(self):
+        loop = [(0, 0), (3, 0), (3, 2), (0, 2)]
+        self.assertEqual(split_pinches(loop), [loop])
+
+
+class RegionChecksTests(unittest.TestCase):
+    CX = 0.0881944444444444
+
+    def _frame(self, h, w):
+        return RenderFrame(dpi=90, rotation=0, page_width_pt=2384.0, page_height_pt=1684.0,
+                           display_x0=0.0, display_y0=0.0, width_px=w, height_px=h)
+
+    def test_a_region_touching_itself_at_a_corner_yields_two_healthy_polygons(self):
+        # An outline through a pinch is refused by polygon_health as a
+        # self-intersection; split, both lobes pass and nothing is lost.
+        h, w = 40, 40
+        mask = np.zeros((h, w), dtype=bool)
+        mask[5:20, 5:20] = True
+        mask[20:35, 20:35] = True
+        rgb = np.full((h, w, 3), 255, dtype=np.uint8)
+        rgb[mask] = (229, 229, 229)
+        px_area = (72 / 90 * self.CX) ** 2
+        _, regions = trace_regions(mask, mask, rgb, self._frame(h, w), px_area=px_area,
+                                   min_area_m2=0.0, simplify_px=0.1, metres_per_point=self.CX)
+        self.assertEqual(len(regions), 2)
+        self.assertTrue(all(r.health_safe for r in regions))
+        self.assertAlmostEqual(sum(r.area_m2_polygon for r in regions), 2 * 225 * px_area, places=6)
+
+    def test_pattern_fractions_name_what_is_drawn_inside_a_region(self):
+        h, w = 30, 30
+        mask = np.zeros((h, w), dtype=bool)
+        mask[5:25, 5:25] = True
+        rgb = np.full((h, w, 3), 255, dtype=np.uint8)
+        rgb[mask] = (229, 229, 229)
+        rgb[10:12, 5:25] = (178, 178, 178)  # a full-depth hatch stroke across it
+        px_area = (72 / 90 * self.CX) ** 2
+        _, regions = trace_regions(mask, mask, rgb, self._frame(h, w), px_area=px_area,
+                                   min_area_m2=0.0, simplify_px=0.1, metres_per_point=self.CX,
+                                   patterns={"full_depth_asphalt_rr": (178, 178, 178), "widening_x_hatch": (127, 127, 127)})
+        region = regions[0]
+        self.assertAlmostEqual(region.pattern_fractions["full_depth_asphalt_rr"], 40 / 400, places=6)
+        self.assertEqual(region.pattern_fractions["widening_x_hatch"], 0.0)
+        self.assertEqual(region.dominant_pattern, "full_depth_asphalt_rr")
 
 
 def _rect_mask(h, w, y0, y1, x0, x1):

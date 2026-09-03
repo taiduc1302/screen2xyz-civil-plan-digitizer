@@ -327,9 +327,24 @@ the Example Road manifests and thumbnails stay in the project folder.
   Example Avenue ends on sheet 06 (53 + 69 sq m beyond sheet 04's matchlines; the
   rest of sheet 06 is the same ground drawn again), and found the sheet 04
   clean-segment host polygons overlapping each other by 34.2 sq m (vector-
-  exact, confirmed by the session that owns them; both flagged NOT FINAL). See
+  exact, confirmed by the session that owns them, and rewritten by it the same
+  day: widening 144.37 / 113.74, M&O 385.53, no overlaps). See
   `docs/integrations/FILL_LAYER_EXTRACTION.md`.
-- Civil suite **396**, green locally.
+- **Patterns by exact colour, and the pre-write gate at extraction.** The
+  sheet 04 legend swatches, censused with anti-aliasing off, put the widening
+  X-hatch at `(127,127,127)` and FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT at
+  `(178,178,178)` - the "unidentified grey-178" of the inventory, a pay item
+  recorded NOT_PRESENT on sheet 03 and never searched elsewhere. `split_pavement`
+  now closes every secondary hatch on its own radius and counts each region
+  once under the pattern drawn on it, reports `pattern_fractions` per region,
+  splits self-touching outlines into simple lobes and runs `polygon_health`
+  on every region, excluding refusals from totals. Sheet 05 widening now
+  matches the host to 0.03%, and **the host's sheet 05 mill-and-overlay
+  polygon turns out to contain 77 sq m of full-depth asphalt R&R**; the sheet
+  04 intersection zone carries 194 sq m of it in four patches. Landing pads
+  (`(128,128,128)`, not in any legend) are separated out at 4.7 sq m instead
+  of leaking into the widening.
+- Civil suite **401**, green locally.
 
 ## Current limitations / remaining gates
 

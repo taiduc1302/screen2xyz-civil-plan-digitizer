@@ -67,8 +67,13 @@ KNOWN_LAYERS: dict[tuple[int, int, int], str] = {
     (255, 255, 255): "paper",
     (0, 0, 0): "linework - not a fill layer",
     (229, 229, 229): "40mm MILL AND OVERLAY (solid fill)",
-    (128, 128, 128): "ROAD WIDENING FULL ROAD STRUCTURE (X-hatch)",
-    (127, 127, 127): "hatch - read this sheet's legend for which hatch",
+    # Censused from the Sheet 04 legend swatches, AA off, 2026-09-03. The
+    # widening X-hatch renders as 127, not the 128 an earlier version of this
+    # table claimed; 128 is on the sheet (landing pads) but not in the legend.
+    (127, 127, 127): "ROAD WIDENING FULL ROAD STRUCTURE (X-hatch) - Sheet 04 legend",
+    (178, 178, 178): "FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT (hatch) - Sheet 04 legend",
+    (128, 128, 128): "unidentified grey-128 hatch - on landing pads, not in the legend",
+    (153, 153, 153): "unidentified grey-153 pattern - not in the legend",
     (255, 255, 0): "PAVEMENT MARKINGS",
     (0, 127, 0): "DITCH INFILL (green dotted) - Sheet 04 legend",
     (83, 83, 83): "unidentified grey-83 layer - present on storm sheets only",
