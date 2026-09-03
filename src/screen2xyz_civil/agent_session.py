@@ -868,6 +868,10 @@ def resolve_markup_plan_target(
         local = str(registered.get("local_path", "")).strip()
         if local:
             protected.add(Path(local).expanduser().resolve())
+    if target.name.endswith((".s2a.json", ".s2t.json", ".s2c.json")):
+        raise AgentSessionError(
+            "refusing to write the markup plan over a governed session or project file"
+        )
     if target in protected:
         raise AgentSessionError(
             "refusing to write the markup plan over the immutable source, the session, "
