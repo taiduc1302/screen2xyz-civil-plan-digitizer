@@ -9,8 +9,11 @@ from screen2xyz_civil.sheet_pass import (
     MIN_LAYER_PIXELS,
     TITLE_BLOCK_BASELINE,
     LayerPresence,
+    SheetPassError,
     classify_grey_ramp,
+    fill_or_hatch,
     layers_above_baseline,
+    pixel_area_m2,
 )
 
 
@@ -189,6 +192,34 @@ class GreyRampTests(unittest.TestCase):
         rows = self._ramp(30) + [_row((221, 221, 109), 2912)]
         ramp, _ = classify_grey_ramp(rows)
         self.assertNotIn((221, 221, 109), {row.colour for row in ramp})
+
+
+class PixelAreaTests(unittest.TestCase):
+    CX = 0.0881944444444444  # 1:250
+
+    def test_one_pixel_at_90_dpi_and_1_to_250_is_about_five_thousandths_of_a_square_metre(self):
+        # 72/90 pt per pixel = 0.8 pt = 0.0706 m of ground; squared, 0.00498 sq m.
+        self.assertAlmostEqual(pixel_area_m2(1, dpi=90, metres_per_point=self.CX), 0.004978, places=5)
+
+    def test_the_same_fill_gives_the_same_area_at_any_dpi(self):
+        # Sheet 03 mill-and-overlay fill: 283 411 px at 90 DPI, 793 992 at 150.
+        a = pixel_area_m2(283411, dpi=90, metres_per_point=self.CX)
+        b = pixel_area_m2(793992, dpi=150, metres_per_point=self.CX)
+        self.assertLess(abs(a - b) / a, 0.01)
+
+    def test_a_fill_is_recognised_by_dpi_invariance(self):
+        self.assertEqual(fill_or_hatch(283411, 90, 793992, 150)["kind"], "fill")
+
+    def test_a_hatch_is_recognised_by_dpi_dependence_and_its_pixel_area_disowned(self):
+        # Sheet 03 widening X-hatch: 9 734 px at 90 DPI, 29 510 at 150 - a line
+        # is one pixel wide whatever the resolution, so its area moves 9%.
+        result = fill_or_hatch(9734, 90, 29510, 150)
+        self.assertEqual(result["kind"], "hatch_or_lines")
+        self.assertFalse(result["pixel_area_valid"])
+
+    def test_two_renders_at_one_resolution_prove_nothing(self):
+        with self.assertRaises(SheetPassError):
+            fill_or_hatch(100, 90, 100, 90)
 
 
 if __name__ == "__main__":

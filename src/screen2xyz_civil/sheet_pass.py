@@ -220,6 +220,45 @@ def classify_grey_ramp(
     return candidates, True
 
 
+def pixel_area_m2(count: int, *, dpi: int, metres_per_point: float) -> float:
+    """Area covered by `count` pixels of a render at `dpi` in an isotropic viewport.
+
+    A cross-check, not a measurement: it counts every pixel of the colour in
+    the rendered region, including legend swatches and anything past the
+    matchline, and it says nothing about *where* the area is. Compare it with
+    the polygon that was written, never write it.
+    """
+
+    if dpi <= 0 or metres_per_point <= 0:
+        raise SheetPassError("dpi and metres-per-point must be positive")
+    metres_per_pixel = (72.0 / dpi) * metres_per_point
+    return int(count) * metres_per_pixel**2
+
+
+def fill_or_hatch(
+    count_a: int, dpi_a: int, count_b: int, dpi_b: int, *, tolerance: float = 0.03
+) -> dict[str, Any]:
+    """Tell a solid fill from a hatch by rendering it at two resolutions.
+
+    A fill's pixel area is the same at any DPI. A hatch is made of lines, and a
+    line's rendered width is one pixel whatever the DPI, so its pixel area
+    changes with resolution. On Sheet 03 the mill-and-overlay fill agrees to
+    0.85% between 90 and 150 DPI while the widening X-hatch moves by 9%. Pixel
+    counting is a valid cross-check for the first and meaningless for the
+    second - measure a hatch by its boundary, never by its pixels.
+    """
+
+    if dpi_a == dpi_b:
+        raise SheetPassError("the two renders must be at different resolutions")
+    area_a = pixel_area_m2(count_a, dpi=dpi_a, metres_per_point=1.0)
+    area_b = pixel_area_m2(count_b, dpi=dpi_b, metres_per_point=1.0)
+    if area_a <= 0 or area_b <= 0:
+        return {"kind": "absent", "spread": None, "pixel_area_valid": False}
+    spread = abs(area_a - area_b) / max(area_a, area_b)
+    kind = "fill" if spread <= tolerance else "hatch_or_lines"
+    return {"kind": kind, "spread": spread, "pixel_area_valid": kind == "fill"}
+
+
 def derive_title_block_baseline(
     pdf_path: Path,
     page_indices: Sequence[int],

@@ -20,7 +20,15 @@ The branch now has:
 - `doctor`, `agent-working-copy`, `agent-register-working-copy`, `agent-status`, and `agent-claude-config`;
 - Claude Code runbook, native Revu acceptance gate, and full civil-takeoff operator prompt.
 
-The frozen Civil suite is currently **255 discovered tests** (220 at CI run #171; 223 after the scope-coverage work; +32 for `bluebeam_bridge.py` on 2026-09-02, green locally, not yet re-run in CI). A fully green CI run on the current final head is required before the owner-machine pilot is treated as code-ready. Synthetic/protocol success still does **not** prove Example Road accuracy or native Bluebeam measurement creation on the estimator's Revu installation.
+The frozen Civil suite is currently **378 discovered tests** on `task/plan-layer-extraction` (220 at CI run #171; 255 after `bluebeam_bridge.py`; 322 after `plan_layers.py`, `earthwork.py` and the twelve added rules; 373 after `sheet_pass.py` and `cross_sections.py`; 378 with the pixel-area cross-check). Green locally in `.venv-operator`; not re-run in CI. Synthetic/protocol success still does **not** prove Example Road accuracy on the estimator's Revu installation.
+
+### Since 2026-09-03: what a takeoff session now calls instead of re-deriving
+
+- `sheet_pass.sheet_opening_pass(pdf, page_index, viewport=...)` - method steps 0-4 for any sheet in one call; reports layers present, unnamed ones, and whether the sheet is rasterised. `derive_title_block_baseline` regenerates the furniture floor for another drawing set.
+- `cross_sections.extract_panels / render_panel / measure_sections` - both surfaces and the subgrade of every cross-section panel from the PDF vectors, scale verified from the grid, areas per panel, volumes across sheets once the operator names the panels from their thumbnails. Applied to DEMO-001-09/10: fourteen panels, no blockers - `docs/integrations/CROSS_SECTION_EXTRACTION.md`.
+- `sheet_pass.pixel_area_m2 / fill_or_hatch` - the pixel-count cross-check the ledger has been doing by hand, and the two-DPI test that says whether a colour is a fill (pixel area valid) or a hatch (it is not).
+- The two-working-copy question for sheets 04-06 is closed in `PLAN_SHEET_LAYER_METHOD.md`: the other copy holds reference geometry only.
+- The branch is on GitHub as `origin/task/plan-layer-extraction`; two sessions commit to the same local clone, so `git log` and `git status` before each commit.
 
 ## Exactly one recommended next action
 

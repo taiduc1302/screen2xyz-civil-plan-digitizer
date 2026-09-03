@@ -267,9 +267,58 @@ section) and Example Road `_STATUS_example_plan.md` §32.
   the owner's action). This remains the single largest risk to today's and the prior
   session's work.
 
+## 2026-09-03, later: the rest of the set becomes calls, and sheets 09/10 are measured
+
+Second session of the day, working in the same local clone as the takeoff session
+and pushing `task/plan-layer-extraction` to GitHub for the first time (125 commits
+that had existed only on this machine). No proprietary drawing data is tracked;
+the Example Road manifests and thumbnails stay in the project folder.
+
+- **`sheet_pass.py`.** Method steps 0-4 (render AA-off, exact-colour census,
+  subtract the title-block floor, name the layers) as one call. Reproduces the
+  hand-built inventory exactly on sheets 04-06. Running it over all eleven drawing
+  sheets found: the baseline colours in the inventory doc were descriptions, not
+  RGB (five of seven guessed keys matched nothing - now *derived* by
+  `derive_title_block_baseline`, floor = minimum over the drawing sheets); sheets
+  11/12 carry a rasterised image (24 800 distinct colours, 39-40 greys above the
+  floor in a tonal ramp against 4-9 on vector sheets) so exact-colour separation
+  is declared unreliable there rather than reported as forty layers; grey-153 on
+  04/06 and (221,221,109) on 08 were never listed. Anti-aliasing is process-global
+  in MuPDF and is now restored after each render.
+- **`cross_sections.py`.** Sheets 09/10 are pure vector: grid 0.12 pt (28.35 pt =
+  0.5 m at 1:50, 141.7 pt = 5 m at 1:100 - the grid verifies the declared scale
+  on every panel), surfaces 0.84 pt (design drawn 2-3 times to look heavy,
+  existing as ~6 pt dashes, structure boxes), every label an outlined glyph - no
+  text at all beyond the consultant's address. Design = upper envelope after
+  averaging the copies; subgrade = lower envelope (structure depth 0.63 m on all
+  fourteen panels); existing = traced dashes, gaps closed along the design where
+  both ends sit on it. Extracted edge-of-pavement and centreline elevations match
+  the printed ones to the centimetre. Stations are not read - drawn as outlines,
+  no OCR - each panel gets a thumbnail with the three surfaces overlaid and the
+  operator names it. **1+080-1+360, 280 m: to subgrade cut 1 117 m³ / fill 488
+  m³; to finished surface 131 / 744.** No 1+200 is drawn (`SECTION_SPACING_TOO_
+  WIDE`), nothing before 1+080 or after 1+360 (`RANGE_NOT_EXTRAPOLATED`). 31.04
+  tendered 2 160 m³ is for the whole project; the order agrees, and no further
+  reconciliation is possible from these sheets. Pay-item surface, density and the
+  comparison stay the estimator's.
+- Three defects caught by looking at the overlay thumbnails rather than the
+  numbers: a chord closing every polyline (pymupdf `finish()` closes by default),
+  the lower envelope running diagonally at box edges (~0.7 sq m of invented cut
+  per edge), and a three-neighbour simplifier that dropped the crown of the road
+  under dense sampling (fixed by the takeoff session, Douglas-Peucker).
+- **Two-working-copy question closed.** `06 Bluebeam/...Claude_2026-09-01.pdf`
+  holds 17 markups; on pages 4-6 all are ANCHOR / PARTIAL / MIXED / INFO. Nothing
+  countable, nothing to double-count. Reference only.
+- `pixel_area_m2` / `fill_or_hatch`: the pixel-count cross-check formalised, with
+  the two-DPI test that separates a fill (area DPI-invariant, 0.85% on the mill
+  fill) from a hatch (9% drift on the widening X-hatch - pixel area invalid).
+- Civil suite **378**, green locally.
+
 ## Current limitations / remaining gates
 
 - Pilot is intentionally one PDF page / one compatible scale context.
+- Cross-section stations are read from thumbnails by the operator, not by the
+  code; 09/10 numbers cover 1+080-1+360 only and no other stretch has sections.
 - `.s2a.json` assumes one mutating writer.
 - Scope ledger is rule-level; instance-level visual reconciliation remains required.
 - Native Bluebeam Length/Area create/edit/save/readback is **not yet LIVE_TESTED** for the owner's exact Claude Code/Revu environment.
