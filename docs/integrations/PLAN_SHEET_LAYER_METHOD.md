@@ -166,6 +166,19 @@ the missing eyes: roughly thirty of his fifty-seven turns in the working
 session were pasted screenshots of Revu. Every one of those was a round trip
 this step would have closed in one call.
 
+### The thumbnail has one blind spot: it auto-zooms
+
+`create_markup_thumbnail` frames the markup's own extent. For an extended
+polygon that is exactly right. For a **point marker it fills the frame with the
+marker and shows nothing around it**, and on a 100 m band it cannot resolve an
+edge error of one line width.
+
+On 2026-09-03 all three storm manhole count markers passed the host thumbnail
+and two of them were sitting in the title block. Pair the thumbnail with
+`markup_view.render_over_drawing`, which draws the read-back path over the base
+PDF in a window you choose: default margin for a point marker so its
+surroundings show, small margin and 15-20x for one stretch of a long band.
+
 ### Numeric self-consistency is not placement
 
 Area totals reconciling, zero mutual overlap, `polygon_health` clean, sum equal
