@@ -12,7 +12,7 @@
 | Clean review PR | Draft PR #8 -> `integration/open-source-takeoff-stack`; keep Draft until owner-machine acceptance |
 | CI harness PR | Draft PR #9 -> `main`; CI-only, **DO NOT MERGE** |
 | Civil authorization | OD-006; implementation/tests/docs/feature commits and justified dependencies authorized; default-branch merge/release remain owner gates |
-| Latest fully green complete verification | GitHub CI run **#171** on `1508ef16da27545ac8be13763a2410fc574a7dd4`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count **220**, retained-evidence/privacy PASS, headless Windows integration PASS, external Claude-style Screen2XYZ stdio MCP PASS, real OpenTakeoff 0.9.68 stdio/One-Click synthetic smoke PASS |
+| Latest fully green complete verification | GitHub CI run **#183** on `35d67d87632d43dd1c93f4c5cd952f2207ec4ed9`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count **236**, retained-evidence/privacy PASS, headless Windows integration PASS, external Claude-style Screen2XYZ stdio MCP PASS, real OpenTakeoff 0.9.68 stdio/One-Click synthetic smoke PASS |
 | Output classification | Conceptual/preliminary estimating data until estimator review; no real-plan accuracy or native-Bluebeam certification claim |
 
 ## Current sources of truth
@@ -53,7 +53,10 @@ ExampleRoad_S03.s2a.json          proposal/audit/session state
 
 - exact immutable source authority;
 - creation/registration of a separate Revu working PDF;
-- selected-page drawing fingerprints based on decoded page content + page boxes + rotation;
+- selected-page drawing fingerprints based on decoded page content + referenced
+  Form/Image XObject streams + page boxes + rotation (the XObject streams matter:
+  a CAD-exported sheet leaves only a few bytes of wrapper in the page stream, so
+  hashing that alone let a different drawing revision register as a match);
 - tolerance for ordinary annotation/metadata byte changes in the working file;
 - rejection when the working drawing/revision no longer matches the immutable source;
 - a document contract embedded into the exported Bluebeam markup plan.
@@ -102,7 +105,9 @@ Blockers include `PARTIAL`, `MIXED`, `UNRESOLVED`, `TENTATIVE`, `SCALE_UNVERIFIE
 
 `mcp_gateway.py` provides a real local stdio/Streamable-HTTP MCP server with:
 
-- immutable sheet image/text/vector evidence;
+- immutable sheet image/text/vector evidence, plus `sheet_render_info` and an
+  optional declared raster size so a proposal read off a rescaled sheet image is
+  converted from the raster actually measured on rather than an assumed DPI;
 - Bluebeam working-copy status;
 - civil rule/takeoff/scope listing;
 - line/polygon proposals;
@@ -110,7 +115,9 @@ Blockers include `PARTIAL`, `MIXED`, `UNRESOLVED`, `TENTATIVE`, `SCALE_UNVERIFIE
 - proposal geometry edits;
 - flags, first-class questions, evidence links;
 - takeoff/scope/working-copy QA;
-- deterministic markup-plan export bound to the registered Revu target.
+- deterministic markup-plan export bound to the registered Revu target, with the
+  output path confined to the session directory for agent-driven calls and
+  refused outright for the immutable source, the session, and the working copy.
 
 It intentionally has no normal `approve_takeoff` or final-bid publication tool. Drawing text is labelled untrusted project evidence.
 
@@ -156,7 +163,22 @@ Direct production PDF `/Measure` dictionary injection remains out of bounds.
 ## Current limitations / remaining gates
 
 - Pilot is intentionally one PDF page / one compatible scale context.
-- `.s2a.json` assumes one mutating writer.
+- `.s2a.json` has no compare-and-swap. The MCP SDK dispatches `tools/call`
+  concurrently, so the documented "one mutating writer" assumption cannot be met
+  by convention: parallel proposals from a single agent can silently lose one.
+- **Several declared invariants are reported, not enforced.** A repo-wide audit
+  of this branch verified, by executing the code, that:
+  - I4 human authority has no mechanism beyond tool omission, which the
+    invariant itself calls insufficient; `--verified` is an ordinary CLI flag and
+    scale audit entries record no actor;
+  - I6 estimating geometry is absent entirely — no holes/deducts, no split, no
+    duplicate/overlap QA, so two proposals of the same region double-count with a
+    clean QA report;
+  - I7 scope completeness is enforced by prompt text only —
+    `ready_for_coverage_review` has no reader in production code, export succeeds
+    with rules still `UNSEARCHED`, and the exported plan carries no scope ledger;
+  - I10 records no approval actor and pins no evidence set at approval.
+  Treat these as advisory reporting until each has a fail-closed guard and test.
 - Scope ledger is rule-level; instance-level visual reconciliation remains required.
 - Native Bluebeam Length/Area create/edit/save/readback is **not yet LIVE_TESTED** for the owner's exact Claude Code/Revu environment.
 - No proprietary Example Road sheet is committed as CI evidence; real-plan quantity/coverage accuracy remains unknown until private acceptance.
