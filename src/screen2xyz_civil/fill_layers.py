@@ -15,15 +15,31 @@ regions, traces each region's boundary along pixel edges, simplifies it, and
 returns it in the Bluebeam raw frame with its area computed two independent
 ways - pixel count and polygon shoelace - which must agree.
 
-What the Example Road sheets actually do (measured on DEMO-001-05):
+USE THIS TO FIND A PATTERN, NOT TO PLACE A BOUNDARY. A pixel-edge trace lands
+on a pixel edge, and it detours around every black dash, survey dot and label
+box drawn on top of the fill. Measured on DEMO-001-04: 3-5 pt outside the drawn
+edge on average, dropping up to 20 pt (1.8 m at 1:250) into the pavement at each
+dash, and 2.2-2.6x too long on the two gravel shoulders, which are length items.
+For the outside of a paved area use `vector_fill.edge_profile`, which reads the
+drawing's own filled paths. See `WHY_THE_RASTER_TRACE_FAILED.md`.
 
-* the grey "solid" fill (#E5E5E5, 40 mm mill and overlay per the legend) is not
-  a vector path at all - `get_drawings` returns no such fill. It is a PDF
-  tiling pattern, rendered as 65 x 36 px cells at 90 DPI with one-pixel seams
-  between cells wherever the cell grid does not land on the pixel grid;
-* the road-widening X-hatch (#7F7F7F strokes) is drawn *over* the same grey, so
-  the grey region is mill-and-overlay plus widening, and the widening is the
-  part of it under the hatch;
+What the Example Road sheets actually do (corrected 2026-09-03 - the first two
+bullets below were the wrong way round, and every boundary this module placed
+on sheets 03-06 inherited the error):
+
+* the grey "solid" fill (#E5E5E5, 40 mm mill and overlay per the legend) **is**
+  a vector path: `get_drawings` returns 278 paths filled that grey on
+  DEMO-001-04, emitted as stacked horizontal slabs whose edges run smoothly - one
+  measured 1131.84 pt unbroken. It renders with one-pixel seams between slabs,
+  which is what made it look like a tiling pattern at 90 DPI;
+* the road-widening X-hatch is **not** in the vector content - there is not one
+  45-degree stroke inside a hatched band. It is a PDF pattern, so it can only
+  be found in the render. The "#7F7F7F strokes" earlier recorded as the hatch
+  are what a thin black hatch line renders as at 90 DPI; the actual RGB-127
+  vector strokes on the sheet are symbol strokes (mean length 10.3 pt, angles
+  scattered across 0/45/90/135) and RGB-178 is a stipple dot pattern (mean
+  length 3.2 pt). Classifying those as the hatch put ten wrong markups on the
+  sheet 04 intersection before they were deleted;
 * linework crosses the fill everywhere: centreline, lane lines, station ticks,
   leaders, and white label boxes printed on top of it.
 
