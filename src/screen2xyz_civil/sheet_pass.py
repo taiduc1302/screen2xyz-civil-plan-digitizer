@@ -72,8 +72,9 @@ KNOWN_LAYERS: dict[tuple[int, int, int], str] = {
     # table claimed; 128 is on the sheet (landing pads) but not in the legend.
     (127, 127, 127): "ROAD WIDENING FULL ROAD STRUCTURE (X-hatch) - Sheet 04 legend",
     (178, 178, 178): "FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT (hatch) - Sheet 04 legend",
-    (128, 128, 128): "unidentified grey-128 hatch - on landing pads, not in the legend",
-    (153, 153, 153): "unidentified grey-153 pattern - not in the legend",
+    (128, 128, 128): "utility symbol grey (culvert bodies, flow arrows) - not a paving pattern, no legend entry",
+    (153, 153, 153): "stipple on the pedestrian asphalt pads at the curb returns - not a legend entry, not a paving pattern under this table",
+    (185, 185, 185): "detail-drawing fill on sheets 04 and 07 - not a plan-view layer",
     (255, 255, 0): "PAVEMENT MARKINGS",
     (0, 127, 0): "DITCH INFILL (green dotted) - Sheet 04 legend",
     (83, 83, 83): "unidentified grey-83 layer - present on storm sheets only",

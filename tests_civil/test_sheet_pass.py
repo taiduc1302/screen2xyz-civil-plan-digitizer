@@ -122,7 +122,9 @@ class KnownLayerTableTests(unittest.TestCase):
         # legend, and must stay unidentified rather than summed as something.
         self.assertIn("ROAD WIDENING", KNOWN_LAYERS[HATCH])
         self.assertIn("FULL DEPTH", KNOWN_LAYERS[FULL_DEPTH])
-        self.assertIn("unidentified", KNOWN_LAYERS[(128, 128, 128)])
+        # 128 is the grey of utility symbols, seen in crops, not a paving
+        # pattern - the table must say so rather than let it be summed.
+        self.assertIn("not a paving pattern", KNOWN_LAYERS[(128, 128, 128)])
 
     def test_the_unidentified_storm_layer_is_marked_as_unidentified(self):
         # Naming it something plausible would be worse than admitting it is

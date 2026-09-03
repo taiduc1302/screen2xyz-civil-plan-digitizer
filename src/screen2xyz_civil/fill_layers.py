@@ -54,15 +54,18 @@ from .plan_layers import Viewport
 Colour = tuple[int, int, int]
 
 # Exact rendered colours of the patterns on DEMO-001-04's own legend, censused
-# from the legend swatches at 90 DPI with anti-aliasing off. (128,128,128) and
-# (153,153,153) are on the sheet but not in the legend - landing pads and
-# details - and are named as unidentified so nobody sums them as something.
+# from the legend swatches at 90 DPI with anti-aliasing off. The last two are
+# on the sheet and in no legend; crops at their positions (2026-09-03) show
+# grey-128 as the grey of utility symbols - culvert bodies, flow arrows - and
+# grey-153 as the stipple on the pedestrian asphalt pads at the curb returns.
+# Neither is pavement under this module's names; they are kept out of every
+# paving total and reported on their own so the estimator sees them.
 EXAMPLE_PLAN_PATTERNS: dict[str, Colour] = {
     "widening_x_hatch": (127, 127, 127),  # ROAD WIDENING (FULL ROAD STRUCTURE)
     "full_depth_asphalt_rr": (178, 178, 178),  # FULL DEPTH ASPHALT REMOVAL AND REPLACEMENT
     "ditch_infill_dots": (0, 127, 0),  # DITCH INFILL
-    "unidentified_grey_128": (128, 128, 128),
-    "unidentified_grey_153": (153, 153, 153),
+    "utility_symbol_grey_128": (128, 128, 128),  # not a paving pattern
+    "pad_stipple_grey_153": (153, 153, 153),  # pedestrian asphalt pads - not legended
 }
 
 

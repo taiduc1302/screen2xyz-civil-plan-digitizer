@@ -109,8 +109,10 @@ unconfirmed, which is the right call.
 **The intersection zone 1+183.4-1+240.0, previously `UNSEARCHED`, is now
 measured, by pattern:** paved works 1 328.5 sq m = widening 285.5 + mill and
 overlay 777.8 + **full-depth asphalt removal and replacement 194.3** (four
-patches at the curb returns) + unidentified grey-128 4.7 (landing pads) +
-unidentified grey-153 26.9, including the Example Avenue stubs sheet 04 draws
+patches at the curb returns) + grey-128 4.7 (the grey of utility symbols -
+culvert bodies, flow arrows - not pavement) + grey-153 26.9 (the stipple on
+the pedestrian asphalt pads, a scope item of its own, not legended), including
+the Example Avenue stubs sheet 04 draws
 (2+017.0 to 2+060.2 - its own matchlines at raw y 1424.3 and 934.6, from its
 2+020 / 2+040 ticks at raw y 1390.4 / 1163.5). Sheet 06's second drawing of the
 same intersection gives full-depth 179.9 and widening 223.2 over its own,
