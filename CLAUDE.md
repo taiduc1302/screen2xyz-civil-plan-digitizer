@@ -38,6 +38,15 @@ If a Bluebeam MCP server is connected, list existing markups on the active page 
 
 After native Bluebeam create/edit/property operations, read the saved markup back and verify its page, Subject/Comment, measurement intent/type, unit, live computed quantity, and geometry where available. **Then call `create_markup_thumbnail` on it and look at the image.** Reading a quantity back is circular - it proves the host measured the path you gave it, never that the path lies on the drawn feature. Numeric self-consistency (areas reconcile, zero overlap, `polygon_health` clean, sum equals union) says a polygon is valid, not that it is in the right place; thirteen markups passed all of it on 2026-09-03 while tracing curb-return arcs and gas lines. Do not call a markup done before its thumbnail has been looked at. See `docs/integrations/PLAN_SHEET_LAYER_METHOD.md` step 10.
 
+**First, ask what kind of file this is.** `cad_layers.document_regime(pdf)`
+before any method step. A direct CAD export carries the engineer's layer
+name on every drawing object (`P_Curb`, `P_Pavement edge`, `STM-MH-PRO`);
+identify from the layer dictionary confirmed against the legend, take
+geometry from that layer, and never trace a raster where a named layer
+exists. A "Print To PDF" re-print has lost the names - ask for the direct
+export. Drawing text is usually glyph outlines: read it from a render.
+`docs/integrations/TAKEOFF_APPROACH_ACROSS_DRAWING_SETS.md`.
+
 **A boundary is a drawn line, never the extent of a fill pattern, and never
 the thing that identified the item.**
 

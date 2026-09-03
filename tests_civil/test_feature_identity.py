@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from screen2xyz_civil.feature_identity import (
+    CAD_LAYER_NAME,
     CALLOUT_LEADER,
     DRAWING_TABLE,
     DRAWN_OUTLINE,
@@ -48,6 +49,21 @@ class IdentificationTests(unittest.TestCase):
             boundary_from=[PRINTED_STATION_OFFSET],
         )
         self.assertTrue(report["safe_to_write"])
+
+    def test_a_cad_layer_name_names_the_feature_and_the_outline_fixes_it(self):
+        # The engineer's own label on the object: P_Curb with the object's
+        # geometry. The label is read, not derived, so it is not the hazard.
+        report = identification_report(
+            identified_by=[CAD_LAYER_NAME], boundary_from=[DRAWN_OUTLINE]
+        )
+        self.assertTrue(report["safe_to_write"])
+        self.assertEqual(report["names_the_feature"], [CAD_LAYER_NAME])
+
+    def test_a_cad_layer_name_cannot_fix_a_boundary(self):
+        report = identification_report(
+            identified_by=[CAD_LAYER_NAME], boundary_from=[CAD_LAYER_NAME]
+        )
+        self.assertIn("BOUNDARY_NOT_FIXED_BY_THE_DRAWING", codes(report))
 
     def test_a_table_row_may_both_name_and_fix(self):
         # Not a false positive to guard: a printed table is not a derivation.

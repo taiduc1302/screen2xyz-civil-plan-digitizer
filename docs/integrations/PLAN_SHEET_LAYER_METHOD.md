@@ -10,6 +10,32 @@ Code support: `src/screen2xyz_civil/plan_layers.py`, tests in
 
 ---
 
+## Before 0. Ask what kind of file this is
+
+`cad_layers.document_regime(pdf)` first, on every set. It says three things
+that decide everything after:
+
+* **Drawing regime.** `LAYERED_VECTOR` means the PDF is a direct CAD export
+  and every drawing object carries the engineer's layer name - on DEMO-001
+  that is `P_Curb`, `P_Pavement edge`, `P_Ditch bottom`, `STM-MH-PRO`,
+  `Shading 245 (50%)`, 141 names in all. Identification then starts from the
+  layer dictionary (`layer_dictionary`, `hints_present`), confirmed once per
+  set against the legend, and geometry comes from `objects_on_layer` -
+  nothing from another layer can wander into a trace. `FLAT_VECTOR` with a
+  "Print To PDF" producer is a re-print that lost the names
+  (`REPRINT_LOST_LAYERS`): ask for the direct export before tracing.
+  `RASTER` is a scan.
+* **Text regime.** `OUTLINE_TEXT` means callouts, stations and legend
+  labels are glyph outlines; `get_text` and the host's search see only the
+  title block. Read them from a render, and use the text layers
+  (`P_Road_Txt`, `STM-TXT-PRO`, `Notes`) to know whose text sits where.
+* **A layer is identity and a candidate set, not a finished line.** Sheet
+  04's `P_Pavement edge` is 404 dashes and chords; chained by endpoint and
+  direction they are 16 continuous lines. `P_Curb` is 83 tick symbols.
+
+Full reasoning and the per-set record ("pre-pattern"):
+`TAKEOFF_APPROACH_ACROSS_DRAWING_SETS.md`.
+
 ## 0. Look at the sheet
 
 Render the page to PNG and **actually view it** before writing a line of analysis.

@@ -24,6 +24,21 @@ The frozen Civil suite is currently **418 discovered tests** on `task/plan-layer
 
 ### Since 2026-09-03: what a takeoff session now calls instead of re-deriving
 
+- **Step 0 of every set: `cad_layers.document_regime(pdf)`.** The DEMO-001
+  tender PDF is a direct Civil 3D export and carries 141 CAD layer names on
+  its drawing objects - `P_Curb`, `P_Pavement edge`, `P_Ditch bottom`,
+  `P_Culv`, `STM-MH-PRO`, `E_Gas`, `Shading 245 (50%)`. The day of raster
+  tracing, radius fitting and deleting happened on a file that named the
+  curb. `layer_dictionary` / `hints_present` read the names against the
+  `P_`/`E_`, `-PRO`/`-EXI` and NCS conventions; `objects_on_layer` returns
+  a layer's geometry in the raw frame, outlines separated from strokes;
+  `feature_identity.CAD_LAYER_NAME` names a feature once the set's
+  dictionary is confirmed against the legend. The firehall civil set is
+  the other regime: a "Print To PDF" re-print with 9,033 vectors and no
+  names (`REPRINT_LOST_LAYERS` - ask for the direct export). Text on both
+  sets is glyph outlines (`OUTLINE_TEXT`). Approach across sets:
+  `docs/integrations/TAKEOFF_APPROACH_ACROSS_DRAWING_SETS.md`. Suite 548.
+
 - Three rules added once the whole set had been measured and real scope had nowhere to go: `PEDESTRIAN_ASPHALT_PAD` (POLYGON), `EXISTING_CULVERT_REMOVAL` (LINE), `EXISTING_HEADWALL_REMOVAL` (COUNT). Twenty-five rules: 13 LINE, 9 POLYGON, 3 COUNT.
 - `symbols.find_circles(pdf, page_index, viewport, stroke=(0,0,0))` - circle symbols found in the vector content by shape, size and colour, returned in the raw frame and grouped, with `crop_symbol` for the label beside each. On DEMO-001-12 PLAN it finds exactly three 4.2 pt black circles, labelled D1, D2, D3 in the crops - the manhole count the ledger had as "2 marked, likely 3" - and the same three in DEMO-001-11's profile.
 - `markup_view.render_over_drawing(pdf, page_index, shapes, out_png, window=..., zoom=...)` - the second half of the visual check: a read-back path drawn over the base PDF in a window you choose, for the two cases the host thumbnail cannot cover (a point marker, which it zooms into until no context is left, and a line-width error on a long band). It also encodes the frame trap: `draw_polyline` uses unrotated page coordinates `(x, H-y)`, `get_pixmap(clip=...)` uses displayed coordinates `(W-x, y)`.

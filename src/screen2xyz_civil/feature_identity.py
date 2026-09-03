@@ -40,13 +40,20 @@ PRINTED_STATION_OFFSET = "PRINTED_STATION_OFFSET"
 DRAWING_TABLE = "DRAWING_TABLE"
 #: The drawing's own vector outline object for the region.
 DRAWN_OUTLINE = "DRAWN_OUTLINE"
+#: The engineer's CAD layer name carried by the PDF's optional content
+#: (``P_Curb``, ``STM-MH-PRO``). It is the engineer's label, not something
+#: the operator derived, so it names the feature - once the set's layer
+#: dictionary has been confirmed against the legend or a callout, because
+#: objects do get put on the wrong layer. It says nothing about where the
+#: edge runs; that is the object's own geometry, ``DRAWN_OUTLINE``.
+CAD_LAYER_NAME = "CAD_LAYER_NAME"
 #: A colour, line width or angle filter that the operator chose.
 PEN_ONLY = "PEN_ONLY"
 #: A radius, length or area that matches a printed value.
 GEOMETRIC_FIT = "GEOMETRIC_FIT"
 
 #: Sources that can say what a feature is.
-NAMES_THE_FEATURE = frozenset({LEGEND_SWATCH, CALLOUT_LEADER, DRAWING_TABLE})
+NAMES_THE_FEATURE = frozenset({LEGEND_SWATCH, CALLOUT_LEADER, DRAWING_TABLE, CAD_LAYER_NAME})
 #: Sources that can say where it runs.
 FIXES_THE_POSITION = frozenset({PRINTED_STATION_OFFSET, DRAWN_OUTLINE, DRAWING_TABLE})
 #: Sources that only narrow a field of candidates. Never sufficient alone.
