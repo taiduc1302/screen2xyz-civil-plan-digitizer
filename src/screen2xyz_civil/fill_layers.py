@@ -940,39 +940,130 @@ def split_pavement(
 
 def clip_polygon_x(
     polygon: Sequence[tuple[float, float]], x_min: float, x_max: float
-) -> list[tuple[float, float]]:
-    """Sutherland-Hodgman clip of a polygon to a vertical band in x.
+) -> list[list[tuple[float, float]]]:
+    """Clip a simple polygon to a vertical band in x, as simple parts.
 
     Sheets overlap by 10-20 m and every quantity is cut at an agreed station;
     the station maps to a raw x through the sheet's `StationFrame`.
+
+    Returns a list of rings. A concave region cut across its mouth becomes
+    two or more pieces, and this returns them separately. The first version
+    was Sutherland-Hodgman, which joins such pieces with edges running back
+    along the cut line: the area came out right and the boundary was invalid
+    (self-touching), caught by the session writing it to Revu on 2026-09-03.
+
+    Method: the boundary is split into chains that lie inside the band, each
+    ending on a cut line; on each cut line the chain ends are paired in y
+    order (the interior of a simple polygon alternates along the line) and
+    the chains are linked through those pairs into closed rings.
     """
 
-    def clip_edge(points: list[tuple[float, float]], inside, intersect) -> list[tuple[float, float]]:
-        out: list[tuple[float, float]] = []
-        if not points:
-            return out
-        prev = points[-1]
-        for cur in points:
-            if inside(cur):
-                if not inside(prev):
-                    out.append(intersect(prev, cur))
-                out.append(cur)
-            elif inside(prev):
-                out.append(intersect(prev, cur))
-            prev = cur
-        return out
-
-    def cross_at(x: float):
-        def intersect(a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
-            t = (x - a[0]) / (b[0] - a[0]) if b[0] != a[0] else 0.0
-            return (x, a[1] + (b[1] - a[1]) * t)
-        return intersect
-
-    pts = [tuple(p) for p in polygon]
     lo, hi = min(x_min, x_max), max(x_min, x_max)
-    pts = clip_edge(pts, lambda p: p[0] >= lo, cross_at(lo))
-    pts = clip_edge(pts, lambda p: p[0] <= hi, cross_at(hi))
-    return pts
+    pts = [(float(p[0]), float(p[1])) for p in polygon]
+    if len(pts) < 3 or lo >= hi:
+        return []
+    eps = 1e-9
+    n = len(pts)
+
+    def inside(p: tuple[float, float]) -> bool:
+        return lo - eps <= p[0] <= hi + eps
+
+    if all(inside(p) for p in pts):
+        return [pts]
+    if all(p[0] < lo - eps for p in pts) or all(p[0] > hi + eps for p in pts):
+        return []
+
+    def cross(a: tuple[float, float], b: tuple[float, float], x: float) -> tuple[float, float]:
+        t = (x - a[0]) / (b[0] - a[0])
+        return (x, a[1] + (b[1] - a[1]) * t)
+
+    # Walk the boundary and collect the pieces inside the band. Each piece
+    # is a list of points; the first and last lie on a cut line unless the
+    # ring never leaves the band (handled above).
+    start = next(i for i in range(n) if not inside(pts[i]))
+    chains: list[list[tuple[float, float]]] = []
+    current: list[tuple[float, float]] = []
+    for k in range(n):
+        a = pts[(start + k) % n]
+        b = pts[(start + k + 1) % n]
+        # Points where edge a->b crosses lo or hi, in travel order.
+        crossings: list[tuple[float, float]] = []
+        for x in (lo, hi):
+            if (a[0] - x) * (b[0] - x) < 0:
+                crossings.append(cross(a, b, x))
+        crossings.sort(key=lambda p: abs(p[0] - a[0]))
+        position = a
+        for c in crossings:
+            if inside(position) and current:
+                current.append(c)
+                chains.append(current)
+                current = []
+            elif not inside(position):
+                current = [c]
+            position = c
+        if inside(b):
+            if not current:
+                current = [b]  # entered exactly on a vertex that sits on the line
+            else:
+                current.append(b)
+        elif current:
+            chains.append(current)
+            current = []
+    if current:
+        chains.append(current)
+    chains = [c for c in chains if len(c) >= 2]
+    if not chains:
+        return []
+
+    # Pair chain ends along each cut line in y order.
+    ends: list[tuple[float, float, int, int]] = []  # (x, y, chain index, 0=start/1=end)
+    for i, c in enumerate(chains):
+        ends.append((c[0][0], c[0][1], i, 0))
+        ends.append((c[-1][0], c[-1][1], i, 1))
+    partner: dict[tuple[int, int], tuple[int, int]] = {}
+    for x in (lo, hi):
+        on_line = sorted((e for e in ends if abs(e[0] - x) <= 1e-6), key=lambda e: e[1])
+        for j in range(0, len(on_line) - 1, 2):
+            a_key = (on_line[j][2], on_line[j][3])
+            b_key = (on_line[j + 1][2], on_line[j + 1][3])
+            partner[a_key] = b_key
+            partner[b_key] = a_key
+
+    rings: list[list[tuple[float, float]]] = []
+    used = [False] * len(chains)
+    for seed in range(len(chains)):
+        if used[seed]:
+            continue
+        ring: list[tuple[float, float]] = []
+        index, forward = seed, True
+        while True:
+            used[index] = True
+            chain = chains[index] if forward else list(reversed(chains[index]))
+            ring.extend(chain)
+            exit_key = (index, 1 if forward else 0)
+            nxt = partner.get(exit_key)
+            if nxt is None:
+                break
+            index, entry = nxt
+            forward = entry == 0
+            if index == seed and forward:
+                break
+            if used[index]:
+                break
+        cleaned = [p for i, p in enumerate(ring) if i == 0 or (abs(p[0] - ring[i - 1][0]) > eps or abs(p[1] - ring[i - 1][1]) > eps)]
+        if len(cleaned) > 1 and abs(cleaned[0][0] - cleaned[-1][0]) <= eps and abs(cleaned[0][1] - cleaned[-1][1]) <= eps:
+            cleaned.pop()
+        if len(cleaned) >= 3:
+            rings.append(cleaned)
+    return rings
+
+
+def clip_area_m2(
+    polygon: Sequence[tuple[float, float]], x_min: float, x_max: float, viewport: Viewport
+) -> float:
+    """Area of a polygon within a band, summed over its clipped parts."""
+
+    return sum(polygon_area_m2(part, viewport) for part in clip_polygon_x(polygon, x_min, x_max))
 
 
 def polygon_area_m2(polygon: Sequence[tuple[float, float]], viewport: Viewport) -> float:

@@ -175,8 +175,15 @@ CX = 0.0881944444444444
 vp = Viewport("PLAN", 444, 785, 1759, 1515, CX, CX)          # sheet 04, raw frame
 res = split_pavement(pdf, 3, vp)                              # hatch radius derived
 render_overlay(pdf, 3, vp, res["_widening"] + res["_mill_overlay"], out_png)
-band = clip_polygon_x(res["mill_overlay"][0]["polygon_raw"], x_at_1240, x_at_1183_4)
-polygon_area_m2(band, vp)
+parts = clip_polygon_x(res["mill_overlay"][0]["polygon_raw"], x_at_1240, x_at_1183_4)
+sum(polygon_area_m2(p, vp) for p in parts)          # or clip_area_m2(...)
 ```
+
+`clip_polygon_x` returns a **list of simple rings**. A concave region cut
+across its mouth is two or more pieces; the first version (Sutherland-Hodgman)
+returned one ring that bridged them along the cut line - right area, invalid
+boundary - and the session writing the sheet 04 intersection caught it with
+shapely. Chains inside the band are now linked through their crossing points
+paired in y order along each cut line, and every piece passes `polygon_health`.
 
 numpy only; no scipy, no shapely. 6-9 s per sheet at 90 DPI.

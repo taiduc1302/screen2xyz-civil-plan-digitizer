@@ -189,18 +189,53 @@ class FrameTests(unittest.TestCase):
 
 class ClipTests(unittest.TestCase):
     SQUARE = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    # A U: two legs joined at the bottom. Cut through the mouth and it is two
+    # pieces. Sutherland-Hodgman returned one ring bridging them along the
+    # cut line - right area, self-touching boundary - found by the session
+    # writing it to Revu on 2026-09-03.
+    U = [(0.0, 0.0), (30.0, 0.0), (30.0, 20.0), (20.0, 20.0), (20.0, 5.0),
+         (10.0, 5.0), (10.0, 20.0), (0.0, 20.0)]
+
+    def _total(self, parts):
+        return sum(abs(signed_area(p)) for p in parts)
 
     def test_clipping_to_a_band_keeps_the_band(self):
-        clipped = clip_polygon_x(self.SQUARE, 2.0, 5.0)
-        self.assertAlmostEqual(abs(signed_area(clipped)), 30.0)
+        parts = clip_polygon_x(self.SQUARE, 2.0, 5.0)
+        self.assertEqual(len(parts), 1)
+        self.assertAlmostEqual(self._total(parts), 30.0)
 
     def test_bounds_may_be_given_in_either_order(self):
         a = clip_polygon_x(self.SQUARE, 2.0, 5.0)
         b = clip_polygon_x(self.SQUARE, 5.0, 2.0)
-        self.assertAlmostEqual(abs(signed_area(a)), abs(signed_area(b)))
+        self.assertAlmostEqual(self._total(a), self._total(b))
 
     def test_a_band_outside_the_polygon_is_empty(self):
         self.assertEqual(clip_polygon_x(self.SQUARE, 20.0, 30.0), [])
+
+    def test_a_polygon_wholly_inside_comes_back_whole(self):
+        parts = clip_polygon_x(self.SQUARE, -5.0, 50.0)
+        self.assertEqual(parts, [self.SQUARE])
+
+    def test_a_concave_polygon_cut_across_its_mouth_gives_simple_pieces(self):
+        # y-band is not what we clip on; clip the U in x through both legs:
+        # x in [5, 25] cuts each leg and the bottom bar -> one ring (the bar
+        # joins them). x in [5, 25] on the rotated U (legs along x) is the
+        # real case, so rotate: swap axes.
+        u_sideways = [(y, x) for x, y in self.U]  # legs now run along x, mouth at x=20
+        parts = clip_polygon_x(u_sideways, 8.0, 25.0)
+        self.assertEqual(len(parts), 2)
+        for part in parts:
+            self.assertGreaterEqual(len(part), 4)
+            self.assertEqual(len(set(part)), len(part))  # simple ring
+        # Area: two legs, each 10 wide (y) by (20-8)=12 long in x... legs are
+        # y in [0,10] and [20,30], x from 5 to 20 clipped to [8, 20]: 2 * 10 * 12
+        self.assertAlmostEqual(self._total(parts), 2 * 10.0 * 12.0)
+
+    def test_each_piece_passes_the_repository_gate(self):
+        from screen2xyz_civil.bluebeam_bridge import polygon_health
+        u_sideways = [(y, x) for x, y in self.U]
+        for part in clip_polygon_x(u_sideways, 8.0, 25.0):
+            self.assertTrue(polygon_health(part)["safe_to_write"])
 
 
 class HatchRadiusTests(unittest.TestCase):
