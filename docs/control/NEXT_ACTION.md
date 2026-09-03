@@ -20,7 +20,7 @@ The branch now has:
 - `doctor`, `agent-working-copy`, `agent-register-working-copy`, `agent-status`, and `agent-claude-config`;
 - Claude Code runbook, native Revu acceptance gate, and full civil-takeoff operator prompt.
 
-The frozen Civil suite is currently **401 discovered tests** on `task/plan-layer-extraction` (220 at CI run #171; 255 after `bluebeam_bridge.py`; 322 after `plan_layers.py`, `earthwork.py` and the twelve added rules; 373 after `sheet_pass.py` and `cross_sections.py`; 378 with the pixel-area cross-check; 396 with `fill_layers.py`; 401 with pattern separation and per-region `polygon_health`). Green locally in `.venv-operator`; not re-run in CI. Synthetic/protocol success still does **not** prove Example Road accuracy on the estimator's Revu installation.
+The frozen Civil suite is currently **405 discovered tests** on `task/plan-layer-extraction` (220 at CI run #171; 255 after `bluebeam_bridge.py`; 322 after `plan_layers.py`, `earthwork.py` and the twelve added rules; 373 after `sheet_pass.py` and `cross_sections.py`; 378 with the pixel-area cross-check; 396 with `fill_layers.py`; 401 with pattern separation and per-region `polygon_health`; 405 with the zero-length-edge fix to `polygon_health` - a ring that repeats its first vertex or a consecutive duplicate vertex no longer reads as a self-intersection). Green locally in `.venv-operator`; not re-run in CI. Synthetic/protocol success still does **not** prove Example Road accuracy on the estimator's Revu installation.
 
 ### Since 2026-09-03: what a takeoff session now calls instead of re-deriving
 

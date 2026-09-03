@@ -343,8 +343,19 @@ the Example Road manifests and thumbnails stay in the project folder.
   polygon turns out to contain 77 sq m of full-depth asphalt R&R**; the sheet
   04 intersection zone carries 194 sq m of it in four patches. Landing pads
   (`(128,128,128)`, not in any legend) are separated out at 4.7 sq m instead
-  of leaking into the widening.
-- Civil suite **401**, green locally.
+  of leaking into the widening. The owning session verified the 77 sq m against
+  sheet 05's own legend, split its polygon into M&O east/west plus a full-depth
+  markup, and all five reconcile to the original 559.01 with zero overlap.
+- **`polygon_health` false positive found by the owning session and fixed.**
+  A ring that repeats its first vertex (shapely's convention) or carries two
+  consecutive equal vertices (host rounding to 0.1 pt) has a zero-length edge;
+  that edge touches its neighbours at a shared point, and the touch test read
+  it as a crossing on five polygons shapely called valid. Rings are now
+  normalised before any edge test; a bowtie is still caught. Also recorded from
+  that write: Revu silently bridges a two-ring SVG path into one invalid
+  polygon - one ring per Polygon markup, holed or split items as separate
+  markups.
+- Civil suite **405**, green locally.
 
 ## Current limitations / remaining gates
 
