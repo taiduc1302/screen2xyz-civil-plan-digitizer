@@ -58,6 +58,26 @@ class SelfIntersectionTests(unittest.TestCase):
     def test_clean_rectangle_has_no_crossings(self):
         self.assertEqual(self_intersections(CLEAN_RECT), [])
 
+    def test_a_ring_that_repeats_its_first_vertex_is_not_self_intersecting(self):
+        # shapely writes rings closed; the zero-length closing edge touched
+        # its neighbours at a shared point and was reported as a crossing on
+        # five valid polygons on 2026-09-03.
+        self.assertEqual(self_intersections(CLEAN_RECT + [CLEAN_RECT[0]]), [])
+        self.assertTrue(polygon_health(CLEAN_RECT + [CLEAN_RECT[0]])["safe_to_write"])
+
+    def test_a_consecutive_duplicate_vertex_is_not_self_intersecting(self):
+        # The host rounds to 0.1 pt and can hand back two equal vertices in a row.
+        doubled = CLEAN_RECT[:2] + [CLEAN_RECT[1]] + CLEAN_RECT[2:]
+        self.assertEqual(self_intersections(doubled), [])
+        self.assertTrue(polygon_health(doubled)["safe_to_write"])
+
+    def test_normalising_does_not_hide_a_real_crossing(self):
+        self.assertTrue(self_intersections(BOWTIE + [BOWTIE[0]]))
+
+    def test_reported_vertex_count_is_the_ring_without_degenerate_edges(self):
+        report = polygon_health(CLEAN_RECT + [CLEAN_RECT[0]])
+        self.assertEqual(report["vertex_count"], 4)
+
     def test_bowtie_is_detected(self):
         self.assertTrue(self_intersections(BOWTIE))
 

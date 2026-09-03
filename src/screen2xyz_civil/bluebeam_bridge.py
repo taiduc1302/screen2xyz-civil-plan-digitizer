@@ -137,10 +137,37 @@ def _segments_cross(p1: Point, p2: Point, p3: Point, p4: Point) -> bool:
     return False
 
 
-def self_intersections(points: Iterable[Sequence[float]]) -> list[tuple[int, int]]:
-    """Return index pairs of crossing, non-adjacent edges of a closed polygon."""
+def _normalise_ring(rows: list[Point]) -> list[Point]:
+    """Drop the vertices that make an edge of zero length.
 
-    rows = _as_points(points)
+    A ring written the way shapely writes one repeats its first vertex at the
+    end; a ring rounded to 0.1 pt by the host can carry two consecutive equal
+    vertices. Either gives a zero-length edge, and an edge of zero length
+    "touches" its neighbours at a shared point, which the touch test below
+    reported as a self-intersection on polygons that shapely called valid
+    (2026-09-03, all five sheet 05 polygons). The polygon is the same without
+    those vertices; the checks are only right without them.
+    """
+
+    out: list[Point] = []
+    for point in rows:
+        if out and abs(point[0] - out[-1][0]) <= 1e-9 and abs(point[1] - out[-1][1]) <= 1e-9:
+            continue
+        out.append(point)
+    while len(out) > 1 and abs(out[0][0] - out[-1][0]) <= 1e-9 and abs(out[0][1] - out[-1][1]) <= 1e-9:
+        out.pop()
+    return out
+
+
+def self_intersections(points: Iterable[Sequence[float]]) -> list[tuple[int, int]]:
+    """Return index pairs of crossing, non-adjacent edges of a closed polygon.
+
+    Indices refer to the ring with zero-length edges removed (see
+    `_normalise_ring`); the ring is closed implicitly, do not repeat the
+    first vertex.
+    """
+
+    rows = _normalise_ring(_as_points(points))
     count = len(rows)
     if count < 4:
         return []
@@ -169,7 +196,7 @@ def polygon_health(
     crossed or spiked outline, not to argue with a genuinely elongated strip.
     """
 
-    rows = _as_points(points)
+    rows = _normalise_ring(_as_points(points))
     findings: list[Finding] = []
     if len(rows) < 3:
         raise BridgeError("polygon health requires at least three points")

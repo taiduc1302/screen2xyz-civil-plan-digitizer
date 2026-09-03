@@ -135,6 +135,26 @@ from sheet 06's own 2+000..2+080 ticks at raw x 1439.2 / 1212.4 / 984.9 /
 06 owns only the ends - is a convention; it is stated in the manifest so the
 estimator can move the line, not discover it.
 
+## Writing a traced region to Revu
+
+Two facts learned on 2026-09-03 while the owning session wrote the sheet 05
+split:
+
+* **One ring per Polygon markup.** A two-ring SVG path (`M ... H M ... H`)
+  is accepted silently: Revu drops the second `M` and bridges the rings into
+  one self-intersecting polygon, caught only on read-back (area did not
+  reconcile, shapely `is_valid=False`). A region with a hole, or an item the
+  drawing splits in two, is written as separate markups - the way driveways
+  N/S already are. `FillRegion.holes_raw` therefore never goes into a path;
+  a holed region is written as its outer ring plus a note, or split by hand.
+* **`polygon_health` wants the ring open.** A ring that repeats its first
+  vertex at the end (shapely's convention), or carries two consecutive equal
+  vertices (the host rounds to 0.1 pt), has a zero-length edge; that edge
+  touches its neighbours at a shared point and the touch test reported it as
+  a self-intersection on five polygons shapely called valid. Fixed by
+  normalising the ring in `bluebeam_bridge` (`_normalise_ring`) before any
+  edge test; the regression tests carry both shapes.
+
 ## What it does not decide
 
 Which region is paid as which item. On this set the names follow the sheet
