@@ -91,36 +91,46 @@ independent sources closing on each other is the confirmation.
 
 ## 5a. A boundary is a drawn line, not a pattern's extent (blocking)
 
-**A boundary is a drawn line. It is never the extent of a fill pattern.**
+**A boundary is a drawn line, never the extent of a fill pattern, and never
+the thing that identified the item.**
 
-A hatch or a stipple is a fill: separate strokes with gaps between them. "How
-far the hatch reaches" is not a line - it oscillates between the strokes and
-the gaps, at the pattern's own pitch, for ever. Tracing that extent can only
-produce a sawtooth, however carefully it is traced. The pattern stops *at* the
-edge; the edge is drawn separately.
+A hatch pen draws two different things. The region's **outline** is emitted as
+a polyline - one drawing object carrying several path items - while every hatch
+stroke is its own single-item object. Colour and width cannot tell them apart;
+the object structure can. Take the outline object for the boundary and use the
+single strokes only to decide which side is which.
 
-So, in order of preference:
+The corollary is the rule that cost the most: **never let the filter that finds
+an item also define its edge.** An angle filter that kept 30-60/120-150 degrees
+correctly identified the hatch and silently discarded the horizontal outline,
+so the boundary could only ever be the hatch envelope. The filter that found
+the item hid its line.
 
-1. the drawing's own vector geometry - `vector_fill` reads the filled paths and
-   gives a smooth edge;
-2. a printed dimension;
-3. only then a mask, and only to **find** what is on a sheet, never to place
-   its boundary.
+Two habits that follow:
 
-`polygon_health` refuses a boundary that oscillates evenly
-(`BOUNDARY_CHASES_A_PATTERN`) because nothing else can see it: a sawtooth
-raises the perimeter but stays under the sliver ratio on a band that is already
-long and thin, and the area reconciles perfectly with itself. Measured on
-DEMO-001-05 - period 12.7 pt against a 13.6 pt hatch pitch, amplitude 6.4 pt
-(0.57 m) along the whole edge, and every numeric check passed.
+* **An analysis box is not a feature boundary.** A markup stopped at the edge
+  of an analysis window is short by however far the feature runs past it - 19
+  sq m on one sheet 04 item alone. `fill_layers` now reports
+  `REGION_TOUCHES_THE_ANALYSIS_EDGE`; widen and re-trace, or cut at a station
+  chosen from the drawing.
+* **Check every drawn line near the edge, not only the one you decided is the
+  interface.** Where a drawn line exists, taking the ragged fill edge instead
+  costs area and puts a diagonal where the drawing has a straight run.
+* Arcs are arcs. A curb return traced as an axis-aligned staircase is wrong in
+  shape even when the area is right.
 
-If you have already written one, `pattern_edge.flatten_to_envelope` repairs it:
-it snaps each oscillating run to the side that repeats, which is the drawn line
-the strokes are clipped against, and leaves corners and tapers alone. When
-**both** sides of the oscillation are constant it refuses and returns
-`needs_a_scope_decision`, because an edge running between two real drawn lines
-is a scope question the drawing answers, not one a tolerance should. Render the
-repair against the sheet and record the area change before writing it.
+`polygon_health` refuses an evenly oscillating outline
+(`BOUNDARY_CHASES_A_PATTERN`); no other check sees it, because the sawtooth
+stays under the sliver ratio and the area reconciles with itself.
+`pattern_edge.flatten_to_envelope` only removes the sawtooth - it leaves the
+boundary on a pattern extreme, not on the drawn line - so use it only where the
+drawing genuinely draws no boundary.
+
+Measured on DEMO-001-05: the oscillation ran between y 1242.2 and 1248.7 while the
+drawn outline sits at 1190.9 and 1248.0. Rebuilding from the outline objects took
+the four sheet 05 items from 163/106/21/10 vertices to 17/4/4/4, and the pieces
+then tiled the corridor with 0.00 overlap and 0.09 sq m unassigned - the coherence
+arrived on its own once both sides of every interface were the same drawn line.
 
 ## 6. Validate against printed dimensions before writing
 

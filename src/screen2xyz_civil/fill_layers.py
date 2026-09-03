@@ -135,6 +135,7 @@ class FillRegion:
     bbox_raw: tuple[float, float, float, float]
     linework_inside_m2: float = 0.0  # lines, hatch, text drawn over the fill
     white_inside_m2: float = 0.0  # label boxes or openings closed over
+    touches_analysis_edge: list[str] = field(default_factory=list)
     health_safe: bool = True  # bluebeam_bridge.polygon_health verdict
     health_codes: list[str] = field(default_factory=list)
     compactness_ratio: float = 0.0  # perimeter / sqrt(area); a square is 4
@@ -154,6 +155,7 @@ class FillRegion:
             "area_m2_polygon": self.area_m2_polygon,
             "linework_inside_m2": self.linework_inside_m2,
             "white_inside_m2": self.white_inside_m2,
+            "touches_analysis_edge": list(self.touches_analysis_edge),
             "health_safe": self.health_safe,
             "health_codes": list(self.health_codes),
             "compactness_ratio": self.compactness_ratio,
@@ -632,6 +634,29 @@ def _finish_region(
                 "unexplained) - the trace does not follow the paint.",
                 blocking=True,
             ))
+    # An analysis box is not a feature boundary. A region that runs into the
+    # edge of the render almost certainly continues past it, and stopping the
+    # markup there puts a straight fake edge on the drawing at the place the
+    # operator happened to crop. On DEMO-001-04 an item was stopped at x 565.8,
+    # the edge of an analysis box, where the drawing runs to 559.3 - 19 sq m
+    # short on one item alone.
+    touches = []
+    if component[0, :].any():
+        touches.append("top")
+    if component[-1, :].any():
+        touches.append("bottom")
+    if component[:, 0].any():
+        touches.append("left")
+    if component[:, -1].any():
+        touches.append("right")
+    if touches:
+        findings.append(_finding(
+            "REGION_TOUCHES_THE_ANALYSIS_EDGE",
+            f"the region reaches the {', '.join(touches)} edge of the rendered window, so it "
+            "continues beyond it. Widen the viewport and re-trace, or cut it at a station you "
+            "chose from the drawing - never leave the crop as the boundary.",
+            blocking=False,
+        ))
     if len(outer) > 400:
         findings.append(_finding(
             "TRACE_VERY_DETAILED",
@@ -674,6 +699,7 @@ def _finish_region(
         area_m2_polygon=area_polygon, polygon_raw=outer_raw, holes_raw=holes_raw,
         holes_filled_px=0, bbox_raw=(min(xs), min(ys), max(xs), max(ys)),
         linework_inside_m2=linework * px_area, white_inside_m2=white * px_area,
+        touches_analysis_edge=touches,
         health_safe=bool(health.get("safe_to_write", False)), health_codes=health_codes,
         compactness_ratio=float(health.get("compactness_ratio") or 0.0),
         pattern_fractions=fractions, dominant_pattern=dominant,

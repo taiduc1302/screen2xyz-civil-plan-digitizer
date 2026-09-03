@@ -269,10 +269,12 @@ def polygon_health(
                     detail=(
                         f"{chase['detail']}. A hatch is a fill, not an edge - its extent "
                         "oscillates at its own pitch for ever, so a boundary taken from it "
-                        "can never be the drawn line. Take the edge from the drawing's own "
-                        "geometry (vector_fill), or repair this one with "
-                        "pattern_edge.flatten_to_envelope and render the result against the "
-                        "sheet before writing."
+                        "can never be the drawn line. The hatch region carries its own "
+                        "drawn outline in the same pen - a polyline object, where each stroke "
+                        "is a single-item object - so take the edge from vector_fill. "
+                        "pattern_edge.flatten_to_envelope only removes the sawtooth and leaves "
+                        "the boundary on a pattern extreme; use it only where the drawing "
+                        "draws no boundary at all."
                     ),
                     blocking=True,
                 )

@@ -251,5 +251,54 @@ class HatchRadiusTests(unittest.TestCase):
             hatch_closing_radius(np.ones((10, 50), dtype=bool), sample_every=1)
 
 
+class AnalysisEdgeTests(unittest.TestCase):
+    CX = 0.0881944444444444
+
+    def _frame(self, h, w):
+        return RenderFrame(dpi=90, rotation=0, page_width_pt=2384.0, page_height_pt=1684.0,
+                           display_x0=0.0, display_y0=0.0, width_px=w, height_px=h)
+
+    def _trace(self, mask):
+        h, w = mask.shape
+        rgb = np.full((h, w, 3), 255, dtype=np.uint8)
+        rgb[mask] = (229, 229, 229)
+        px = (72 / 90 * self.CX) ** 2
+        _, regions = trace_regions(mask, mask, rgb, self._frame(h, w), px_area=px,
+                                   min_area_m2=0.0, simplify_px=0.1, metres_per_point=self.CX)
+        return regions[0]
+
+    def test_a_region_inside_the_window_is_not_flagged(self):
+        mask = np.zeros((30, 40), dtype=bool)
+        mask[5:20, 5:20] = True
+        region = self._trace(mask)
+        self.assertEqual(region.touches_analysis_edge, [])
+
+    def test_a_region_running_off_the_window_is_flagged(self):
+        # An analysis box is not a feature boundary. A markup stopped at the
+        # crop is short by however far the feature runs past it - 19 sq m on
+        # one real item, because the analysis box ended at x 565.8 where the
+        # drawing runs to 559.3.
+        mask = np.zeros((30, 40), dtype=bool)
+        mask[5:20, 20:] = True
+        region = self._trace(mask)
+        self.assertIn("right", region.touches_analysis_edge)
+        codes = [f["code"] for f in region.findings]
+        self.assertIn("REGION_TOUCHES_THE_ANALYSIS_EDGE", codes)
+
+    def test_the_warning_names_every_edge_reached(self):
+        mask = np.ones((30, 40), dtype=bool)
+        region = self._trace(mask)
+        self.assertEqual(set(region.touches_analysis_edge), {"top", "bottom", "left", "right"})
+
+    def test_it_warns_rather_than_blocks(self):
+        # The operator may have cropped deliberately; the point is that the
+        # crop must be a decision, not an accident.
+        mask = np.zeros((30, 40), dtype=bool)
+        mask[5:20, 20:] = True
+        finding = next(f for f in self._trace(mask).findings
+                       if f["code"] == "REGION_TOUCHES_THE_ANALYSIS_EDGE")
+        self.assertFalse(finding["blocking"])
+
+
 if __name__ == "__main__":
     unittest.main()

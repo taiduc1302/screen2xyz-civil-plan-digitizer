@@ -13,11 +13,23 @@ Measured on DEMO-001-05, the mill-and-overlay boundary against the widening:
     peak to peak 6.5 pt = 0.57 m
 
 The period IS the pattern pitch. That is the signature, and it is what makes
-this detectable rather than a matter of taste. Note also that one side of the
-oscillation repeats *exactly* - 1242.2, to 0.1 pt, every time. A constant like
-that is the drawn line the strokes are clipped against, so snapping the
-boundary to it is more accurate, not merely tidier: the excursions are the
-pattern leaking into its own gaps.
+this detectable rather than a matter of taste.
+
+**The repair here is second best, and the reason matters.** An earlier version
+of this file claimed the constant side of the oscillation was "the drawn line
+the strokes are clipped against". That was wrong, and the drawing disproved it
+the same day: the hatch region carries its own **drawn outline**, in the same
+pen as the hatch, and it lies beyond *both* sides of the oscillation. The two
+constants are the strokes' far ends and their near ends - peaks and troughs of
+the pattern, not lines. On sheet 05 the outline sits at y 1190.9 and 1248.0
+while the oscillation ran between 1242.2 and 1248.7.
+
+So the real repair is to go and find the outline object, which `vector_fill`
+does: it is emitted as a **polyline**, one drawing object carrying several path
+items, where every hatch stroke is its own single-item object. Colour and width
+cannot tell them apart; the object structure can. `flatten_to_envelope` below
+only removes the sawtooth. It does not put the boundary on the drawn line, and
+it must not be described as if it did.
 
 Why the checks already here did not catch it:
 
@@ -252,18 +264,20 @@ def flatten_to_envelope(
 
     `keep`:
 
-    * `constant` - the side of the oscillation whose value repeats, which is
-      the drawn line the strokes are clipped against. The accurate choice when
-      one side really is constant, and what the Example Road boundaries want:
-      their troughs repeat to 0.1 pt.
-    * `outer` / `inner` - the extreme in the cross axis. Use these when the
-      oscillation runs between two drawn lines and the drawing says which one
-      bounds this item.
+    **A fallback.** This removes the sawtooth; it does not find the drawn line.
+    Both sides of the oscillation are pattern extremes - the strokes' far ends
+    and their near ends - and the drawing's own outline lies beyond both. Use
+    `vector_fill` to take the outline object first, and only come here when the
+    drawing genuinely draws no boundary for that interface.
+
+    * `constant` - the side whose value repeats. The tidier of the two pattern
+      extremes, nothing more.
+    * `outer` / `inner` - the extreme in the cross axis.
 
     Under `constant` a run whose two sides are *both* constant is left alone
-    and listed in `ambiguous_runs`: that is not noise, it is an edge
-    square-waving between two real lines, and which one applies is a scope
-    question. `needs_a_scope_decision` says so.
+    and listed in `ambiguous_runs` with `needs_a_scope_decision`. Read that as
+    "this module cannot choose", not as "the drawing offers two options": an
+    earlier version said the latter and it was false.
 
     Returns a new ring and what it changed; never edits in place. It is a
     proposal, so render it against the drawing before writing and record the
@@ -310,9 +324,11 @@ def flatten_to_envelope(
                     "low_value": statistics.median(low), "high_value": statistics.median(high),
                     "separation_pt": abs(statistics.median(high) - statistics.median(low)),
                     "low_spread": low_spread, "high_spread": high_spread,
-                    "reason": ("both sides of the oscillation are constant, so this edge runs "
-                               "between two drawn lines; choose keep='outer' or keep='inner' "
-                               "against the drawing rather than letting a tolerance decide"),
+                    "reason": ("both sides of the oscillation are constant, and both are "
+                               "pattern extremes rather than drawn lines. Look for the hatch "
+                               "region's own outline object with vector_fill; only if the "
+                               "drawing draws no boundary here, choose keep='outer' or "
+                               "keep='inner' deliberately"),
                 })
                 continue
             take_low = low_spread <= high_spread
@@ -353,7 +369,8 @@ def flatten_to_envelope(
         "needs_a_scope_decision": bool(ambiguous),
         "vertices_before": len(rows),
         "vertices_after": len(ring),
-        "note": ("A proposal. Snapping to the constant side removes the pattern's "
-                 "excursions into its own gaps; render it against the drawing before "
-                 "writing, and record the area change."),
+        "note": ("A fallback, not the drawn line. It removes the sawtooth and leaves "
+                 "the boundary on a pattern extreme. Look for the hatch region's own "
+                 "outline object first (vector_fill); render whatever you keep against "
+                 "the drawing before writing, and record the area change."),
     }
