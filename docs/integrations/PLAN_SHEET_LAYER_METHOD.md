@@ -30,8 +30,13 @@ that decide everything after:
   title block. Read them from a render, and use the text layers
   (`P_Road_Txt`, `STM-TXT-PRO`, `Notes`) to know whose text sits where.
 * **A layer is identity and a candidate set, not a finished line.** Sheet
-  04's `P_Pavement edge` is 404 dashes and chords; chained by endpoint and
-  direction they are 16 continuous lines. `P_Curb` is 83 tick symbols.
+  04's `P_Pavement edge` is 404 dashes, dots and chords, plotted two or
+  three times over; `layer_chains.chains_on_layer` drops the copies and
+  links ends that face each other on the same axis - 16 continuous lines,
+  the longest 45 m. The axis test is what keeps a chain off the parallel
+  shoulder line 3.4 pt away. `P_Curb` is 83 tick symbols. Render the
+  chains over the sheet (`markup_view.render_over_drawing`) before using
+  them.
 
 Full reasoning and the per-set record ("pre-pattern"):
 `TAKEOFF_APPROACH_ACROSS_DRAWING_SETS.md`.

@@ -102,14 +102,29 @@ installed, eyes otherwise - `symbols.crop_symbol` already does the crop).
 ## A layer gives identity and candidates, not a finished line
 
 On sheet 04 `P_Pavement edge` is 404 objects with a longest of 39 pt: the
-linetype's dashes and the flattened chords of the curb-return arcs.
-`P_Curb` is 83 tick symbols. Chaining the pavement-edge fragments by
-endpoint proximity and direction continuity gives 16 chains, the longest
-91 m, 527 m in all - continuous lines with the arcs kept as the chords the
-engineer plotted, and nothing from any other layer able to wander in. That
-is the geometry step for this regime: **chain fragments within one layer**,
-then `polygon_health` / `identification_report` as before. It replaces the
-raster trace where layers exist; it does not replace the thumbnail check.
+linetype's dashes, its dots (260 zero-length objects), the flattened chords
+of the curb-return arcs, and every one of them plotted two or three times
+over (one copy per xref that carries the line). `P_Curb` is 83 tick
+symbols. `layer_chains.chain_fragments` turns that into continuous lines:
+it drops the coincident copies, reads the linetype's gap from the data,
+and links fragment ends that face each other **and lie on each other's
+axis**. The last condition is the one that matters on this sheet: the
+pavement edge runs beside a second dashed line 3.4 pt away - the printed
+0.30 m gravel shoulder - whose dashes are as close and as well aligned as
+the edge's own, and only the lateral offset tells them apart. Result on
+sheet 04: 16 chains, the longest 45 m, one branch reported; on sheet 05
+`E_Ep` is 4 chains from 159 fragments. The arcs stay the chords the
+engineer plotted, and nothing from another layer can wander in.
+
+That is the geometry step for this regime: **chain fragments within one
+layer**, then `polygon_health` / `identification_report` as before. It
+replaces the raster trace where layers exist; it does not replace the
+thumbnail check - the chains above were rendered over the sheet and looked
+at before this paragraph was written. Two things the layer still does not
+say: which of two parallel lines on it is the feature (the printed 0.30 m
+separation says), and where a line that the linetype breaks at a real gap
+ends (the chain ends there, and the sheet decides whether that is the
+feature's end or a break to bridge).
 
 ## The skeleton, in the order a person works
 

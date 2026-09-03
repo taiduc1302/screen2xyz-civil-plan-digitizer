@@ -38,6 +38,16 @@ The frozen Civil suite is currently **418 discovered tests** on `task/plan-layer
   names (`REPRINT_LOST_LAYERS` - ask for the direct export). Text on both
   sets is glyph outlines (`OUTLINE_TEXT`). Approach across sets:
   `docs/integrations/TAKEOFF_APPROACH_ACROSS_DRAWING_SETS.md`. Suite 548.
+- `layer_chains.chains_on_layer(doc, page_index, layer, metres_per_unit=...)`
+  - a layer's dashes, dots and arc chords chained into continuous lines.
+  Drops coincident copies (the pavement edge is plotted 2-3 times), reads
+  the linetype gap from the data, links ends that face each other on the
+  same axis (mutual best, so visiting order cannot change the result), and
+  reports a `CHAIN_BRANCH` where two continuations qualify. Sheet 04
+  `P_Pavement edge`: 16 chains, longest 45 m, one branch; sheet 05 `E_Ep`:
+  4 chains from 159 fragments. The axis test is what keeps a chain off the
+  parallel 0.30 m shoulder line 3.4 pt away. Rendered over the sheet and
+  looked at. Suite 567.
 
 - Three rules added once the whole set had been measured and real scope had nowhere to go: `PEDESTRIAN_ASPHALT_PAD` (POLYGON), `EXISTING_CULVERT_REMOVAL` (LINE), `EXISTING_HEADWALL_REMOVAL` (COUNT). Twenty-five rules: 13 LINE, 9 POLYGON, 3 COUNT.
 - `symbols.find_circles(pdf, page_index, viewport, stroke=(0,0,0))` - circle symbols found in the vector content by shape, size and colour, returned in the raw frame and grouped, with `crop_symbol` for the label beside each. On DEMO-001-12 PLAN it finds exactly three 4.2 pt black circles, labelled D1, D2, D3 in the crops - the manhole count the ledger had as "2 marked, likely 3" - and the same three in DEMO-001-11's profile.
