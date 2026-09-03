@@ -367,7 +367,22 @@ the Example Road manifests and thumbnails stay in the project folder.
   nickname that the sanitization scan caught in the inventory prose. PyMuPDF
   (AGPL) is deliberately not a requirement: the three render/vector entry
   points import it lazily and the whole Civil suite runs with it blocked.
-- Civil suite **415**, green locally and in CI at 405.
+- **`clip_polygon_x` returns simple parts.** Sutherland-Hodgman joined the
+  pieces of a concave region on either side of a cut with edges along the cut
+  line - right area, self-touching boundary - caught by the owning session
+  writing the sheet 04 intersection. Chains inside the band are now linked
+  through their crossing points paired in y order; the clipped sheet 04
+  mill-and-overlay piece is 385.54 sq m against the owning session's shapely
+  385.53, and a 1.39 sq m sliver at a cut is refused by `polygon_health` and
+  excluded rather than summed.
+- **Written to Revu by the owning session, same day:** the sheet 04
+  intersection zone (13 markups: 5 widening, 3 mill-and-overlay, 5 full-depth
+  asphalt R&R, sum 1 213.90 sq m, pads and grey-153 withheld), the sheet 05
+  full-depth split (M&O east/west 420.43 + 61.89, full-depth 74.60, all
+  reconciling to the original 559.01), the rewritten sheet 04 clean segment,
+  and the third manhole. Still open: sheet 06's two Example Avenue end bands.
+- Civil suite **418**, green locally; CI green on the branch at 405 and 415
+  (runs 33727960634, 33728429939, 33728660462).
 
 ## Current limitations / remaining gates
 
