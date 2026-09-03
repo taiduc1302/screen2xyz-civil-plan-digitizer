@@ -7,6 +7,7 @@ from screen2xyz_civil.earthwork import (
     SectionArea,
     average_end_area_volume,
     compare_to_tender,
+    section_areas_between_surfaces,
     tonnes_from_volume,
 )
 
@@ -150,6 +151,109 @@ class TenderComparisonTests(unittest.TestCase):
         with self.assertRaises(EarthworkError):
             compare_to_tender(10.0, 0.0, unit="m3")
 
+
+
+class SectionAreaFromSurfacesTests(unittest.TestCase):
+    # Deliberately anisotropic, like a real cross-section sheet drawn 1:100
+    # horizontal against 1:50 vertical. Converting per axis *before* computing
+    # the area is the whole point; doing it after with one factor is the
+    # mistake that produced a quantity out by the ratio of the two axes.
+    CX = 0.0352778
+    CY = 0.0176389
+
+    def _flat(self, y_points, width_m=10.0):
+        return [(0.0, y_points), (width_m / self.CX, y_points)]
+
+    def test_design_below_ground_is_pure_cut(self):
+        result = section_areas_between_surfaces(
+            existing=self._flat(0.0),
+            proposed=self._flat(-1.0 / self.CY),
+            metres_per_point_x=self.CX,
+            metres_per_point_y=self.CY,
+            station_m=1080.0,
+        )
+        self.assertAlmostEqual(result["cut_area_m2"], 10.0, places=6)
+        self.assertAlmostEqual(result["fill_area_m2"], 0.0, places=6)
+
+    def test_design_above_ground_is_pure_fill(self):
+        result = section_areas_between_surfaces(
+            existing=self._flat(0.0),
+            proposed=self._flat(1.0 / self.CY),
+            metres_per_point_x=self.CX,
+            metres_per_point_y=self.CY,
+            station_m=1080.0,
+        )
+        self.assertAlmostEqual(result["fill_area_m2"], 10.0, places=6)
+        self.assertAlmostEqual(result["cut_area_m2"], 0.0, places=6)
+
+    def test_crossing_surfaces_split_into_cut_and_fill_at_the_crossing(self):
+        result = section_areas_between_surfaces(
+            existing=self._flat(0.0),
+            proposed=[(0.0, -1.0 / self.CY), (10.0 / self.CX, 1.0 / self.CY)],
+            metres_per_point_x=self.CX,
+            metres_per_point_y=self.CY,
+            station_m=1100.0,
+        )
+        self.assertAlmostEqual(result["cut_area_m2"], 2.5, places=6)
+        self.assertAlmostEqual(result["fill_area_m2"], 2.5, places=6)
+        codes = {f["code"] for f in result["findings"]}
+        self.assertIn("SECTION_HAS_BOTH_CUT_AND_FILL", codes)
+
+    def test_the_two_axis_factors_are_applied_separately(self):
+        # Same drawn geometry, vertical factor doubled -> area doubles. If a
+        # single factor were used the result would be out by its square.
+        common = dict(
+            existing=self._flat(0.0),
+            proposed=self._flat(-1.0 / self.CY),
+            metres_per_point_x=self.CX,
+            station_m=0.0,
+        )
+        single = section_areas_between_surfaces(metres_per_point_y=self.CY, **common)
+        doubled = section_areas_between_surfaces(metres_per_point_y=self.CY * 2, **common)
+        self.assertAlmostEqual(doubled["cut_area_m2"], single["cut_area_m2"] * 2, places=6)
+
+    def test_only_the_shared_width_is_measured_and_the_rest_is_reported(self):
+        result = section_areas_between_surfaces(
+            existing=[(0.0, 0.0), (20.0 / self.CX, 0.0)],
+            proposed=[(0.0, -1.0 / self.CY), (10.0 / self.CX, -1.0 / self.CY)],
+            metres_per_point_x=self.CX,
+            metres_per_point_y=self.CY,
+            station_m=0.0,
+        )
+        self.assertAlmostEqual(result["measured_width_m"], 10.0, places=6)
+        self.assertAlmostEqual(result["cut_area_m2"], 10.0, places=6)
+        codes = {f["code"] for f in result["findings"]}
+        self.assertIn("SECTION_PARTIALLY_COVERED", codes)
+
+    def test_a_surface_that_doubles_back_is_refused(self):
+        with self.assertRaises(EarthworkError):
+            section_areas_between_surfaces(
+                existing=[(0.0, 0.0), (100.0, 0.0), (50.0, 0.0)],
+                proposed=self._flat(-1.0 / self.CY),
+                metres_per_point_x=self.CX,
+                metres_per_point_y=self.CY,
+                station_m=0.0,
+            )
+
+    def test_surfaces_that_do_not_overlap_are_refused(self):
+        with self.assertRaises(EarthworkError):
+            section_areas_between_surfaces(
+                existing=[(0.0, 0.0), (100.0, 0.0)],
+                proposed=[(500.0, 0.0), (600.0, 0.0)],
+                metres_per_point_x=self.CX,
+                metres_per_point_y=self.CY,
+                station_m=0.0,
+            )
+
+    def test_result_feeds_straight_into_the_volume_calculation(self):
+        a = section_areas_between_surfaces(
+            existing=self._flat(0.0), proposed=self._flat(-1.0 / self.CY),
+            metres_per_point_x=self.CX, metres_per_point_y=self.CY, station_m=1080.0)
+        b = section_areas_between_surfaces(
+            existing=self._flat(0.0), proposed=self._flat(-1.0 / self.CY),
+            metres_per_point_x=self.CX, metres_per_point_y=self.CY, station_m=1100.0)
+        volume = average_end_area_volume([a["section"], b["section"]])
+        self.assertAlmostEqual(volume["cut_m3"], 200.0, places=6)
 
 if __name__ == "__main__":
     unittest.main()
