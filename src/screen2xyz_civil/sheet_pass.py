@@ -38,7 +38,7 @@ class SheetPassError(RuntimeError):
 # the part of it that is furniture rather than drawing.
 #
 # Derived, not transcribed. The first version of this table was typed from the
-# prose in PLAN_SHEET_LAYER_METHOD.md ("near-black 4887 | green-Example Contractor
+# prose in PLAN_SHEET_LAYER_METHOD.md ("near-black 4887 | green-logo
 # 2951 | blue 2573 | cyan 1485"), which named the colours by description; the
 # RGB values guessed from those names were wrong on five of seven entries, so
 # the table matched nothing and suppressed nothing. The counts were right and

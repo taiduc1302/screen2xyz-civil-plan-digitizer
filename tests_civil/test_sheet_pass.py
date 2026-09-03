@@ -134,7 +134,7 @@ class KnownLayerTableTests(unittest.TestCase):
 class BaselineTableTests(unittest.TestCase):
     def test_every_baseline_colour_is_a_valid_rgb_triple(self):
         # The first version of this table was typed from a prose description of
-        # the colours ("near-black", "green-Example Contractor", "cyan") and five of its seven
+        # the colours ("near-black", "green-logo", "cyan") and five of its seven
         # RGB values matched nothing on any page, so it suppressed nothing.
         for colour, count in TITLE_BLOCK_BASELINE.items():
             self.assertEqual(len(colour), 3, colour)
