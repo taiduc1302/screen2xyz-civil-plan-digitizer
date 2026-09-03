@@ -59,3 +59,6 @@ local-screenshots/
 .local-evaluation-results.json
 Civil_Plan_Digitizer_Evidence/private/
 *.s2c.json
+
+# Local MCP registration - contains absolute paths to private project sessions
+.mcp.json
