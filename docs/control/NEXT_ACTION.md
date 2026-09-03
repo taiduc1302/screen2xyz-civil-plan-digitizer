@@ -20,7 +20,7 @@ The branch now has:
 - `doctor`, `agent-working-copy`, `agent-register-working-copy`, `agent-status`, and `agent-claude-config`;
 - Claude Code runbook, native Revu acceptance gate, and full civil-takeoff operator prompt.
 
-The frozen Civil suite is currently **220 discovered tests**. A fully green CI run on the current final head is required before the owner-machine pilot is treated as code-ready. Synthetic/protocol success still does **not** prove Example Road accuracy or native Bluebeam measurement creation on the estimator's Revu installation.
+The frozen Civil suite is currently **255 discovered tests** (220 at CI run #171; 223 after the scope-coverage work; +32 for `bluebeam_bridge.py` on 2026-09-02, green locally, not yet re-run in CI). A fully green CI run on the current final head is required before the owner-machine pilot is treated as code-ready. Synthetic/protocol success still does **not** prove Example Road accuracy or native Bluebeam measurement creation on the estimator's Revu installation.
 
 ## Exactly one recommended next action
 

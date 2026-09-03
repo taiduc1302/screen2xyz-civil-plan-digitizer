@@ -13,6 +13,7 @@
 | CI harness PR | Draft PR #9 -> `main`; CI-only, **DO NOT MERGE** |
 | Civil authorization | OD-006; implementation/tests/docs/feature commits and justified dependencies authorized; default-branch merge/release remain owner gates |
 | Latest fully green complete verification | GitHub CI run **#171** on `1508ef16da27545ac8be13763a2410fc574a7dd4`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count **220**, retained-evidence/privacy PASS, headless Windows integration PASS, external Claude-style Screen2XYZ stdio MCP PASS, real OpenTakeoff 0.9.68 stdio/One-Click synthetic smoke PASS |
+| Local-only verification since that CI run | 2026-09-02 owner machine, `task/bluebeam-bridge-failclosed-checks`: frozen Civil suite **255/255 green** (223 before `bluebeam_bridge.py`, +32 for it). Not yet re-run in CI. |
 | Output classification | Conceptual/preliminary estimating data until estimator review; no real-plan accuracy or native-Bluebeam certification claim |
 
 ## Current sources of truth
@@ -132,6 +133,52 @@ The Claude/operator `view_sheet` path uses pinned `pypdfium2` + Pillow, so Poppl
 2. when locally discovered and a safe working PDF exists, a candidate `Bluebeam MCP Server.exe` route.
 
 Bluebeam discovery/registration is classified `DISCOVERED_STDIO_ROUTE_NOT_LIVE_TESTED`; it is not proof of native measurement creation.
+
+### 8. Fail-closed Bluebeam bridge (`bluebeam_bridge.py`)
+
+Added after the 2026-09-02 owner-machine Sheet 03 run. Pure checks, no Bluebeam
+calls: the operator reads the host and passes values in.
+
+- `polygon_health` — refuses a stray-vertex outline before it reaches the host.
+  The real failure scored `perimeter/sqrt(area) = 29.4`, did **not**
+  self-intersect, and still produced a meaningless host area. Blocking by
+  default; a long road corridor scores ~7 and passes.
+- `cross_check_quantity` — independently computed vs host-reported quantity. A
+  clean integer ratio is reported as a host scale/viewport fault, not a
+  geometry error, because that is what was actually observed.
+- `markup_text_plan` / `audit_host_text` — Bluebeam renders `label` onto the
+  sheet; provenance belongs in the session record, not the drawing.
+- `page_identity_report` — a viewer page label and a consultant drawing number
+  are different identifiers and must both be recorded.
+- `render_shows_host_state` — a render of the file on disk is not evidence
+  while Revu holds unsaved markups in memory.
+- `reconcile` — drift between the session and the host, including host markups
+  that no proposal claims.
+
+## Owner-machine results, 2026-09-02
+
+Recorded because they change rows above, and because the audit of 2026-08-31
+concluded the opposite on one of them.
+
+- **Native measurement create/save/readback: PASSED** on this machine. A
+  disposable `PolyLine`/`Perimeter` (200 pt) read back `17.64 m` against
+  `17.6388 m` computed before creation, and a disposable `Polygon`/`Area`
+  (150x150 pt) read back `175.01 sq m` / `52.92 m` against `175.008` / `52.916`
+  computed before creation. Both disposables were deleted and the pre-existing
+  production markups re-listed unchanged. This supersedes the 2026-08-31
+  audit's "never actually produced" finding for this exact host.
+- **`set_page_scale` is blocked at account/organization level, not by Studio
+  Session or DMS.** The 2026-08-31 audit could not isolate the cause. The same
+  `-5: Not allowed due to security restrictions` reproduces on a plain local
+  file with no Studio Session and no DMS attachment. Payload note: `Precision`
+  must be a string.
+- **Large-polygon area artifact.** Three separate polygons returned host areas
+  exactly 1/5 of the value computed from their own vertices, while lengths in
+  the same region were exact. Not root-caused. `cross_check_quantity` now
+  detects the class.
+- Scale for Sheet 03 was resolved from the printed 1:250 ratio and
+  independently verified against the disposable Length result
+  (`0.088194 m/pt`, error 0.006%).
 
 ## Bluebeam capability boundary
 
