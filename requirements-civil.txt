@@ -5,6 +5,14 @@ pypdf==6.14.2
 # path. pypdfium2 is Apache-2.0/BSD-3-Clause; Pillow is MIT-CMU.
 pypdfium2==5.13.0
 Pillow==12.3.0
+# numpy is BSD-3-Clause. fill_layers.py (region tracing, morphology) and its
+# tests need it; sheet_pass.py and cross_sections.py do not.
+numpy==2.5.2
+# Not listed on purpose: PyMuPDF (AGPL-3.0). sheet_pass.render_page_rgb,
+# cross_sections.extract_panels and fill_layers.render_viewport import it
+# lazily and raise a clear error without it; every unit test runs without it.
+# It is an operator-machine dependency until the pdfium port of those three
+# entry points lands. See docs/integrations/FILL_LAYER_EXTRACTION.md.
 
 # Estimator-facing XLSX creation and generated-workbook round-trip validation.
 openpyxl==3.1.5
