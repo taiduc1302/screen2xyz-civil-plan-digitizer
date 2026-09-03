@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a scoped civil digitizer improvement
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Workflow need
+      description: What civil-plan digitizing gap should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest useful implementation consistent with project controls.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that define done.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence plan
+      description: Explain how the change will be validated without modifying retained evidence.
