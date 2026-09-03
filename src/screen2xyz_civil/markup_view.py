@@ -61,31 +61,40 @@ def rect_corners(rect: str) -> list[tuple[float, float]]:
 
 
 def to_page(point, *, rotation: int, height: float) -> tuple[float, float]:
-    """Raw frame -> the frame `draw_polyline` uses."""
+    """Raw frame -> the frame `draw_polyline` uses.
+
+    The raw frame measures y from the bottom (PDF native); pymupdf's page
+    frame measures it from the top. That flip is a convention difference, not
+    a rotation effect, so it applies on every page.
+    """
 
     x, y = point
-    if rotation == 180:
+    if rotation in (0, 180):
         return (x, height - y)
-    if rotation == 0:
-        return (x, y)
     raise MarkupViewError(f"page rotation {rotation} is not handled")
 
 
-def to_clip(point, *, rotation: int, width: float) -> tuple[float, float]:
-    """Raw frame -> the frame `get_pixmap(clip=...)` uses."""
+def to_clip(point, *, rotation: int, width: float, height: float) -> tuple[float, float]:
+    """Raw frame -> the frame `get_pixmap(clip=...)` uses.
+
+    Clipping happens in displayed coordinates. A 180-rotated page turns the
+    page frame through half a turn, and combined with the bottom-to-top flip
+    that leaves y alone and mirrors x. An unrotated page only carries the
+    flip.
+    """
 
     x, y = point
     if rotation == 180:
         return (width - x, y)
     if rotation == 0:
-        return (x, y)
+        return (x, height - y)
     raise MarkupViewError(f"page rotation {rotation} is not handled")
 
 
-def clip_around(points, *, rotation: int, width: float, margin: float):
+def clip_around(points, *, rotation: int, width: float, height: float, margin: float):
     """Clip rectangle around raw-frame points, in displayed coordinates."""
 
-    mapped = [to_clip(p, rotation=rotation, width=width) for p in points]
+    mapped = [to_clip(p, rotation=rotation, width=width, height=height) for p in points]
     xs = [p[0] for p in mapped]
     ys = [p[1] for p in mapped]
     return (min(xs) - margin, min(ys) - margin, max(xs) + margin, max(ys) + margin)
@@ -139,11 +148,11 @@ def render_over_drawing(
         if not drawn:
             raise MarkupViewError("nothing to draw")
         if window is None:
-            clip = clip_around(drawn, rotation=rotation, width=width, margin=margin)
+            clip = clip_around(drawn, rotation=rotation, width=width, height=height, margin=margin)
         else:
             x0, y0, x1, y1 = window
-            a = to_clip((x0, y0), rotation=rotation, width=width)
-            b = to_clip((x1, y1), rotation=rotation, width=width)
+            a = to_clip((x0, y0), rotation=rotation, width=width, height=height)
+            b = to_clip((x1, y1), rotation=rotation, width=width, height=height)
             clip = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
         out = Path(out_png)
         out.parent.mkdir(parents=True, exist_ok=True)

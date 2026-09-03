@@ -46,30 +46,48 @@ class FrameTests(unittest.TestCase):
     # is wrong with it. It has cost two sessions a wrong first attempt.
     POINT = (817.9, 1145.7)
 
-    def test_drawing_flips_y_only(self):
+    def test_drawing_flips_y_on_a_rotated_page(self):
         self.assertEqual(to_page(self.POINT, rotation=180, height=H), (817.9, H - 1145.7))
 
-    def test_clipping_flips_x_only(self):
-        self.assertEqual(to_clip(self.POINT, rotation=180, width=W), (W - 817.9, 1145.7))
+    def test_drawing_flips_y_on_an_unrotated_page_too(self):
+        # The raw frame measures y from the bottom, pymupdf from the top. That
+        # is a convention difference, not a rotation effect. Returning y
+        # unchanged here put every symbol on DEMO-001-11, the set's only
+        # rotation-0 sheet, 1684 - y away from the truth, and two markers were
+        # written from those coordinates onto blank paper.
+        self.assertEqual(to_page(self.POINT, rotation=0, height=H), (817.9, H - 1145.7))
+
+    def test_clipping_mirrors_x_and_keeps_y_on_a_rotated_page(self):
+        self.assertEqual(to_clip(self.POINT, rotation=180, width=W, height=H), (W - 817.9, 1145.7))
+
+    def test_clipping_only_flips_y_on_an_unrotated_page(self):
+        self.assertEqual(to_clip(self.POINT, rotation=0, width=W, height=H), (817.9, H - 1145.7))
 
     def test_the_two_frames_differ_on_a_rotated_page(self):
         self.assertNotEqual(
             to_page(self.POINT, rotation=180, height=H),
-            to_clip(self.POINT, rotation=180, width=W),
+            to_clip(self.POINT, rotation=180, width=W, height=H),
         )
 
-    def test_both_are_the_identity_on_an_unrotated_page(self):
-        self.assertEqual(to_page(self.POINT, rotation=0, height=H), self.POINT)
-        self.assertEqual(to_clip(self.POINT, rotation=0, width=W), self.POINT)
+    def test_the_two_frames_agree_on_an_unrotated_page(self):
+        self.assertEqual(
+            to_page(self.POINT, rotation=0, height=H),
+            to_clip(self.POINT, rotation=0, width=W, height=H),
+        )
+
+    def test_neither_frame_is_ever_the_identity(self):
+        for rotation in (0, 180):
+            self.assertNotEqual(to_page(self.POINT, rotation=rotation, height=H), self.POINT)
 
     def test_an_unhandled_rotation_is_refused(self):
         with self.assertRaises(MarkupViewError):
             to_page(self.POINT, rotation=90, height=H)
         with self.assertRaises(MarkupViewError):
-            to_clip(self.POINT, rotation=90, width=W)
+            to_clip(self.POINT, rotation=90, width=W, height=H)
 
     def test_a_clip_box_is_built_in_displayed_coordinates_with_margin(self):
-        box = clip_around([(100.0, 200.0), (300.0, 260.0)], rotation=180, width=W, margin=10.0)
+        box = clip_around([(100.0, 200.0), (300.0, 260.0)],
+                          rotation=180, width=W, height=H, margin=10.0)
         self.assertAlmostEqual(box[0], W - 300.0 - 10.0)
         self.assertAlmostEqual(box[2], W - 100.0 + 10.0)
         self.assertAlmostEqual(box[1], 190.0)

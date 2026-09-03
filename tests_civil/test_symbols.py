@@ -63,8 +63,19 @@ class FrameTests(unittest.TestCase):
     def test_rotation_180_flips_y_only_for_data(self):
         self.assertEqual(_to_raw(817.1, 694.2, rotation=180, width=2384.0, height=1684.0), (817.1, 1684.0 - 694.2))
 
-    def test_rotation_0_is_identity(self):
-        self.assertEqual(_to_raw(1.0, 2.0, rotation=0, width=100.0, height=100.0), (1.0, 2.0))
+    def test_rotation_0_flips_y_as_well(self):
+        # The flip is between get_drawings (y from the top) and the raw markup
+        # frame (y from the bottom); page rotation has nothing to do with it.
+        # Returning y unchanged here reported every symbol on DEMO-001-11, the
+        # set's only rotation-0 sheet, 1684 - y away from where it is, and two
+        # markers were written from those coordinates onto blank paper before a
+        # host thumbnail caught it.
+        self.assertEqual(_to_raw(1.0, 2.0, rotation=0, width=100.0, height=100.0), (1.0, 98.0))
+
+    def test_neither_rotation_moves_x(self):
+        for rotation in (0, 180):
+            self.assertEqual(
+                _to_raw(1752.9, 500.0, rotation=rotation, width=2384.0, height=1684.0)[0], 1752.9)
 
     def test_other_rotations_are_refused(self):
         with self.assertRaises(SymbolError):

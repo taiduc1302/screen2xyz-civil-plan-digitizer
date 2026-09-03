@@ -115,12 +115,23 @@ def circles_from_drawings(
 
 
 def _to_raw(x_gd: float, y_gd: float, *, rotation: int, width: float, height: float) -> tuple[float, float]:
-    # raw_x = x_gd, raw_y = H - y_gd on this set's 180-rotated pages
-    # (PLAN_SHEET_LAYER_METHOD.md addendum); identity on rotation 0.
-    if rotation == 180:
+    """`get_drawings` coordinates to the Bluebeam raw markup frame.
+
+    `get_drawings` measures y from the top of the page; the raw markup frame is
+    PDF-native and measures it from the bottom. That flip is between two
+    coordinate conventions and **does not depend on page rotation** - an
+    earlier version returned y unchanged on an unrotated page, which put every
+    symbol on DEMO-001-11 (the only rotation-0 sheet in the set) 1684 - y away
+    from the truth. Two markers were written from those coordinates before a
+    host thumbnail showed them on blank paper.
+
+    Rotation does not move x either: `get_drawings` works in unrotated content
+    space, and it is the render clip, not the raw frame, that flips x on a
+    180-rotated page.
+    """
+
+    if rotation in (0, 180):
         return (x_gd, height - y_gd)
-    if rotation == 0:
-        return (x_gd, y_gd)
     raise SymbolError(f"page rotation {rotation} is not handled")
 
 
