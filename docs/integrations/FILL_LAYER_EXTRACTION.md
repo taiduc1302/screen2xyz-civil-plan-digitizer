@@ -1,9 +1,18 @@
 # Fill and hatch layers on plan sheets, traced as regions
 
-`src/screen2xyz_civil/fill_layers.py`, 2026-09-03. Built for the two places
-the corridor band method could not go - the Example Road junction intersection on
-sheets 04 and 06 - and validated on sheet 05 against polygons hand-traced and
-read back from Revu.
+`src/screen2xyz_civil/fill_layers.py`, 2026-09-03.
+
+> **Read this first. The raster trace this document describes is not safe for a
+> boundary, and the "validation" below is not one.** It was checked against
+> another raster trace of the same drawing and agreed to 0.03 %. Both were wrong
+> the same way: at 90 DPI the colour mask breaks wherever a black dashed line
+> lies over the grey fill, so the edge sat 3-5 pt outside the drawn line and
+> dropped up to 20 pt (1.8 m) into the pavement. Two methods that share a flaw
+> agreeing is not validation. Use this module to **find** what is on a sheet and
+> how much of each pattern there is; take a **boundary** from the drawing's own
+> vector geometry. Every polygon it produces must be rendered with
+> `create_markup_thumbnail` and looked at before it is trusted - see
+> `PLAN_SHEET_LAYER_METHOD.md` step 10.
 
 ## Why a second method
 
@@ -105,6 +114,21 @@ The owning session rewrote the three clean-segment polygons the same day
 widening 257.4 and M&O 392.0 there; the 6.5 sq m on M&O is five fragments under
 1.4 sq m each on the station-tick line that the owning session left out as
 unconfirmed, which is the right call.
+
+> **Retracted 2026-09-03, same day.** Every polygon below was written to Revu,
+> passed `polygon_health`, reconciled on area, had zero mutual overlap and
+> sum-equals-union - and was then rendered against the base PDF with
+> `create_markup_thumbnail` and found to be tracing curb-return arcs, callout
+> leader lines and gas lines rather than pavement. **All 13 were deleted and the
+> intersection zone is `UNSEARCHED` again.** The numbers in this section must not
+> be used. The raster colour-mask trace fails in a curb-return-dense zone, and no
+> numeric check can catch a boundary that is wrong but internally consistent.
+> The corridor bands on sheets 03 and 04 were rebuilt from the drawing's vector
+> geometry for the same reason (the raster edge sat 3-5 pt outside the drawn edge
+> and dropped up to 20 pt into the pavement where a black dashed line broke the
+> mask), costing 16-21 % on three widening polygons, and two gravel-shoulder
+> lengths were 2.2x and 2.6x over. Use vector content for a boundary; use the
+> colour census only to find what is on a sheet.
 
 **The intersection zone 1+183.4-1+240.0, previously `UNSEARCHED`, is now
 measured, by pattern:** paved works 1 328.5 sq m = widening 285.5 + mill and

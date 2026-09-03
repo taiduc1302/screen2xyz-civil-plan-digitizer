@@ -36,7 +36,7 @@ Before mass-creating native Length/Area measurements on a machine where the exac
 
 If a Bluebeam MCP server is connected, list existing markups on the active page before improving them. Preserve a markup ID when a safe edit suffices; do not create duplicates just because replacement is easier. Never try to bypass locked/read-only/Studio ownership restrictions.
 
-After native Bluebeam create/edit/property operations, read the saved markup back and verify its page, Subject/Comment, measurement intent/type, unit, live computed quantity, and geometry where available.
+After native Bluebeam create/edit/property operations, read the saved markup back and verify its page, Subject/Comment, measurement intent/type, unit, live computed quantity, and geometry where available. **Then call `create_markup_thumbnail` on it and look at the image.** Reading a quantity back is circular - it proves the host measured the path you gave it, never that the path lies on the drawn feature. Numeric self-consistency (areas reconcile, zero overlap, `polygon_health` clean, sum equals union) says a polygon is valid, not that it is in the right place; thirteen markups passed all of it on 2026-09-03 while tracing curb-return arcs and gas lines. Do not call a markup done before its thumbnail has been looked at. See `docs/integrations/PLAN_SHEET_LAYER_METHOD.md` step 10.
 
 `ANCHOR_ROADWORKS_EXTENT` / `ANCHOR - DO NOT SUM` is QA/reference geometry and must never be included in bid totals.
 

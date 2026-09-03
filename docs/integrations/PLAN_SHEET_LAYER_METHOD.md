@@ -135,20 +135,66 @@ the overlap (here: both driveways, both driveway culverts and a landscape area)
 are the real double-count risk, because each sheet's reviewer assumes the other
 covered them.
 
-## 10. Write, read back, cross-check, then look again
+## 10. Write, read back, then LOOK AT THE MARKUP ON THE DRAWING
+
+**Blocking. One call. No arithmetic. Never skip it.**
+
+```
+mcp__Bluebeam__create_markup_thumbnail(uniqueMarkupId="<id>")
+```
+
+It returns a PNG of that markup drawn in place on the sheet, rendered by the
+host from the live document, with the host's own computed quantity printed on
+it. Look at the image and answer one question: **does the boundary sit on the
+feature the drawing draws?**
+
+Full order:
 
 1. Run `single_viewport_check` and the repository's `polygon_health`.
 2. Write to the host.
 3. Read the quantity **back from the host** and compare with an independent
-   shoelace / polyline computation via `cross_check_quantity`. On Sheet 03 all
-   agreed to within 0.19 %.
-4. Render the sheet and overlay the geometry **read back out of the host** - not
-   the geometry you intended to write. Reading a number back is circular; it only
-   proves the host measured the path you gave it, never that the path lies on the
-   feature.
+   shoelace / polyline computation via `cross_check_quantity`.
+4. **`create_markup_thumbnail` on every markup written, and look at each one.**
+   Not a sample. Not "the overlay PNG looked right at a glance" - that is a
+   different image, made by the same code that made the mistake.
 
-Step 4 is what finally exposed a driveway polygon that was 15.87 m wide where the
-drawing prints 9.70 m, because it had swallowed the landscape area beside it.
+### Why this is blocking, in numbers
+
+Across the whole Example Road project up to 2026-09-03 there were **105 write
+calls to the host and 1 call to `create_markup_thumbnail`.** The owner supplied
+the missing eyes: roughly thirty of his fifty-seven turns in the working
+session were pasted screenshots of Revu. Every one of those was a round trip
+this step would have closed in one call.
+
+### Numeric self-consistency is not placement
+
+Area totals reconciling, zero mutual overlap, `polygon_health` clean, sum equal
+to union, agreement with the manifest - all of these prove a polygon is
+**valid**. None of them can tell you it is in the **right place**.
+
+Thirteen Sheet 04 intersection markups passed every one of those checks and
+traced curb-return arcs, callout leader lines and gas lines instead of pavement.
+All thirteen were deleted. The corridor bands passed the same checks while
+running 3-5 pt outside the drawn edge and dropping up to 20 pt (1.8 m) into the
+pavement wherever a black dashed line broke the colour mask, which cost 16-21 %
+on three widening polygons. Sheet 04's gravel shoulders were over by 2.2x and
+2.6x from the same cause, and a length item takes the error directly.
+
+### Two methods agreeing is not validation when they share a flaw
+
+A raster trace was checked against another raster trace and agreed to 0.03 %.
+Both were wrong the same way, because both read the same broken colour mask.
+An independent check has to come from a **different kind of evidence**: a
+printed dimension, the drawing's own vector geometry, or the render.
+
+### Prefer the drawing's own vector geometry to a raster colour mask
+
+The colour census is for *finding* what is on a sheet. For a **boundary**, use
+the vector content where it exists: the pavement fill is emitted as many small
+filled quads whose union gives an exact smooth edge, and hatch strokes are
+clipped exactly at the band edge, so their extreme ends lie on the boundary.
+Rebuilding Sheets 03 and 04 that way put the edge within 0.22 m of the printed
+`6.90m` half-width, where the raster boundary sat outside it.
 
 ## 11. Keep provenance off the drawing
 
@@ -172,8 +218,12 @@ render + view  ->  legend  ->  viewports  ->  stations  ->  colour census
    ->  boundaries (fill edges + drawn lines)  ->  validate vs printed dims
    ->  symbol layers (split by shape, break at gaps)  ->  matchline/overlap
    ->  viewport + health checks  ->  write  ->  read back  ->  cross-check
-   ->  overlay from host  ->  ledger
+   ->  create_markup_thumbnail ON EVERY MARKUP AND LOOK  ->  ledger
 ```
+
+The last step before the ledger is the one that gets skipped and the one that
+catches what nothing else catches. A sheet is not finished until every markup
+written on it has been looked at as the host draws it.
 
 ## What still needs a human
 

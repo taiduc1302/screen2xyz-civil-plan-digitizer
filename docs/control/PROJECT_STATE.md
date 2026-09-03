@@ -381,8 +381,20 @@ the Example Road manifests and thumbnails stay in the project folder.
   full-depth split (M&O east/west 420.43 + 61.89, full-depth 74.60, all
   reconciling to the original 559.01), the rewritten sheet 04 clean segment,
   and the third manhole. Then sheet 06's two Example Avenue end bands (52.24 and
-  68.68 sq m, the manifest's cut totals exactly). **Every sheet of DEMO-001 is
-  now measured or closed with stated evidence.**
+  68.68 sq m, the manifest's cut totals exactly).
+- **Then most of it was retracted by the check nobody had been running.**
+  Rendering each written markup with `create_markup_thumbnail` showed the
+  13 intersection polygons tracing curb-return arcs, leader lines and gas lines;
+  all were deleted and that zone is `UNSEARCHED` again. The corridor bands were
+  rebuilt from the drawing's vector geometry (widening N on sheet 03
+  157.23 -> 132.70, on sheet 04 144.37 -> 114.41, S 113.74 -> 89.07) and sheet 04's
+  gravel shoulders were 2.2x and 2.6x over (95.72 -> 42.93, 111.73 -> 42.88).
+  The project ran 105 host write calls against 1 visual check; the owner
+  supplied the missing eyes with about thirty screenshots in one session.
+  **The rule is now blocking in `AGENTS.md`, `CLAUDE.md`, the method's step 10,
+  the takeoff prompt and the Bluebeam skills:** write, read back, thumbnail,
+  look, then report. Numeric self-consistency proves a polygon is valid, never
+  that it is in the right place.
 - **Three rules for scope that had nowhere to go**, found once the whole set
   was measured: `PEDESTRIAN_ASPHALT_PAD` (the grey-153 stipple, POLYGON),
   `EXISTING_CULVERT_REMOVAL` (LINE) and `EXISTING_HEADWALL_REMOVAL` (COUNT) -

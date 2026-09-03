@@ -141,6 +141,7 @@ If a live Bluebeam/Revu connector/tool surface is available in this environment:
 7. Create a **native measurement**, not merely a visually similar generic Line/Polygon, using the actual measurement-capable tool/schema exposed by the connected Revu MCP.
 8. Apply Subject/Comment traceability from the exported Screen2XYZ plan.
 9. After every create/edit/property change, read the saved markup back. Verify markup ID, page, Subject/Comment, measurement intent/type, unit, live computed quantity, author, and geometry where available.
+9a. **Then call `create_markup_thumbnail(uniqueMarkupId=...)` on that markup and look at the returned image. Blocking, on every markup, not on a sample.** It renders the markup in place on the sheet from the live document with the host's computed quantity, in one call and with no coordinate arithmetic. Ask one question of it: does the boundary sit on the feature the drawing draws? Reading a quantity back is circular - it proves the host measured the path you gave it, never that the path lies on the feature.
 10. Compare Revu's live computed quantity with the Screen2XYZ proposal/expected geometry. Investigate material disagreement instead of overwriting one value to match the other.
 11. If native measurement creation is not exposed or the disposable acceptance fails, use the proven Revu GUI measurement path if a GUI/computer tool is actually available. If neither safe path is available, stop at the exported markup plan and state the exact blocker.
 
@@ -172,7 +173,9 @@ Run `takeoff_qa` before declaring the sheet ready for estimator review. Its `sco
 
 ## Coverage pass before stopping
 
-Do a final visual legend/drawing-to-takeoff reconciliation. Specifically look for:
+**First: every markup you wrote has a `create_markup_thumbnail` image and you have looked at it.** Numeric self-consistency is not placement. Areas reconciling, zero mutual overlap, a clean `polygon_health` and sum-equals-union prove a polygon is valid, never that it is in the right place. On 2026-09-03 thirteen markups passed all of that while tracing curb-return arcs, callout leader lines and gas lines, and were deleted; corridor bands passed it while running up to 1.8 m inside the pavement, costing 16-21 % on three items, and two gravel-shoulder lengths were over by 2.2x and 2.6x. Two methods that share a flaw agreeing is not validation either - a raster trace matched another raster trace to 0.03 % and both were wrong the same way. An independent check has to come from a different kind of evidence: a printed dimension, the drawing's own vector geometry, or the render.
+
+Then do a final visual legend/drawing-to-takeoff reconciliation. Specifically look for:
 
 - visible hatch categories that have no takeoff;
 - multiple separate instances/reaches hidden behind one rule-level `PROPOSED` state;
@@ -195,7 +198,7 @@ Do not stop with only numbers. Finish only after:
 3. ambiguities are explicitly flagged/questions recorded and relevant rules are `WITHHELD`;
 4. `takeoff_qa` has been reviewed;
 5. the Bluebeam markup plan is exported;
-6. if native Bluebeam work was performed, it was performed only in the registered working copy, every saved measurement was read back, and `bluebeam_working_copy_status.drawing_match` remains true;
+6. if native Bluebeam work was performed, it was performed only in the registered working copy, every saved measurement was read back, **every markup written was rendered with `create_markup_thumbnail` and looked at**, and `bluebeam_working_copy_status.drawing_match` remains true;
 7. you summarize what was created/corrected, what is evidence-backed not present/not applicable, what remains withheld, and which exact items still require estimator review.
 
 Do not approve the bid, submit anything, or claim estimator approval.
