@@ -354,3 +354,85 @@ class RenderFrameBindingTests(unittest.TestCase):
             session.canonical_points(
                 ((10, 10),), coordinate_frame="render_px", render_size=(0, 0)
             )
+
+
+class CropBoxFrameTests(unittest.TestCase):
+    """The page frame must be the box the renderer rasterises (audit gap batch B)."""
+
+    def _cropped_pdf(self, path):
+        from pypdf import PdfWriter
+        from pypdf.generic import ArrayObject, FloatObject, NameObject
+
+        writer = PdfWriter()
+        page = writer.add_blank_page(width=612, height=792)
+        page[NameObject("/CropBox")] = ArrayObject(
+            [FloatObject(18), FloatObject(18), FloatObject(594), FloatObject(774)]
+        )
+        with open(path, "wb") as handle:
+            writer.write(handle)
+        return path
+
+    def test_page_frame_follows_the_cropbox_not_the_mediabox(self):
+        root = fresh_dir()
+        pdf = self._cropped_pdf(root / "cropped.pdf")
+        session = new_agent_session(
+            pdf, page_number=1, page_label="03", name="crop", now=NOW, render_dpi=72
+        )
+        # MediaBox is 612x792; the trimmed box PDFium and Revu draw is 576x756.
+        self.assertAlmostEqual(session.page_width_points, 576.0, places=6)
+        self.assertAlmostEqual(session.page_height_points, 756.0, places=6)
+
+    def test_declared_raster_size_is_exact_on_a_cropped_page(self):
+        root = fresh_dir()
+        pdf = self._cropped_pdf(root / "cropped.pdf")
+        session = new_agent_session(
+            pdf, page_number=1, page_label="03", name="crop", now=NOW, render_dpi=72
+        )
+        points = session.canonical_points(
+            ((0, 0), (500, 0)), coordinate_frame="render_px", render_size=(576, 756)
+        )
+        # Before the fix this returned 531.25 pt: a 6.25% overstatement on length.
+        self.assertAlmostEqual(points[1].x, 500.0, places=6)
+
+
+class GovernedFileOverwriteTests(unittest.TestCase):
+    """A markup plan must never land on another session or project file (audit gap batch B)."""
+
+    def test_another_sessions_state_file_is_refused_on_both_surfaces(self):
+        from screen2xyz_civil.agent_session import resolve_markup_plan_target
+
+        root = fresh_dir()
+        pdf = make_vector_pdf(root / "BASE.pdf", "SHEET 03", with_shapes=True)
+        first = new_agent_session(
+            pdf, page_number=1, page_label="03", name="A", now=NOW, render_dpi=150
+        )
+        first_path = root / "sheetA.s2a.json"
+        save_agent_session(first, first_path)
+        second_path = root / "sheetB.s2a.json"
+        save_agent_session(
+            new_agent_session(
+                pdf, page_number=1, page_label="03", name="B", now=NOW, render_dpi=150
+            ),
+            second_path,
+        )
+        for confine in (True, False):
+            with self.assertRaises(AgentSessionError):
+                resolve_markup_plan_target(
+                    first, first_path, second_path, confine_to_session_dir=confine
+                )
+
+    def test_civil_project_and_workspace_files_are_refused(self):
+        from screen2xyz_civil.agent_session import resolve_markup_plan_target
+
+        root = fresh_dir()
+        pdf = make_vector_pdf(root / "BASE.pdf", "SHEET 03", with_shapes=True)
+        session = new_agent_session(
+            pdf, page_number=1, page_label="03", name="A", now=NOW, render_dpi=150
+        )
+        path = root / "sheetA.s2a.json"
+        save_agent_session(session, path)
+        for name in ("project.s2c.json", "takeoff.s2t.json"):
+            with self.assertRaises(AgentSessionError):
+                resolve_markup_plan_target(
+                    session, path, root / name, confine_to_session_dir=False
+                )

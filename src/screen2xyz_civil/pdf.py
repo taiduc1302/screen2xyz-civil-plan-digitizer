@@ -72,6 +72,24 @@ def pypdf_available() -> bool:
     return importlib.util.find_spec("pypdf") is not None
 
 
+def _effective_page_size(page: Any) -> tuple[float, float]:
+    """Return the rendered box size: CropBox clipped to MediaBox, else MediaBox."""
+
+    try:
+        media = [float(value) for value in page.mediabox]
+        crop = [float(value) for value in page.cropbox]
+    except Exception:
+        return float(page.mediabox.width), float(page.mediabox.height)
+    left = max(min(media[0], media[2]), min(crop[0], crop[2]))
+    bottom = max(min(media[1], media[3]), min(crop[1], crop[3]))
+    right = min(max(media[0], media[2]), max(crop[0], crop[2]))
+    top = min(max(media[1], media[3]), max(crop[1], crop[3]))
+    width, height = right - left, top - bottom
+    if width <= 0 or height <= 0:
+        return float(page.mediabox.width), float(page.mediabox.height)
+    return width, height
+
+
 def inspect_pdf(path: Path) -> PdfDocumentInfo:
     candidate = path.expanduser().resolve()
     if not candidate.is_file() or candidate.suffix.lower() != ".pdf":
@@ -85,8 +103,11 @@ def inspect_pdf(path: Path) -> PdfDocumentInfo:
             raise PdfAdapterError("encrypted PDFs require an unlocked local copy")
         pages = []
         for index, page in enumerate(reader.pages):
-            width = float(page.mediabox.width)
-            height = float(page.mediabox.height)
+            # The page frame must be the box the renderer actually rasterises.
+            # PDFium (portable_render) and Revu both draw the CropBox, so taking
+            # the MediaBox here silently scaled and offset every measurement made
+            # on a trimmed sheet -- ordinary for plotted/CAD drawing PDFs.
+            width, height = _effective_page_size(page)
             rotation = int(page.rotation or 0) % 360
             if width <= 0 or height <= 0:
                 raise PdfAdapterError("PDF page dimensions are invalid")

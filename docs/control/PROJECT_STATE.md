@@ -12,7 +12,7 @@
 | Clean review PR | Draft PR #8 -> `integration/open-source-takeoff-stack`; keep Draft until owner-machine acceptance |
 | CI harness PR | Draft PR #9 -> `main`; CI-only, **DO NOT MERGE** |
 | Civil authorization | OD-006; implementation/tests/docs/feature commits and justified dependencies authorized; default-branch merge/release remain owner gates |
-| Latest fully green complete verification | GitHub CI run **#183** on `35d67d87632d43dd1c93f4c5cd952f2207ec4ed9`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count **236**, retained-evidence/privacy PASS, headless Windows integration PASS, external Claude-style Screen2XYZ stdio MCP PASS, real OpenTakeoff 0.9.68 stdio/One-Click synthetic smoke PASS |
+| Latest fully green complete verification | GitHub CI run **#183** on `35d67d87632d43dd1c93f4c5cd952f2207ec4ed9`: baseline PASS, M1 PASS, M2 deterministic PASS, Civil deterministic PASS with frozen count **240**, retained-evidence/privacy PASS, headless Windows integration PASS, external Claude-style Screen2XYZ stdio MCP PASS, real OpenTakeoff 0.9.68 stdio/One-Click synthetic smoke PASS |
 | Output classification | Conceptual/preliminary estimating data until estimator review; no real-plan accuracy or native-Bluebeam certification claim |
 
 ## Current sources of truth
