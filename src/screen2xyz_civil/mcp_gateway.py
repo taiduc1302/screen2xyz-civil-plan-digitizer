@@ -20,6 +20,7 @@ from .agent_session import (
     export_bluebeam_plan,
     load_agent_session,
     save_agent_session,
+    resolve_markup_plan_target,
 )
 from .opentakeoff_runtime import (
     auto_trace_area as opentakeoff_auto_trace_area,
@@ -139,6 +140,30 @@ def build_mcp_server(session_path: Path):
             dpi=session.render_dpi,
         )
         return Image(path=image_path)
+
+    @mcp.tool()
+    def sheet_render_info() -> dict[str, Any]:
+        """Report the sheet raster the takeoff frame is defined against.
+
+        Pass the pixel size of the image you actually measured on back as
+        render_width_px/render_height_px so quantities do not depend on an
+        assumed DPI. If your client rescaled the image from view_sheet, cite the
+        size you saw, not the size below.
+        """
+        session = store.load()
+        width_px = session.page_width_points * session.render_dpi / 72.0
+        height_px = session.page_height_points * session.render_dpi / 72.0
+        return {
+            "render_dpi": session.render_dpi,
+            "rendered_width_px": round(width_px, 2),
+            "rendered_height_px": round(height_px, 2),
+            "page_width_points": session.page_width_points,
+            "page_height_points": session.page_height_points,
+            "important": (
+                "render_px coordinates are converted with an ASSUMED DPI unless you pass "
+                "render_width_px/render_height_px. A rescaled image silently rescales every quantity."
+            ),
+        }
 
     @mcp.tool()
     def read_sheet_text(max_chars: int = 60000) -> dict[str, Any]:
@@ -262,6 +287,8 @@ def build_mcp_server(session_path: Path):
         flags: list[str] | None = None,
         notes: str = "",
         confidence: float | None = None,
+        render_width_px: float | None = None,
+        render_height_px: float | None = None,
     ) -> dict[str, Any]:
         """Propose an unapproved civil Length markup from two or more points."""
         session = store.load()
@@ -270,6 +297,11 @@ def build_mcp_server(session_path: Path):
             geometry_kind=LINE,
             points=points,
             coordinate_frame=coordinate_frame,
+            render_size=(
+                (render_width_px, render_height_px)
+                if render_width_px is not None and render_height_px is not None
+                else None
+            ),
             now=_utc_now(),
             source_engine="Screen2XYZ-MCP",
             source_method="AGENT_LINE_PROPOSAL",
@@ -297,6 +329,8 @@ def build_mcp_server(session_path: Path):
         flags: list[str] | None = None,
         notes: str = "",
         confidence: float | None = None,
+        render_width_px: float | None = None,
+        render_height_px: float | None = None,
     ) -> dict[str, Any]:
         """Propose an unapproved civil Area markup from three or more vertices."""
         session = store.load()
@@ -305,6 +339,11 @@ def build_mcp_server(session_path: Path):
             geometry_kind=POLYGON,
             points=points,
             coordinate_frame=coordinate_frame,
+            render_size=(
+                (render_width_px, render_height_px)
+                if render_width_px is not None and render_height_px is not None
+                else None
+            ),
             now=_utc_now(),
             source_engine="Screen2XYZ-MCP",
             source_method="AGENT_POLYGON_PROPOSAL",
@@ -497,12 +536,12 @@ def build_mcp_server(session_path: Path):
     def export_bluebeam_markup_plan(output_path: str = "") -> dict[str, Any]:
         """Write the deterministic plan that a live Bluebeam operator must create/read back."""
         session = store.load()
-        if output_path.strip():
-            target = Path(output_path).expanduser().resolve()
-        else:
-            target = store.path.with_name(
-                store.path.name[: -len(".s2a.json")] + ".bluebeam-markup-plan.json"
-            )
+        target = resolve_markup_plan_target(
+            session,
+            store.path,
+            output_path,
+            confine_to_session_dir=True,
+        )
         export_bluebeam_plan(session, target, replace=True)
         identity = bind_working_copy_to_markup_plan(session, target)
         working = working_copy_status(session)
