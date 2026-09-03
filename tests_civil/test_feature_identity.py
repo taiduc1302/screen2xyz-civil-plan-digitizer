@@ -49,12 +49,16 @@ class IdentificationTests(unittest.TestCase):
         )
         self.assertTrue(report["safe_to_write"])
 
-    def test_a_table_row_both_names_and_fixes(self):
+    def test_a_table_row_may_both_name_and_fix(self):
+        # Not a false positive to guard: a printed table is not a derivation.
+        # Sheet 07's curb return table names the return in its row label and
+        # gives its length in a separate printed column, and the two were
+        # checked against each other three ways with a 6 mm worst discrepancy.
         report = identification_report(
             identified_by=[DRAWING_TABLE], boundary_from=[DRAWING_TABLE]
         )
-        # It names and it fixes, but it is still the only source for both.
-        self.assertIn("SAME_SOURCE_IDENTIFIES_AND_BOUNDS", codes(report))
+        self.assertTrue(report["safe_to_write"])
+        self.assertEqual(report["findings"], [])
 
 
 class BoundaryTests(unittest.TestCase):
@@ -71,13 +75,20 @@ class BoundaryTests(unittest.TestCase):
         )
         self.assertIn("BOUNDARY_NOT_FIXED_BY_THE_DRAWING", codes(report))
 
-    def test_one_source_may_not_both_find_the_item_and_draw_its_edge(self):
+    def test_one_derivation_may_not_both_find_the_item_and_draw_its_edge(self):
         # The angle filter that found the hatch discarded the outline drawn in
-        # the same pen, so the edge could only be the hatch envelope.
+        # the same pen, so the edge could only be the hatch envelope. One
+        # derivation, two uses, and no way for its error to show.
         report = identification_report(
-            identified_by=[DRAWN_OUTLINE], boundary_from=[DRAWN_OUTLINE]
+            identified_by=[PEN_ONLY], boundary_from=[PEN_ONLY]
         )
-        self.assertIn("SAME_SOURCE_IDENTIFIES_AND_BOUNDS", codes(report))
+        self.assertIn("SAME_DERIVATION_IDENTIFIES_AND_BOUNDS", codes(report))
+
+    def test_a_shared_printed_source_is_not_that_hazard(self):
+        report = identification_report(
+            identified_by=[CALLOUT_LEADER, DRAWING_TABLE], boundary_from=[DRAWING_TABLE]
+        )
+        self.assertTrue(report["safe_to_write"])
 
     def test_separate_sources_for_identity_and_edge_pass(self):
         report = identification_report(

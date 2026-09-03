@@ -104,8 +104,15 @@ Declare two things separately:
 
 `PEN_ONLY` and `GEOMETRIC_FIT` narrow a field of candidates and never identify
 anything on their own. A boundary from a pen is refused outright, and so is a
-claim where identity and boundary rest on the same single source - that is the
-specific mistake that hid the outline. `fill_layers` regions declare
+claim where one thing you **derived** is the sole basis for both identity and
+edge - that is the specific mistake that hid the outline. A printed source
+shared between the two is fine: a table's row label and its length column are
+two independently checkable facts, not one derivation used twice.
+
+Before walking any line between two known ends, confirm what lies between them.
+A walk that reaches the far endpoint is still wrong if it crossed something
+that is not the feature, and it must report failure rather than a partial
+length if it does not arrive. `fill_layers` regions declare
 `PEN_ONLY`/`PEN_ONLY` about themselves and therefore arrive refused; attach the
 legend swatch or callout, take the edge from the drawing's outline object, and
 re-declare.

@@ -88,9 +88,11 @@ def identification_report(
     says what told you where its edge runs; omit it for a count or a marker,
     where `is_a_boundary=False`.
 
-    Blocking when the identification cannot name the feature at all, and
-    separately when the boundary's only source is also the identification's
-    only source - the specific mistake that hid the hatch outline.
+    Blocking when the identification cannot name the feature at all, when the
+    boundary rests on a pen or on nothing that fixes a position, and when one
+    thing you *derived* is the sole basis for both. A printed source shared
+    between the two is fine: a table's row label and its length column are two
+    independently checkable facts, not one derivation used twice.
     """
 
     identity = _check(identified_by, "identified_by")
@@ -133,13 +135,22 @@ def identification_report(
                 "says what a thing is, not where it stops.",
                 blocking=True,
             ))
-        if set(identity) == set(boundary):
+        # The hazard is one **derivation** both finding the item and drawing its
+        # edge, because then an error in that derivation is invisible - the
+        # angle filter that found the hatch and discarded the outline drawn in
+        # the same pen. A printed source is not a derivation: sheet 07's curb
+        # return table names the return in its row label and gives its length
+        # in a separate printed column, and the two are independently checkable
+        # (they were, three ways, worst discrepancy 6 mm). So this fires only
+        # when the shared source is something the operator derived.
+        shared = set(identity) & set(boundary)
+        if shared and shared <= NARROWS_ONLY and set(identity) == set(boundary):
             findings.append(_finding(
-                "SAME_SOURCE_IDENTIFIES_AND_BOUNDS",
-                f"identity and boundary both rest on {sorted(set(identity))} alone. An angle "
-                "filter that correctly found the hatch discarded the outline drawn in the same "
-                "pen, so the edge could only be the hatch envelope. Whatever finds the item "
-                "must not be the only thing that draws its edge.",
+                "SAME_DERIVATION_IDENTIFIES_AND_BOUNDS",
+                f"identity and boundary both rest on {sorted(shared)} alone, which you derived "
+                "rather than read. An angle filter that correctly found the hatch discarded the "
+                "outline drawn in the same pen, so the edge could only be the hatch envelope - "
+                "one derivation, two uses, and no way for its error to show.",
                 blocking=True,
             ))
 

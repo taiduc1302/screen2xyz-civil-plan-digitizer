@@ -121,8 +121,8 @@ and refuses when both sides are constant, since that is a scope question.
 **Say what identified the feature and, separately, what fixed its edge.**
 `feature_identity.identification_report` refuses a boundary taken from a pen,
 an identification resting only on a pen or a curve fit, and any claim where one
-source both finds the item and draws its edge - the mistake that hid the hatch
-outline. `fill_layers` regions arrive refused by construction. Before building a
+thing you derived is the sole basis for both identity and edge - the mistake
+that hid the hatch outline. A shared printed source is fine. `fill_layers` regions arrive refused by construction. Before building a
 tool, check that the thing you are measuring is the thing the drawing means: the
 four printed curb points on sheet 04 bracket the intersection mouth, where there
 is no curb, so a tracer joining each pair would have measured the mouth.
