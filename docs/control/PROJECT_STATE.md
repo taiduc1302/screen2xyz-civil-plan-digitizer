@@ -172,10 +172,24 @@ concluded the opposite on one of them.
   `-5: Not allowed due to security restrictions` reproduces on a plain local
   file with no Studio Session and no DMS attachment. Payload note: `Precision`
   must be a string.
-- **Large-polygon area artifact.** Three separate polygons returned host areas
+- ~~**Large-polygon area artifact.** Three separate polygons returned host areas
   exactly 1/5 of the value computed from their own vertices, while lengths in
-  the same region were exact. Not root-caused. `cross_check_quantity` now
-  detects the class.
+  the same region were exact. Not root-caused.~~ **Retracted 2026-09-03 — this
+  was wrong.** There is no host artifact. Those three markups had been written
+  with coordinates from the sheet's PROFILE band, and Revu correctly applied
+  that band's anisotropic scale; 5.00 is simply the plan/profile axis-scale
+  ratio (0.0881944 / 0.0176389). The "independently computed" figure was the
+  one at fault, because it assumed the plan viewport's isotropic scale for
+  geometry that was not in the plan viewport. Both numbers were meaningless for
+  the bid. Root cause and canonical guard: `plan_layers.single_viewport_check`.
+  `bluebeam_bridge.cross_check_quantity` still detects the symptom but now
+  names the cause correctly (`SCALE_CONTEXT_MISMATCH`) instead of blaming the
+  host. Kept visible rather than deleted, per the repository rule on not
+  rewriting recorded evidence.
+- **`MILL_OVERLAY_40MM` was recorded `NOT_PRESENT` on Sheet 03 and that was a
+  silent miss of a paid item.** The legend swatch is a solid light-grey fill,
+  not a hatch; that fill covers the roadway and measures **978.81 sq m** on
+  Sheet 03 alone (cut at STA 1+140). Found and measured 2026-09-03.
 - Scale for Sheet 03 was resolved from the printed 1:250 ratio and
   independently verified against the disposable Length result
   (`0.088194 m/pt`, error 0.006%).

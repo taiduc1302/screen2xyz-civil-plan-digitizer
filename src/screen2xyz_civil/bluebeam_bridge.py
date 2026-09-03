@@ -14,10 +14,14 @@ Failures observed, and the function that now catches each one:
    host returned a small, plausible area (14.84 sq m) and a nonsense perimeter
    (247 m) for it, and the geometry looked fine in the vertex list.
    -> `polygon_health`
-2. Large polygons returned host areas that were wrong by exactly 5.00x, three
-   separate times, while lengths in the same region were exact. Independent
-   arithmetic on the same vertices was correct.
-   -> `cross_check_quantity`
+2. Three polygons were written using coordinates taken from the sheet's
+   PROFILE band while their quantities were interpreted with the PLAN band's
+   scale. Nothing appeared on the plan drawing, and the areas came back
+   "wrong by exactly 5.00x" - which an earlier pass wrote down as a Bluebeam
+   defect. It was not: 5.00 is that sheet's plan/profile axis-scale ratio, and
+   the host was correct. Corrected 2026-09-03.
+   -> `plan_layers.single_viewport_check` (root cause, canonical),
+      `cross_check_quantity` (symptom)
 3. Long provenance text was written into Bluebeam's `label`, which the host
    renders on the sheet itself, covering the drawing with unreadable text.
    -> `markup_text_plan`
@@ -244,11 +248,19 @@ def cross_check_quantity(
 ) -> dict[str, Any]:
     """Compare an independently computed quantity with what the host reported.
 
-    A host quantity is evidence, not truth. On this project three separate
-    large polygons came back from Revu at exactly 1/5 of their true area while
-    lengths in the same region were exact, so an integer-ratio mismatch is
-    reported as its own finding: that pattern points at a scale/viewport fault
-    rather than at the geometry.
+    A clean ratio between the two is the signature of a **scale-context**
+    disagreement, and on 2026-09-03 it was traced to its real cause: three
+    polygons had been drawn into Sheet 03's PROFILE viewport instead of its
+    PLAN viewport. Revu was right; it applied the profile's anisotropic scale
+    (Cx=0.0881944, Cy=0.0176389 m/pt) because that is where the vertices were.
+    Cx/Cy = 5.00 exactly, which is the "x5" that an earlier pass mistook for a
+    host defect.
+
+    So a ratio finding here means *the caller's assumed scale is not the scale
+    the host applied to that geometry* - normally because the geometry is in a
+    different viewport than intended. Run `plan_layers.single_viewport_check`
+    first; do not report it as a host bug, and do not substitute the locally
+    computed number, because in that situation both values are meaningless.
     """
 
     expected = float(expected)
@@ -270,14 +282,18 @@ def cross_check_quantity(
             integer_ratio = int(nearest)
             findings.append(
                 Finding(
-                    code="HOST_QUANTITY_INTEGER_RATIO",
+                    code="SCALE_CONTEXT_MISMATCH",
                     severity="ERROR",
                     detail=(
                         f"Host reported {reported:g} {unit} where {expected:g} {unit} was computed "
-                        f"from the same geometry - almost exactly 1/{integer_ratio}. A clean integer "
-                        "ratio indicates a scale/viewport fault in the host, not a geometry error. "
-                        "Do not publish the host value and do not silently substitute the computed "
-                        "one; record both and resolve the cause."
+                        f"from the same geometry - almost exactly 1/{integer_ratio}. A clean ratio "
+                        "means the host applied a different scale than the one assumed here, which "
+                        "in practice means the geometry sits in a different viewport (a profile or "
+                        "section band applies an anisotropic scale; on Example Road Sheet 03 the plan/"
+                        "profile axis ratio is exactly 5.00). Run plan_layers.single_viewport_check before "
+                        "anything else. Neither number is usable for a bid until the geometry is "
+                        "confirmed to be in the intended viewport - do not publish the host value "
+                        "and do not substitute the computed one."
                     ),
                     blocking=True,
                 )

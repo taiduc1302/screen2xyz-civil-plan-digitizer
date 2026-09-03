@@ -113,13 +113,18 @@ class CrossCheckQuantityTests(unittest.TestCase):
         self.assertFalse(result["blocking"])
         self.assertIsNone(result["integer_ratio"])
 
-    def test_exact_integer_ratio_is_called_out_as_a_host_fault(self):
+    def test_exact_integer_ratio_points_at_a_scale_context_mismatch(self):
+        # The real 2026-09-02 case: a plan-scale area computed for geometry that
+        # was actually sitting in the profile band. The ratio is that sheet's
+        # plan/profile axis-scale ratio, not a host defect.
         result = cross_check_quantity(expected=1682.4, reported=336.48, unit="m2")
         self.assertFalse(result["agrees"])
         self.assertTrue(result["blocking"])
         self.assertEqual(result["integer_ratio"], 5)
         codes = {finding["code"] for finding in result["findings"]}
-        self.assertIn("HOST_QUANTITY_INTEGER_RATIO", codes)
+        self.assertIn("SCALE_CONTEXT_MISMATCH", codes)
+        detail = result["findings"][0]["detail"]
+        self.assertIn("viewport", detail)
 
     def test_ordinary_mismatch_is_reported_without_an_integer_ratio(self):
         result = cross_check_quantity(expected=100.0, reported=87.3, unit="m2")
