@@ -312,7 +312,24 @@ the Example Road manifests and thumbnails stay in the project folder.
 - `pixel_area_m2` / `fill_or_hatch`: the pixel-count cross-check formalised, with
   the two-DPI test that separates a fill (area DPI-invariant, 0.85% on the mill
   fill) from a hatch (9% drift on the widening X-hatch - pixel area invalid).
-- Civil suite **378**, green locally.
+- **`fill_layers.py`.** The grey fill on the plan sheets is not a vector path
+  but a PDF tiling pattern (65 x 36 px cells with seams), crossed by linework,
+  with the widening X-hatch drawn over it. `split_pavement` renders the
+  viewport AA-off, heals seams and linework with a 2 px closing, turns the
+  hatch into a region with a closing of half its measured line gap, labels the
+  connected regions, traces each boundary along pixel edges and returns raw-
+  frame polygons for paved works / widening / mill and overlay, each with a
+  polygon area and a painted-pixel area reconciled by colour. Validated on
+  sheet 05 against the host polygons read back from Revu, clipped to the same
+  stations: widening +0.26%, mill and overlay +0.59%. It measured the
+  Example Road junction intersection on sheet 04 (1+183.4-1+240.0: paved works 1 326,
+  widening 315, mill and overlay 1 002 sq m - previously UNSEARCHED) and the
+  Example Avenue ends on sheet 06 (53 + 69 sq m beyond sheet 04's matchlines; the
+  rest of sheet 06 is the same ground drawn again), and found the sheet 04
+  clean-segment host polygons overlapping each other by 34.2 sq m (vector-
+  exact, confirmed by the session that owns them; both flagged NOT FINAL). See
+  `docs/integrations/FILL_LAYER_EXTRACTION.md`.
+- Civil suite **396**, green locally.
 
 ## Current limitations / remaining gates
 
