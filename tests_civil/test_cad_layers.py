@@ -200,3 +200,53 @@ class NameConventionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(pymupdf is None, "PyMuPDF not installed")
+class ClipTests(unittest.TestCase):
+    # A viewport clips its content at the match line; geometry beyond it is
+    # in the file and never prints. On DEMO-001-06 a ditch-infill polygon
+    # passed every numeric gate over blank paper that way.
+
+    def make(self):
+        doc = pymupdf.open()
+        p = doc.new_page(width=400, height=300)
+        ocg = doc.add_ocg("P_Veg")
+        p.draw_line((0, 0), (1, 1), oc=ocg)  # creates the contents stream + OC wrapper
+        xref = p.get_contents()[0]
+        # clip 10..110 x 10..110 (PDF space): one line half inside, one fully
+        # outside, one after the clip ends (unclipped)
+        doc.update_stream(xref, (
+            b"/OC /oc1 BDC q 10 10 100 100 re W n 0 0 m 50 50 l S 200 200 m 250 250 l S Q "
+            b"300 20 m 350 20 l S EMC"
+        ))
+        return pymupdf.open("pdf", doc.tobytes())
+
+    def test_objects_report_whether_a_clip_removes_them(self):
+        d = self.make()
+        objs = cl.objects_on_layer(d, 0, "P_Veg")
+        if not objs:  # OC name binding may differ; fall back to all layers
+            objs = cl.objects_on_layer(d, 0, "")
+        self.assertEqual(len(objs), 3)
+        objs.sort(key=lambda o: o["rect_raw"][0])
+        inside, outside, free = objs
+        self.assertFalse(inside["clipped"])
+        self.assertLess(inside["visible_fraction"], 1.0)
+        self.assertIsNotNone(inside["clip_raw"])
+        self.assertTrue(outside["clipped"])
+        self.assertEqual(outside["visible_fraction"], 0.0)
+        self.assertFalse(free["clipped"])
+        self.assertIsNone(free["clip_raw"])
+        d.close()
+
+    def test_chains_drop_clipped_objects_by_default(self):
+        from screen2xyz_civil.layer_chains import chains_on_layer
+        d = self.make()
+        layer = "P_Veg" if cl.objects_on_layer(d, 0, "P_Veg") else ""
+        r = chains_on_layer(d, 0, layer)
+        self.assertEqual(r["clipped_dropped"], 1)
+        self.assertEqual(r["fragments_used"], 2)
+        r2 = chains_on_layer(d, 0, layer, only_visible=False)
+        self.assertEqual(r2["clipped_dropped"], 0)
+        self.assertEqual(r2["fragments_used"], 3)
+        d.close()

@@ -322,15 +322,27 @@ def chains_on_layer(
     gap_tol: float | None = None,
     angle_tol_deg: float = DEFAULT_ANGLE_TOL_DEG,
     metres_per_unit: float | None = None,
+    only_visible: bool = True,
 ) -> dict[str, Any]:
-    """`chain_fragments` over `cad_layers.objects_on_layer` for one layer."""
+    """`chain_fragments` over `cad_layers.objects_on_layer` for one layer.
+
+    Objects clipped away by a viewport (beyond the match line) are dropped
+    unless ``only_visible=False``; the count dropped is reported as
+    ``clipped_dropped``. A chain built from them measures blank paper.
+    """
 
     from .cad_layers import objects_on_layer
 
     objs = objects_on_layer(doc, page_index, layer, only=only)
+    dropped = 0
+    if only_visible:
+        kept = [o for o in objs if not o.get("clipped")]
+        dropped = len(objs) - len(kept)
+        objs = kept
     report = chain_fragments(
         objs, gap_tol=gap_tol, angle_tol_deg=angle_tol_deg, metres_per_unit=metres_per_unit
     )
     report["layer"] = layer
     report["page_index"] = page_index
+    report["clipped_dropped"] = dropped
     return report

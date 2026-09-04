@@ -126,6 +126,15 @@ separation says), and where a line that the linetype breaks at a real gap
 ends (the chain ends there, and the sheet decides whether that is the
 feature's end or a break to bridge).
 
+Two more things the layered regime taught on the night of 2026-09-03/04:
+a hull drawn through the points of a stipple has no sawtooth and passed
+the pattern-chase gate, so `polygon_health` now also refuses a boundary
+whose edge vectors sit on the pattern's grid
+(`BOUNDARY_ON_A_PATTERN_LATTICE`); and the file holds geometry the sheet
+never prints - a viewport clips at the match line - so `objects_on_layer`
+reports `clipped` and chaining drops such objects. Neither replaces the
+render: a polygon that passes every gate can still lie on blank paper.
+
 ## The skeleton, in the order a person works
 
 0. `document_regime` - regime, text regime, dictionary, hints. Stop and

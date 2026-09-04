@@ -381,10 +381,40 @@ def objects_on_layer(
     page = doc[page_index]
     height = float(page.rect.height)
     out: list[dict[str, Any]] = []
-    for d in page.get_drawings():
+    # Clip paths. A viewport clips its content at the match line; geometry
+    # beyond it is in the file and never prints. `get_drawings` alone
+    # returns it as if drawn - on DEMO-001-06 a ditch-infill polygon passed
+    # every numeric gate over blank paper that way. With extended=True the
+    # clips come through as items with a `level`; a clip applies to every
+    # later item of a higher level until an item of its own level or lower.
+    stack: list[tuple[int, Any]] = []
+    for d in page.get_drawings(extended=True):
+        level = int(d.get("level", 0))
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        kind_ = d.get("type")
+        if kind_ == "clip":
+            sc = d.get("scissor")
+            if sc is not None:
+                stack.append((level, sc))
+            continue
+        if kind_ == "group" or "items" not in d:
+            continue
         name = d.get("layer") or ""
         if name != layer and short_name(name) != layer:
             continue
+        effective = None
+        for _, sc in stack:
+            effective = sc if effective is None else (effective & sc)
+        rect_gd = d["rect"]
+        if effective is None:
+            clipped, visible_fraction, clip_raw = False, 1.0, None
+        else:
+            probe = pymupdf_rect_pad(rect_gd)
+            inter = probe & effective
+            clipped = inter.is_empty
+            visible_fraction = 0.0 if clipped else (inter.get_area() / probe.get_area() if probe.get_area() > 0 else 1.0)
+            clip_raw = (float(effective.x0), float(height - effective.y1), float(effective.x1), float(height - effective.y0))
         items = d.get("items", ())
         is_outline = _is_outline(items)
         if only == "outline" and not is_outline:
@@ -425,8 +455,16 @@ def objects_on_layer(
             "stroke": d.get("color"), "fill": d.get("fill"), "width": d.get("width"),
             "points_raw": dedup,
             "rect_raw": (float(rect.x0), float(height - rect.y1), float(rect.x1), float(height - rect.y0)),
+            "clipped": clipped, "visible_fraction": round(visible_fraction, 3), "clip_raw": clip_raw,
         })
     return out
+
+
+def pymupdf_rect_pad(rect: Any, pad: float = 0.25) -> Any:
+    """A zero-height line has a zero-area rect; pad it so clip tests work."""
+
+    r = rect + (-pad, -pad, pad, pad) if (rect.width < 1e-6 or rect.height < 1e-6) else rect
+    return r
 
 
 def objects_on_layer_in(

@@ -38,6 +38,15 @@ that decide everything after:
   chains over the sheet (`markup_view.render_over_drawing`) before using
   them.
 
+* **The file holds geometry the sheet does not print.** A viewport clips its
+  content at the match line; `get_drawings` returns what lies beyond it as
+  if drawn. On sheet 06 a ditch-infill polygon built from `P_Veg` objects
+  passed every numeric gate while its north half covered blank paper.
+  `objects_on_layer` now reads the clip stack and reports `clipped`,
+  `visible_fraction` and `clip_raw`; `chains_on_layer` drops clipped
+  objects by default. **Near any sheet boundary the render check stays
+  mandatory after a clean gate pass** - the gate cannot see the paper.
+
 Full reasoning and the per-set record ("pre-pattern"):
 `TAKEOFF_APPROACH_ACROSS_DRAWING_SETS.md`.
 
