@@ -71,14 +71,25 @@ def nearest_gap_stats(fragments: Sequence[Sequence[Point]]) -> dict[str, float]:
     linetype's gap and everything beyond it is a real break.
     """
 
-    ends = [(f[0], f[-1]) for f in fragments]
+    # Only neighbours on the fragment's own axis count. A parallel twin
+    # 3.7 pt away (a pipe drawn as a double dashed line) is every dash's
+    # nearest endpoint, and a tolerance read from that never reaches the
+    # next dash along the line - the D2-D3 storm run on DEMO-001-11 stayed
+    # sixteen single dashes for exactly that reason.
+    ends = _endpoints(fragments)
     gaps: list[float] = []
-    for i, (a0, a1) in enumerate(ends):
+    for i, ea, pa, ha in ends:
+        ux, uy = math.cos(ha), math.sin(ha)
         best = None
-        for j, (b0, b1) in enumerate(ends):
+        for j, eb, pb, hb in ends:
             if j == i:
                 continue
-            d = min(math.dist(a1, b0), math.dist(a1, b1), math.dist(a0, b0), math.dist(a0, b1))
+            dx, dy = pb[0] - pa[0], pb[1] - pa[1]
+            lat = abs(dx * uy - dy * ux)
+            lon = dx * ux + dy * uy
+            if lat > LATERAL_TOL or lon < 0:
+                continue
+            d = math.dist(pa, pb)
             if best is None or d < best:
                 best = d
         if best is not None:

@@ -74,6 +74,22 @@ class StraightLineTests(unittest.TestCase):
         self.assertEqual(r["branches"], [])
 
 
+class DoubleLineTests(unittest.TestCase):
+    def test_a_pipe_drawn_as_a_double_dashed_line_chains_into_two_lines(self):
+        # DEMO-001-11 D2-D3: two parallel dashed lines 3.66 pt apart, dash 17,
+        # gap 8.5. Every dash's nearest endpoint is its twin, so a tolerance
+        # read from nearest-anything (5.1) never reaches the next dash (8.5)
+        # and the run stayed sixteen single dashes.
+        left = [[(0, 400 + 25.5 * k), (0, 417 + 25.5 * k)] for k in range(8)]
+        right = [[(3.66, 400 + 25.5 * k), (3.66, 417 + 25.5 * k)] for k in range(8)]
+        r = chain_fragments(left + right)
+        self.assertAlmostEqual(r["gap_stats"]["p90"], 8.5, places=6)
+        self.assertEqual(len(r["chains"]), 2)
+        for c in r["chains"]:
+            self.assertEqual(len(c["members"]), 8)
+            self.assertAlmostEqual(c["length"], 195.5, places=6)
+
+
 class ArcTests(unittest.TestCase):
     def test_flattened_arc_chords_chain_into_one_curve(self):
         r = chain_fragments(chords(0, 0, 100, 0, 90, 24))
