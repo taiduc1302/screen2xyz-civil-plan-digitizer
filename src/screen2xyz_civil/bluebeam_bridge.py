@@ -280,6 +280,27 @@ def polygon_health(
                 )
             )
 
+    # A concave hull through the points of a stipple has no sawtooth, so the
+    # check above passes it; its edges are integer multiples of the pitch.
+    # Five ditch-infill polygons on DEMO-001-06 reached the host that way.
+    if check_pattern_chase and pattern_pitch_pt and len(rows) >= 8:
+        lattice = pattern_edge.lattice_report(rows, pitch_pt=pattern_pitch_pt)
+        if lattice["on_lattice"]:
+            findings.append(
+                Finding(
+                    code="BOUNDARY_ON_A_PATTERN_LATTICE",
+                    severity="ERROR",
+                    detail=(
+                        f"{lattice['detail']}: the vertices sit on the pattern's own points, "
+                        "so this is a hull of the fill, not a drawn line. Find the lines that "
+                        "bound the region (toe of slope, pavement edge, curb return, the next "
+                        "region's outline) and build the boundary from their chains; use the "
+                        "hull only to say which side is inside."
+                    ),
+                    blocking=True,
+                )
+            )
+
     report: dict[str, Any] = {
         "vertex_count": len(rows),
         "self_intersections": crossings,

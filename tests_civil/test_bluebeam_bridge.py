@@ -342,3 +342,21 @@ class PatternChaseGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PatternLatticeGateTests(unittest.TestCase):
+    # A concave hull through stipple points has no sawtooth and passed every
+    # check on 2026-09-04 while five of them reached the host.
+    from tests_civil.test_pattern_edge import LatticeTests as _L
+    HULL = _L.HULL
+
+    def test_a_stipple_hull_is_refused_when_the_pitch_is_known(self):
+        report = polygon_health(self.HULL, metres_per_unit=20 / 226.8, pattern_pitch_pt=5.1)
+        codes = {f.code if hasattr(f, "code") else f["code"] for f in report["findings"]}
+        self.assertIn("BOUNDARY_ON_A_PATTERN_LATTICE", codes)
+        self.assertTrue(report["blocking"])
+
+    def test_without_a_pitch_the_lattice_check_is_silent(self):
+        report = polygon_health(self.HULL, metres_per_unit=20 / 226.8)
+        codes = {f.code if hasattr(f, "code") else f["code"] for f in report["findings"]}
+        self.assertNotIn("BOUNDARY_ON_A_PATTERN_LATTICE", codes)

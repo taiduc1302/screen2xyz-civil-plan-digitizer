@@ -374,3 +374,75 @@ def flatten_to_envelope(
                  "outline object first (vector_fill); render whatever you keep against "
                  "the drawing before writing, and record the area change."),
     }
+
+
+#: Share of edges that must land on the pitch lattice before a boundary is
+#: called a hull of the pattern's points.
+LATTICE_SHARE = 0.6
+#: An edge is "on the lattice" when its length is within this fraction of
+#: the pitch from an integer multiple of it.
+LATTICE_TOL = 0.12
+
+
+def lattice_report(
+    points: Iterable[Sequence[float]], *, pitch_pt: float, min_edges: int = 8
+) -> dict[str, Any]:
+    """Is this boundary a hull drawn through the points of a stipple?
+
+    A concave hull of a dotted fill's points has no sawtooth - each vertex
+    sits on a dot - so `pattern_chase_report` does not see it. What gives
+    it away is that every edge joins two dots on the same lattice: edge
+    lengths are integer multiples of the pitch (5.2, 10.4, 20.6 ... at a
+    5.1 pt stipple). A drawn outline has no such preference. On DEMO-001-06
+    five ditch-infill polygons reached the host this way and passed every
+    other check.
+    """
+
+    if pitch_pt is None or pitch_pt <= 0:
+        raise PatternEdgeError("pitch_pt must be a positive length")
+    rows = _as_points(points)
+    if len(rows) >= 2 and rows[0] == rows[-1]:
+        rows = rows[:-1]
+    # Merge collinear runs first: a straight edge that happens to carry
+    # vertices at the pitch (a flattened envelope keeps them) is one edge,
+    # not a run of lattice edges. Only real corners count.
+    corners: list[Point] = []
+    n = len(rows)
+    for i in range(n):
+        a, b, c = rows[i - 1], rows[i], rows[(i + 1) % n]
+        h1 = math.atan2(b[1] - a[1], b[0] - a[0])
+        h2 = math.atan2(c[1] - b[1], c[0] - b[0])
+        turn = abs((h2 - h1 + math.pi) % (2 * math.pi) - math.pi)
+        if turn > math.radians(5.0):
+            corners.append(b)
+    rows = corners if len(corners) >= 3 else rows
+    # A stipple is a grid, so an edge between two of its points has BOTH
+    # components on the pitch: (dx, dy) = (i, j) x pitch. Its length is a
+    # multiple only when i or j is zero, which is why a length test misses
+    # the diagonals. Axis-aligned grids only; a rotated stipple would need
+    # its axes found first.
+    vectors = []
+    for i in range(len(rows)):
+        a, b = rows[i], rows[(i + 1) % len(rows)]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        if abs(dx) > 1e-9 or abs(dy) > 1e-9:
+            vectors.append((dx, dy))
+    on = 0
+    tol = LATTICE_TOL * pitch_pt
+    for dx, dy in vectors:
+        kx, ky = round(dx / pitch_pt), round(dy / pitch_pt)
+        if (kx, ky) != (0, 0) and abs(dx - kx * pitch_pt) <= tol and abs(dy - ky * pitch_pt) <= tol:
+            on += 1
+    share = on / len(vectors) if vectors else 0.0
+    on_lattice = len(vectors) >= min_edges and share >= LATTICE_SHARE
+    return {
+        "edges": len(vectors),
+        "on_lattice_edges": on,
+        "share": share,
+        "pitch_pt": pitch_pt,
+        "on_lattice": on_lattice,
+        "detail": (
+            f"{on} of {len(vectors)} edges (after merging collinear runs) have both components "
+            f"on the {pitch_pt:.1f} pt grid (within {LATTICE_TOL * 100:.0f}%)"
+        ),
+    }

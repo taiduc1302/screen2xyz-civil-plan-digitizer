@@ -175,3 +175,42 @@ class EdgeRunTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LatticeTests(unittest.TestCase):
+    # The DEMO-001-06 hull: every vertex on a 5.1 pt stipple point, no sawtooth.
+    HULL = [(713.3, 1088.1), (718.5, 1103.3), (722.8, 1107.7), (743.5, 1107.9), (753.9, 1108.0),
+            (774.5, 1108.1), (794.9, 1108.0), (805.1, 1108.0), (814.7, 1107.3), (829.9, 1102.7),
+            (835.6, 1097.6), (840.6, 1092.5), (845.6, 1087.3), (845.6, 1077.2), (845.5, 1067.0),
+            (850.6, 1051.7), (855.5, 1046.5), (859.6, 1041.4), (860.0, 1040.8), (860.6, 1031.2),
+            (850.3, 1031.4), (835.2, 1036.5), (825.0, 1036.6), (814.8, 1036.6), (804.7, 1036.7),
+            (794.5, 1036.7), (783.5, 1037.5), (769.0, 1042.0), (758.8, 1042.0), (748.7, 1042.1),
+            (738.0, 1042.7), (718.1, 1042.3), (707.9, 1042.3), (708.0, 1052.5), (713.2, 1067.8),
+            (713.2, 1078.0)]
+
+    def test_a_hull_of_stipple_points_is_on_the_lattice(self):
+        from screen2xyz_civil.pattern_edge import lattice_report
+        r = lattice_report(self.HULL, pitch_pt=5.1)
+        self.assertTrue(r["on_lattice"], r["detail"])
+        self.assertGreaterEqual(r["share"], 0.6)
+
+    def test_the_same_hull_passes_the_sawtooth_check(self):
+        # the blind spot: no regular oscillation, so the chase report is quiet
+        from screen2xyz_civil.pattern_edge import pattern_chase_report
+        self.assertFalse(pattern_chase_report(self.HULL, pitch_pt=5.1)["chasing_pattern"])
+
+    def test_a_drawn_outline_is_not_on_the_lattice(self):
+        from screen2xyz_civil.pattern_edge import lattice_report
+        ring = [(0, 0), (137.3, 0), (137.3, 41.9), (96.1, 41.9), (96.1, 78.4), (137.3, 78.4),
+                (137.3, 123.6), (0, 123.6), (0, 66.2), (23.7, 66.2), (23.7, 33.1), (0, 33.1)]
+        r = lattice_report(ring, pitch_pt=5.1)
+        self.assertFalse(r["on_lattice"], r["detail"])
+
+    def test_too_few_edges_is_never_a_verdict(self):
+        from screen2xyz_civil.pattern_edge import lattice_report
+        self.assertFalse(lattice_report([(0, 0), (5.1, 0), (5.1, 5.1), (0, 5.1)], pitch_pt=5.1)["on_lattice"])
+
+    def test_pitch_must_be_positive(self):
+        from screen2xyz_civil.pattern_edge import PatternEdgeError, lattice_report
+        with self.assertRaises(PatternEdgeError):
+            lattice_report(self.HULL, pitch_pt=0)
