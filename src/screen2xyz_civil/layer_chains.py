@@ -326,17 +326,21 @@ def chains_on_layer(
 ) -> dict[str, Any]:
     """`chain_fragments` over `cad_layers.objects_on_layer` for one layer.
 
-    Objects clipped away by a viewport (beyond the match line) are dropped
-    unless ``only_visible=False``; the count dropped is reported as
-    ``clipped_dropped``. A chain built from them measures blank paper.
+    Objects the sheet does not print (beyond a viewport's match line) are
+    dropped unless ``only_visible=False``; the count dropped is reported as
+    ``clipped_dropped``. Visibility comes from the renderer
+    (``cad_layers.printed_objects``), not from the clip path - on DEMO-001-06
+    the parsed clip contradicted the paper. A chain built from unprinted
+    objects measures blank paper.
     """
 
-    from .cad_layers import objects_on_layer
+    from .cad_layers import objects_on_layer, printed_objects
 
     objs = objects_on_layer(doc, page_index, layer, only=only)
     dropped = 0
-    if only_visible:
-        kept = [o for o in objs if not o.get("clipped")]
+    if only_visible and objs:
+        printed_objects(doc, page_index, layer, objs)
+        kept = [o for o in objs if o.get("printed", True)]
         dropped = len(objs) - len(kept)
         objs = kept
     report = chain_fragments(

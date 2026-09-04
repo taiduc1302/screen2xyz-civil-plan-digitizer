@@ -387,7 +387,10 @@ def objects_on_layer(
     # every numeric gate over blank paper that way. With extended=True the
     # clips come through as items with a `level`; a clip applies to every
     # later item of a higher level until an item of its own level or lower.
-    stack: list[tuple[int, Any]] = []
+    # A clip is a path, not a box: the plan viewport on DEMO-001-06 is a
+    # 15-segment polygon with a notch, and its `scissor` is only the
+    # bounding box. Test points against the polygon.
+    stack: list[tuple[int, Any, list[tuple[float, float]] | None]] = []
     for d in page.get_drawings(extended=True):
         level = int(d.get("level", 0))
         while stack and stack[-1][0] >= level:
@@ -396,24 +399,39 @@ def objects_on_layer(
         if kind_ == "clip":
             sc = d.get("scissor")
             if sc is not None:
-                stack.append((level, sc))
+                stack.append((level, sc, _clip_polygon(d.get("items", ()))))
             continue
         if kind_ == "group" or "items" not in d:
             continue
         name = d.get("layer") or ""
         if name != layer and short_name(name) != layer:
             continue
-        effective = None
-        for _, sc in stack:
-            effective = sc if effective is None else (effective & sc)
         rect_gd = d["rect"]
-        if effective is None:
+        if not stack:
             clipped, visible_fraction, clip_raw = False, 1.0, None
         else:
+            effective = None
+            for _, sc, _poly in stack:
+                effective = sc if effective is None else (effective & sc)
             probe = pymupdf_rect_pad(rect_gd)
-            inter = probe & effective
-            clipped = inter.is_empty
-            visible_fraction = 0.0 if clipped else (inter.get_area() / probe.get_area() if probe.get_area() > 0 else 1.0)
+            samples = [
+                (probe.x0, probe.y0), (probe.x1, probe.y0), (probe.x1, probe.y1), (probe.x0, probe.y1),
+                ((probe.x0 + probe.x1) / 2, (probe.y0 + probe.y1) / 2),
+            ]
+            inside = 0
+            for sx, sy in samples:
+                ok = True
+                for _, sc, poly in stack:
+                    if poly is not None:
+                        if not _point_in_polygon(sx, sy, poly):
+                            ok = False
+                            break
+                    elif not (sc.x0 <= sx <= sc.x1 and sc.y0 <= sy <= sc.y1):
+                        ok = False
+                        break
+                inside += ok
+            visible_fraction = inside / len(samples)
+            clipped = inside == 0
             clip_raw = (float(effective.x0), float(height - effective.y1), float(effective.x1), float(height - effective.y0))
         items = d.get("items", ())
         is_outline = _is_outline(items)
@@ -460,11 +478,106 @@ def objects_on_layer(
     return out
 
 
+def _clip_polygon(items: Any) -> list[tuple[float, float]] | None:
+    """The clip path as a polygon in get_drawings space, or None for a plain
+    rectangle (then the scissor box is exact). Curved clips are sampled by
+    their control points, which is good enough to say inside or outside."""
+
+    pts: list[tuple[float, float]] = []
+    only_rect = True
+    for it in items:
+        op = it[0]
+        if op == "l":
+            only_rect = False
+            for p in it[1:3]:
+                q = (float(p.x), float(p.y))
+                if not pts or pts[-1] != q:
+                    pts.append(q)
+        elif op == "c":
+            only_rect = False
+            for p in it[1:5]:
+                q = (float(p.x), float(p.y))
+                if not pts or pts[-1] != q:
+                    pts.append(q)
+        elif op in ("re", "qu"):
+            pass
+    if only_rect or len(pts) < 3:
+        return None
+    return pts
+
+
+def _point_in_polygon(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
+    n = len(poly)
+    inside = False
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            inside = not inside
+    return inside
+
+
 def pymupdf_rect_pad(rect: Any, pad: float = 0.25) -> Any:
     """A zero-height line has a zero-area rect; pad it so clip tests work."""
 
     r = rect + (-pad, -pad, pad, pad) if (rect.width < 1e-6 or rect.height < 1e-6) else rect
     return r
+
+
+def printed_objects(
+    doc: Any, page_index: int, layer: str, objs: list[dict[str, Any]], *, dpi: int = 72
+) -> list[dict[str, Any]]:
+    """Mark each object with ``printed``: does MuPDF put ink where it lies?
+
+    The renderer is the only authority on what the sheet shows, and it
+    agrees with the parsed clip polygon on DEMO-001-06 (the stipple below
+    the match line, raw y 835-920, prints nowhere; above it, it prints).
+    The trap that cost an hour: on a rotation-180 sheet a displayed render
+    has raw y increasing DOWN the image, so "north" on the picture is the
+    low-y side - read positions from coordinates, not from the picture's
+    top and bottom. The page is rendered with only this layer's optional content on,
+    and every object's vertices and segment midpoints are tested for a dark
+    pixel within one pixel. Objects with no ink anywhere are ``printed``
+    False; the caller decides what to do with them. Layer states are
+    restored afterwards.
+    """
+
+    pymupdf = _import_pymupdf()
+    page = doc[page_index]
+    ocgs = doc.get_ocgs() or {}
+    wanted = [x for x, v in ocgs.items() if v.get("name") == layer or short_name(v.get("name", "")) == layer]
+    original_on = [x for x, v in ocgs.items() if v.get("on", True)]
+    scale = dpi / 72.0
+    try:
+        if ocgs:
+            doc.set_layer(-1, on=wanted, off=[x for x in ocgs if x not in wanted])
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False, colorspace=pymupdf.csGRAY)
+    finally:
+        if ocgs:
+            doc.set_layer(-1, on=original_on, off=[x for x in ocgs if x not in original_on])
+    w, h = pix.width, pix.height
+    height = float(page.rect.height)
+    rot = page.rotation_matrix
+
+    def ink(x_gd: float, y_gd: float) -> bool:
+        p = pymupdf.Point(x_gd, y_gd) * rot
+        px, py = int(p.x * scale), int(p.y * scale)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                qx, qy = px + dx, py + dy
+                if 0 <= qx < w and 0 <= qy < h and pix.pixel(qx, qy)[0] < 200:
+                    return True
+        return False
+
+    for o in objs:
+        pts = o["points_raw"]
+        samples = [(x, height - y) for x, y in pts]
+        samples += [((a[0] + b[0]) / 2, height - (a[1] + b[1]) / 2) for a, b in zip(pts, pts[1:])]
+        if not samples:
+            r = o["rect_raw"]
+            samples = [((r[0] + r[2]) / 2, height - (r[1] + r[3]) / 2)]
+        o["printed"] = any(ink(x, y) for x, y in samples)
+    return objs
 
 
 def objects_on_layer_in(

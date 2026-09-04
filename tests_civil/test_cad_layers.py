@@ -239,7 +239,15 @@ class ClipTests(unittest.TestCase):
         self.assertIsNone(free["clip_raw"])
         d.close()
 
-    def test_chains_drop_clipped_objects_by_default(self):
+    def test_the_renderer_says_what_prints(self):
+        d = self.make()
+        layer = "P_Veg" if cl.objects_on_layer(d, 0, "P_Veg") else ""
+        objs = cl.printed_objects(d, 0, layer, cl.objects_on_layer(d, 0, layer))
+        objs.sort(key=lambda o: o["rect_raw"][0])
+        self.assertEqual([o["printed"] for o in objs], [True, False, True])
+        d.close()
+
+    def test_chains_drop_unprinted_objects_by_default(self):
         from screen2xyz_civil.layer_chains import chains_on_layer
         d = self.make()
         layer = "P_Veg" if cl.objects_on_layer(d, 0, "P_Veg") else ""
@@ -249,4 +257,36 @@ class ClipTests(unittest.TestCase):
         r2 = chains_on_layer(d, 0, layer, only_visible=False)
         self.assertEqual(r2["clipped_dropped"], 0)
         self.assertEqual(r2["fragments_used"], 3)
+        d.close()
+
+
+@unittest.skipIf(pymupdf is None, "PyMuPDF not installed")
+class PolygonClipTests(unittest.TestCase):
+    # The plan viewport on DEMO-001-06 is a 15-segment polygon with a notch;
+    # its scissor is only the bounding box, and a rectangle test called
+    # 159 stipple objects on blank paper "visible".
+
+    def test_a_notched_clip_is_tested_as_a_polygon_not_its_box(self):
+        doc = pymupdf.open()
+        p = doc.new_page(width=400, height=300)
+        ocg = doc.add_ocg("P_Veg")
+        p.draw_line((0, 0), (1, 1), oc=ocg)
+        xref = p.get_contents()[0]
+        # L-shaped clip: the square 0..200 x 0..200 minus the corner 100..200 x 100..200 (PDF space)
+        clip = b"0 0 m 200 0 l 200 100 l 100 100 l 100 200 l 0 200 l h W n "
+        body = (b"20 20 m 60 20 l S "        # inside the L
+                b"150 150 m 190 150 l S "    # inside the box, in the notch -> not printed
+                b"150 20 m 190 20 l S ")      # inside the L's lower arm
+        doc.update_stream(xref, b"/OC /oc1 BDC q " + clip + body + b"Q EMC")
+        d = pymupdf.open("pdf", doc.tobytes())
+        objs = cl.objects_on_layer(d, 0, "P_Veg") or cl.objects_on_layer(d, 0, "")
+        self.assertEqual(len(objs), 3)
+        by_x = sorted(objs, key=lambda o: (o["rect_raw"][0], o["rect_raw"][1]))
+        low_left, low_right, notch = by_x[0], [o for o in by_x[1:] if o["rect_raw"][1] < 100][0], [o for o in by_x[1:] if o["rect_raw"][1] > 100][0]
+        self.assertFalse(low_left["clipped"])
+        self.assertFalse(low_right["clipped"])
+        self.assertTrue(notch["clipped"], "an object inside the scissor box but outside the clip polygon must be clipped")
+        printed = {id(o): o["printed"] for o in cl.printed_objects(d, 0, "P_Veg" if cl.objects_on_layer(d, 0, "P_Veg") else "", objs)}
+        self.assertFalse(notch["printed"])
+        self.assertTrue(low_left["printed"] and low_right["printed"])
         d.close()
