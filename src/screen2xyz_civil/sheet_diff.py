@@ -30,6 +30,13 @@ from .cad_layers import objects_on_layer, short_name
 
 #: Points are rounded to this many decimals before comparison (0.1 pt).
 ROUND = 1
+#: After exact matching, an object left over in A is paired with a left-over
+#: object in B of the same kind whose box corners all lie within this many
+#: points; the pair counts as unchanged. A re-plot of the same drawing lands
+#: annotation and symbol objects a fraction of a point away - on DEMO-001
+#: sheet 06 an exact comparison called 51 of 69 layers changed, most of
+#: them by equal numbers of near-identical objects on both sides.
+MOVE_TOL = 1.0
 
 
 def _signature(obj: dict[str, Any]) -> tuple:
@@ -104,15 +111,55 @@ def _bbox(objs: list[dict[str, Any]]) -> tuple[float, float, float, float] | Non
     return (min(xs0), min(ys0), max(xs1), max(ys1))
 
 
+def _near(a: dict[str, Any], b: dict[str, Any], tol: float) -> bool:
+    if a["kind"] != b["kind"] or len(a["points_raw"]) != len(b["points_raw"]):
+        return False
+    ra, rb = a["rect_raw"], b["rect_raw"]
+    return all(abs(ra[i] - rb[i]) <= tol for i in range(4))
+
+
+def _pair_within_tolerance(
+    only_a: list[dict[str, Any]], only_b: list[dict[str, Any]], tol: float
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    """Greedy pairing of left-overs whose boxes agree within ``tol``."""
+
+    if tol <= 0 or not only_a or not only_b:
+        return only_a, only_b, 0
+    used_b = [False] * len(only_b)
+    rest_a: list[dict[str, Any]] = []
+    paired = 0
+    for a in only_a:
+        hit = None
+        for j, b in enumerate(only_b):
+            if not used_b[j] and _near(a, b, tol):
+                hit = j
+                break
+        if hit is None:
+            rest_a.append(a)
+        else:
+            used_b[hit] = True
+            paired += 1
+    rest_b = [b for j, b in enumerate(only_b) if not used_b[j]]
+    return rest_a, rest_b, paired
+
+
 def diff_pages(
-    doc_a: Any, page_a: int, doc_b: Any, page_b: int, *, layers: Iterable[str] | None = None
+    doc_a: Any,
+    page_a: int,
+    doc_b: Any,
+    page_b: int,
+    *,
+    layers: Iterable[str] | None = None,
+    move_tol: float = MOVE_TOL,
 ) -> dict[str, Any]:
     """Objects only in A, only in B and common, per layer, by geometry signature.
 
     ``layers`` restricts the comparison to short layer names; default is every
-    layer present on either page. Each layer row carries the counts, the
-    changed objects with raw-frame boxes, and the bounding box of the change
-    - the window to render and look at.
+    layer present on either page. Objects that match exactly after rounding
+    are common; left-overs whose boxes agree within ``move_tol`` are paired
+    as common too (a re-plot's jitter, reported as ``jitter``). Each layer
+    row carries the counts, the changed objects with raw-frame boxes, and the
+    bounding box of the change - the window to render and look at.
     """
 
     ca, cb = layer_counts(doc_a, page_a), layer_counts(doc_b, page_b)
@@ -139,6 +186,8 @@ def diff_pages(
                 only_a.extend(sa[sig][nb:])
             elif nb > na:
                 only_b.extend(sb[sig][na:])
+        only_a, only_b, jitter = _pair_within_tolerance(only_a, only_b, move_tol)
+        common += jitter
         if not only_a and not only_b and not (oa or ob):
             continue
         rows.append({
@@ -146,6 +195,7 @@ def diff_pages(
             "count_a": len(oa),
             "count_b": len(ob),
             "common": common,
+            "jitter": jitter,
             "only_in_a": [{"rect_raw": o["rect_raw"], "kind": o["kind"], "points": len(o["points_raw"])} for o in only_a],
             "only_in_b": [{"rect_raw": o["rect_raw"], "kind": o["kind"], "points": len(o["points_raw"])} for o in only_b],
             "changed_bbox_a": _bbox(only_a),

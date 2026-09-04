@@ -101,6 +101,23 @@ class DiffTests(unittest.TestCase):
         self.assertEqual(names[0], "P_Fence")
         self.assertEqual(set(names), {"P_Fence", "P_Culv", "STM-MH-PRO"})
 
+    def test_replot_jitter_under_the_tolerance_is_not_a_change(self):
+        doc = pymupdf.open()
+        ocg = doc.add_ocg("E_Ep")
+        for k, dx in enumerate((0.0, 0.3)):
+            p = doc.new_page(width=400, height=300)
+            for i in range(10):
+                p.draw_line((20 + 30 * i + dx, 100 + dx), (40 + 30 * i + dx, 100 + dx), color=(0, 0, 0), oc=ocg)
+            # one line genuinely moved on the second issue
+            p.draw_line((50, 200 + 20 * k), (350, 200 + 20 * k), color=(0, 0, 0), oc=ocg)
+        d2 = pymupdf.open("pdf", doc.tobytes())
+        r = sd.diff_pages(d2, 0, d2, 1)["rows"][0]
+        self.assertEqual(r["jitter"], 10)
+        self.assertEqual((len(r["only_in_a"]), len(r["only_in_b"])), (1, 1))
+        strict = sd.diff_pages(d2, 0, d2, 1, move_tol=0)["rows"][0]
+        self.assertEqual(len(strict["only_in_b"]), 11)
+        d2.close()
+
     def test_layers_can_be_restricted(self):
         d = sd.diff_pages(self.doc, 0, self.doc, 1, layers=["P_Culv"])
         self.assertEqual([r["layer"] for r in d["rows"]], ["P_Culv"])
