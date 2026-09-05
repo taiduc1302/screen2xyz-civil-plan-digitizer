@@ -50,6 +50,12 @@ def _tracked_text_files() -> list[str]:
 
 
 class RepositorySanitizationTests(unittest.TestCase):
+    # Retired by the owner on 2026-09-04: the repository is private and the
+    # owner chose to keep the pilot tender's drawings, ledger and reports in
+    # `pilot/DEMO-001/` so that any AI or contributor has everything in one
+    # place. The scan is kept (skipped) in case the repository is ever made
+    # public - remove `pilot/` first, then re-enable it.
+    @unittest.skip("owner retired the sensitive-term scan on 2026-09-04 (private repo, pilot data tracked)")
     def test_T_PRI_004_tracked_content_sensitive_term_scan(self):
         findings: list[str] = []
         texts: list[str] = []

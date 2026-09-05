@@ -14,7 +14,9 @@ For civil takeoff / Bluebeam markup work, also read:
 
 Screen2XYZ is the project/state/audit owner. Claude is an orchestrator and proposal author. OpenTakeoff is an optional geometry engine. Bluebeam Revu is the native review/delivery environment when a live connector/GUI is available.
 
-Never silently approve or publish a bid quantity. Never treat an AI/OpenTakeoff confidence score as estimator verification. Never commit proprietary tender PDFs or private drawing-derived fixtures to Git.
+Never silently approve or publish a bid quantity. Never treat an AI/OpenTakeoff confidence score as estimator verification.
+
+**Pilot data is tracked on purpose.** On 2026-09-04 the owner lifted the earlier "no tender data in Git" rule: the repository is private and `pilot/DEMO-001/` holds the pilot tender's drawings (raw and a snapshot of the live Revu working copy), the scope ledger, both run folders with reports and renders, the verified schedule transcriptions, the company takeoff procedures and `HANDOFF_for_external_AI_2026-09-04.md`. Read `pilot/DEMO-001/README.md` first. Do not make this repository public without removing `pilot/`.
 
 ## Connected `screen2xyz` MCP
 
@@ -101,4 +103,4 @@ The `.s2a.json` Claude operator is deliberately single-sheet / single-scale-cont
 
 ## Development verification
 
-For code changes affecting this workflow, keep all existing suites green and run the frozen Civil suite. Do not describe synthetic/unit results as real-plan accuracy. A real Example Road/Bluebeam gold-set test is private owner-machine evidence and must not be fabricated or committed with proprietary source data.
+For code changes affecting this workflow, keep all existing suites green and run the frozen Civil suite. Do not describe synthetic/unit results as real-plan accuracy. A real Example Road/Bluebeam gold-set test may now use the tracked pilot data in `pilot/DEMO-001/`; it must still be real evidence, never fabricated.
