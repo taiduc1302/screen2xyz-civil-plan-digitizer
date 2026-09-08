@@ -12,10 +12,17 @@ builds its own PDFs inline. Run it against a checkout of the branch:
 python docs/audit/plan_layer_probes.py --src <checkout>/src
 ```
 
-**C and D now have a patch.** `docs/audit/layer_chains_findings_C_and_D.patch`
-applies to `task/plan-layer-extraction` at `cb19d41` and carries the two fixes
-with five regression tests; see "A patch for C and D" at the end of this file
-for what it changes and what was measured before and after.
+**Every finding now has a patch.** Two files, and you apply **one or the
+other**, never both — they overlap:
+
+- `docs/audit/all_findings_A_B_C_D_E.patch` — all five findings plus the
+  retired sanitization scan, 11 regression tests, `EXPECTED_TEST_COUNT`
+  629 → 640.
+- `docs/audit/layer_chains_findings_C_and_D.patch` — only the two that change
+  a quantity, 5 tests, 629 → 634. The smaller thing to take if the rest is
+  not wanted yet.
+
+See "A patch for C and D" and "A patch for all five" at the end of this file.
 
 ## Scope of this pass
 
@@ -244,3 +251,61 @@ optional dependencies here (`mcp`, the OCR stack behind `sheet_text`,
 `openpyxl`), identical sets by `diff`. The patch adds five tests and changes
 nothing else that this environment can see. It has **not** been run on
 Windows CI, and nothing here was pushed to `task/plan-layer-extraction`.
+
+---
+
+## A patch for all five
+
+`docs/audit/all_findings_A_B_C_D_E.patch` — 363 insertions, 21 deletions
+across nine files, against `e6eef78`, `git apply --check` clean. It contains
+the C and D patch above **and** the rest, so apply this one *or* that one,
+never both.
+
+```
+git apply docs/audit/all_findings_A_B_C_D_E.patch
+PYTHONPATH=src python tests_civil/run_civil_tests.py   # 640
+PYTHONPATH=src python tests/run_all.py
+```
+
+**A — the declared page size becomes the rendered box.** `pdf.py` gains
+`_effective_page_size` (the CropBox clipped to the MediaBox, falling back to
+the MediaBox) and `inspect_pdf` uses it, so `page_width_points` describes the
+frame the geometry is actually in. And `fill_layers.render_viewport` now
+**refuses** a page whose CropBox is not its MediaBox rather than returning
+coordinates that are out by the CropBox origin — fail-closed, because the
+error is a pure translation that leaves every length and area right and only
+moves the markup, and the session's bounds check cannot see it.
+
+**B — the render frame takes its origin from the pixmap.**
+`display_x0 = pix.irect.x0 / zoom` instead of `clip[0]`. `get_pixmap` snaps
+the clip outward to whole pixels, so the old origin was up to one pixel out
+— 0.8 pt at 90 DPI, about 0.07 m at 1:250 — always in the same direction.
+
+**E — coverage fails QA instead of sitting beside it.**
+`AgentTakeoffSession.qa_summary` now reads the ledger and raises a
+`SCOPE_NOT_SEARCHED` ERROR, counted and blocking, while any rule is
+`UNSEARCHED`. The gateway still attaches `scope`; the difference is that
+`takeoff_qa` can no longer return `issues: []` for a sheet with whole rules
+never searched.
+
+**The retired sanitization scan is scoped, not retired.**
+`tests/test_repository_sanitization.py` gains `_EXEMPT_PREFIXES = ("pilot/",)`
+and drops the `assertTrue(True); return` body, so `T-PRI-004` reports PASS
+because it passed rather than because it scanned nothing. Measured in this
+container: 725 tracked files, **486 scanned**, 239 exempt under `pilot/`. A
+planted identifier outside `pilot/` **fails** the test; the same string
+inside `pilot/` passes. That is the guard working, on both sides.
+
+**Six more regression tests** — four in a new `tests_civil/test_page_frame.py`
+(a cropped page reports the rendered box, an uncropped one is unchanged, the
+fill renderer refuses a cropped page, the frame origin lands on a pixel
+boundary) and two in `tests_civil/test_scope_ledger.py` (QA refuses a sheet
+with unsearched rules, and stops objecting once every rule is accounted).
+Eleven new tests in total with C and D, `EXPECTED_TEST_COUNT` 629 → 640.
+
+**What was run.** The frozen Civil suite on `e6eef78` with and without the
+whole patch: 613 → 624 executed, zero failures either way, the same 14 errors
+in both and identical by `diff`. And `tests/run_all.py`, which owns
+`T-PRI-004` and rejects skips: 42 tests, 40 passed, 0 failures, 0 skipped,
+4 errors — the same four before and after, all optional dependencies missing
+here. Not run on Windows CI. Nothing pushed to `task/plan-layer-extraction`.
