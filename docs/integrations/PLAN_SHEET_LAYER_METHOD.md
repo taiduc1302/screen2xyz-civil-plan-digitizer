@@ -355,6 +355,15 @@ clipped exactly at the band edge, so their extreme ends lie on the boundary.
 Rebuilding Sheets 03 and 04 that way put the edge within 0.22 m of the printed
 `6.90m` half-width, where the raster boundary sat outside it.
 
+### Two host facts learned on 2026-09-04
+
+* A Polygon written without `intent: "Area"` at creation has no live area,
+  and `set_markup_property(intent=Area)` afterwards does not give it one -
+  eleven polygons had to be recreated. Set the intent in `add_markup`.
+* `properties` **and** `shape` in `add_markup` are arrays of `{key, value}`
+  objects. A dict in either passes schema validation and fails inside the
+  host with a bare "An error occurred" while reads keep working.
+
 ## 11. Keep provenance off the drawing
 
 The host renders the `label` field onto the sheet. Long provenance text there
