@@ -12,6 +12,11 @@ builds its own PDFs inline. Run it against a checkout of the branch:
 python docs/audit/plan_layer_probes.py --src <checkout>/src
 ```
 
+**C and D now have a patch.** `docs/audit/layer_chains_findings_C_and_D.patch`
+applies to `task/plan-layer-extraction` at `cb19d41` and carries the two fixes
+with five regression tests; see "A patch for C and D" at the end of this file
+for what it changes and what was measured before and after.
+
 ## Scope of this pass
 
 Read: `plan_layers.py`, `fill_layers.py`, `vector_fill.py`, `pattern_edge.py`,
@@ -184,3 +189,58 @@ input; whether each one is *currently* biting a given sheet depends on that
 sheet's CropBox, viewport alignment, and layer fragment counts, which only
 the operator with the file can tell. E is read from the source of both
 branches, not measured.
+
+---
+
+## A patch for C and D
+
+`docs/audit/layer_chains_findings_C_and_D.patch` — 124 insertions, 11
+deletions across three files, against `task/plan-layer-extraction` at
+`cb19d41`. `git apply --check` is clean on that head.
+
+```
+git checkout task/plan-layer-extraction
+git apply docs/audit/layer_chains_findings_C_and_D.patch
+PYTHONPATH=src python tests_civil/run_civil_tests.py
+```
+
+**C — `dedupe_fragments` now compares the path, not only the ends.** Two new
+helpers, `_point_at` and `_paths_agree`: after the existing endpoint match
+(kept as the cheap pre-filter, in both orientations) the two fragments must
+also agree in length and at three interior samples, all within the same
+`DUPLICATE_TOL`. A plotted copy matches everywhere; the far side of an
+island, the other half of a circle and an arc against its chord do not.
+
+**D — the automatic tolerance no longer comes from a sample too small to
+have a percentile.** `MIN_GAP_SAMPLE = 10`: under that many measured gaps
+the basis is the median rather than the p90, because below ten the p90 *is*
+the largest gap on the layer. The percentile index is also corrected to
+nearest-rank, `gaps[ceil(0.9n) - 1]`, though on its own that changes nothing
+except when `0.9n` is a whole number — the substantive half of this fix is
+the sample guard, not the index.
+
+Measured with the probe script, before and after, on the same input:
+
+| | before (`cb19d41`) | after |
+| --- | --- | --- |
+| C: two polylines A→B | `fragments_used=1`, 43.32 pt of 86.65 | `fragments_used=2`, 86.65 pt |
+| C: under-count | 43.32 pt (50%) | 0.00 pt (0%) |
+| D: auto `gap_tol` | 381.00 pt | 3.00 pt |
+| D: chains | 1 (correct: 2) | 2 |
+| D: total length | 310.00 pt against 50.00 drawn | 56.00 pt |
+
+**Five regression tests** in `tests_civil/test_layer_chains.py`, and
+`EXPECTED_TEST_COUNT` 629 → 634. Three of them cover C — the island keeps
+both sides, an arc and its chord stay separate, and a reversed plotted copy
+is *still* deduped, so the path check does not cost the branch the dedupe it
+relies on. Two cover D — a full layer still reads 7.5 pt from its linetype
+exactly as before, and a five-fragment layer no longer takes its tolerance
+from its largest gap.
+
+**What was run.** The whole frozen Civil suite, in this Linux container,
+against the branch head with and without the patch: 613 → 618 executed, 0
+failures either way, and the same 14 errors in both — all of them missing
+optional dependencies here (`mcp`, the OCR stack behind `sheet_text`,
+`openpyxl`), identical sets by `diff`. The patch adds five tests and changes
+nothing else that this environment can see. It has **not** been run on
+Windows CI, and nothing here was pushed to `task/plan-layer-extraction`.
