@@ -1,0 +1,213 @@
+diff --git a/src/screen2xyz_civil/layer_chains.py b/src/screen2xyz_civil/layer_chains.py
+index 45e05b6..8824bd4 100644
+--- a/src/screen2xyz_civil/layer_chains.py
++++ b/src/screen2xyz_civil/layer_chains.py
+@@ -33,6 +33,13 @@ DEFAULT_ANGLE_TOL_DEG = 25.0
+ GAP_TOL_FACTOR = 1.5
+ #: Never let an automatic tolerance collapse below this many points.
+ MIN_GAP_TOL = 0.5
++#: Below this many measured gaps the 90th percentile IS the largest gap on
++#: the layer, so an automatic tolerance read from it is 1.5x the biggest
++#: break the engineer drew and welds separate lines into one. Under that,
++#: read the median instead: a real linetype gap sits at it, and a single
++#: isolated fragment cannot inflate it. Layers get small exactly when the
++#: method is working - `only_visible` drops what the sheet does not print.
++MIN_GAP_SAMPLE = 10
+ #: A continuation on our own line sits within this many points of the
+ #: line's axis. The proposed pavement edge on 24-047 sheet 04 is drawn
+ #: beside a parallel line 3.4 pt away (the printed 0.30 m gravel shoulder);
+@@ -99,12 +106,47 @@ def nearest_gap_stats(fragments: Sequence[Sequence[Point]]) -> dict[str, float]:
+     gaps.sort()
+     return {
+         "median": gaps[len(gaps) // 2],
+-        "p90": gaps[min(len(gaps) - 1, int(len(gaps) * 0.9))],
++        "p90": gaps[max(0, math.ceil(0.9 * len(gaps)) - 1)],
+         "max": gaps[-1],
+         "count": float(len(gaps)),
+     }
+ 
+ 
++def _point_at(pts: Sequence[Point], t: float) -> Point:
++    """The point at fraction ``t`` of a fragment's own length."""
++
++    total = _length(pts)
++    if total <= 0:
++        return (float(pts[0][0]), float(pts[0][1]))
++    target, run = t * total, 0.0
++    for a, b in zip(pts, pts[1:]):
++        step = math.dist(a, b)
++        if run + step >= target:
++            f = 0.0 if step <= 0 else (target - run) / step
++            return (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
++        run += step
++    return (float(pts[-1][0]), float(pts[-1][1]))
++
++
++def _paths_agree(a: Sequence[Point], b: Sequence[Point], tol: float) -> bool:
++    """Do two fragments that share their ends also share the way between?
++
++    Endpoints alone cannot tell a plotted copy from the far side of an
++    island, the other half of a circle, or an arc from its chord - each of
++    those meets at both ends and encloses the drawing in between, and
++    dropping one of them silently removes real line. A plotted copy matches
++    everywhere, so comparing the length and three interior samples separates
++    the two cases and costs nothing.
++    """
++
++    if abs(_length(a) - _length(b)) > tol:
++        return False
++    return all(
++        math.dist(_point_at(a, t), _point_at(b, t)) <= tol
++        for t in (0.25, 0.5, 0.75)
++    )
++
++
+ #: Two fragments whose ends coincide within this many points are one
+ #: fragment plotted twice. A CAD export plots the same line once per xref
+ #: that carries it - 24-047 sheet 04's pavement edge arrives in two or
+@@ -117,26 +159,31 @@ def dedupe_fragments(frags: Sequence[Sequence[Point]], *, tol: float = DUPLICATE
+     """Indexes of the fragments to keep, and how many duplicates were dropped.
+ 
+     A duplicate has both ends within ``tol`` of another fragment's ends, in
+-    either orientation. The first occurrence is kept.
++    either orientation, **and** the same path between them. The first
++    occurrence is kept.
+     """
+ 
+     keep: list[int] = []
+-    kept_ends: list[tuple[Point, Point]] = []
++    kept: list[tuple[Point, Point, list[Point]]] = []
+     dropped = 0
+     for i, f in enumerate(frags):
+         a, b = f[0], f[-1]
+         dup = False
+-        for (ka, kb) in kept_ends:
+-            if (math.dist(a, ka) <= tol and math.dist(b, kb) <= tol) or (
+-                math.dist(a, kb) <= tol and math.dist(b, ka) <= tol
+-            ):
++        for (ka, kb, kept_points) in kept:
++            if math.dist(a, ka) <= tol and math.dist(b, kb) <= tol:
++                same = _paths_agree(f, kept_points, tol)
++            elif math.dist(a, kb) <= tol and math.dist(b, ka) <= tol:
++                same = _paths_agree(f, kept_points[::-1], tol)
++            else:
++                continue
++            if same:
+                 dup = True
+                 break
+         if dup:
+             dropped += 1
+             continue
+         keep.append(i)
+-        kept_ends.append((a, b))
++        kept.append((a, b, list(f)))
+     return keep, dropped
+ 
+ 
+@@ -242,7 +289,8 @@ def chain_fragments(
+     live = [frags[i] for i in index]
+     stats = nearest_gap_stats(live)
+     if gap_tol is None:
+-        gap_tol = max(MIN_GAP_TOL, GAP_TOL_FACTOR * stats["p90"])
++        basis = stats["p90"] if stats["count"] >= MIN_GAP_SAMPLE else stats["median"]
++        gap_tol = max(MIN_GAP_TOL, GAP_TOL_FACTOR * basis)
+     angle_tol = math.radians(angle_tol_deg)
+ 
+     links, branches = _links(live, gap_tol=gap_tol, angle_tol=angle_tol)
+diff --git a/tests_civil/run_civil_tests.py b/tests_civil/run_civil_tests.py
+index ea5be2e..a0e6e6a 100644
+--- a/tests_civil/run_civil_tests.py
++++ b/tests_civil/run_civil_tests.py
+@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
+ sys.path.insert(0, str(ROOT / "src"))
+ sys.path.insert(0, str(ROOT))
+ 
+-EXPECTED_TEST_COUNT = 629
++EXPECTED_TEST_COUNT = 634
+ 
+ 
+ def main() -> int:
+diff --git a/tests_civil/test_layer_chains.py b/tests_civil/test_layer_chains.py
+index b6b0855..0ef26f8 100644
+--- a/tests_civil/test_layer_chains.py
++++ b/tests_civil/test_layer_chains.py
+@@ -3,7 +3,11 @@ from __future__ import annotations
+ import math
+ import unittest
+ 
+-from screen2xyz_civil.layer_chains import chain_fragments, nearest_gap_stats
++from screen2xyz_civil.layer_chains import (
++    MIN_GAP_SAMPLE,
++    chain_fragments,
++    nearest_gap_stats,
++)
+ 
+ 
+ def dashes(x0, y, dash=10.0, gap=5.0, n=10, reverse_some=False):
+@@ -189,5 +193,66 @@ class InputTests(unittest.TestCase):
+         self.assertEqual(r["chains"][1]["members"], [0])
+ 
+ 
++class EnclosingPairTests(unittest.TestCase):
++    """Two fragments can share both ends and still be different line.
++
++    Endpoint-only dedupe dropped one of them and took its length with it,
++    with `duplicates_removed` as the only trace and no finding raised.
++    """
++
++    def test_a_shape_drawn_as_two_polylines_keeps_both_sides(self):
++        # a median island, a pavement patch, a curb return closed by its own
++        # tie line: the two sides meet at both ends and enclose the shape
++        top = [(0.0, 0.0), (10.0, 6.0), (30.0, 6.0), (40.0, 0.0)]
++        bottom = [(0.0, 0.0), (10.0, -6.0), (30.0, -6.0), (40.0, 0.0)]
++        drawn = sum(
++            math.dist(a, b) for f in (top, bottom) for a, b in zip(f, f[1:])
++        )
++        r = chain_fragments([top, bottom])
++        self.assertEqual(r["duplicates_removed"], 0)
++        self.assertEqual(r["fragments_used"], 2)
++        self.assertAlmostEqual(r["total_length"], drawn, places=6)
++
++    def test_an_arc_and_its_chord_are_not_the_same_line(self):
++        arc = [(0.0, 0.0), (5.0, 4.0), (10.0, 5.0), (15.0, 4.0), (20.0, 0.0)]
++        chord = [(0.0, 0.0), (20.0, 0.0)]
++        r = chain_fragments([arc, chord])
++        self.assertEqual(r["duplicates_removed"], 0)
++        self.assertEqual(r["fragments_used"], 2)
++
++    def test_a_reversed_plotted_copy_is_still_a_duplicate(self):
++        # the path check must not cost us the dedupe the method relies on
++        arc = [(0.0, 0.0), (5.0, 4.0), (10.0, 5.0), (15.0, 4.0), (20.0, 0.0)]
++        r = chain_fragments([arc, list(reversed(arc))])
++        self.assertEqual(r["duplicates_removed"], 1)
++        self.assertEqual(r["fragments_used"], 1)
++
++
++class GapStatisticTests(unittest.TestCase):
++    def test_a_full_layer_still_reads_its_tolerance_from_the_linetype(self):
++        # the guard below must not disturb the case that works: ten dashes
++        # give eighteen measured gaps, well over MIN_GAP_SAMPLE, so the
++        # tolerance still comes from the percentile as before
++        frags = dashes(0, 0, dash=10.0, gap=5.0, n=10)
++        stats = nearest_gap_stats(frags)
++        self.assertGreaterEqual(stats["count"], MIN_GAP_SAMPLE)
++        self.assertAlmostEqual(chain_fragments(frags)["gap_tol"], 7.5, places=6)
++
++    def test_a_small_layer_does_not_read_its_tolerance_from_its_largest_gap(self):
++        # four dashes plus one separate line 254 pt away: eight measured
++        # gaps, too few for a 90th percentile to mean anything. Reading the
++        # max would weld the two into one chain and count the blank paper
++        # between them as line.
++        frags = [[(x, 0.0), (x + 10.0, 0.0)] for x in (0.0, 12.0, 24.0, 36.0)]
++        frags.append([(300.0, 0.0), (310.0, 0.0)])
++        drawn = sum(
++            math.dist(a, b) for f in frags for a, b in zip(f, f[1:])
++        )
++        r = chain_fragments(frags)
++        self.assertLess(r["gap_tol"], 254.0)
++        self.assertEqual(len(r["chains"]), 2)
++        self.assertLess(r["total_length"], drawn + 20.0)
++
++
+ if __name__ == "__main__":
+     unittest.main()
