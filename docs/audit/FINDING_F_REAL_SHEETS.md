@@ -162,3 +162,26 @@ A larger tolerance changes which pairs are mutual-best, so it can break
 chains apart rather than merge them. That makes "raise the tolerance until
 it looks right" an unsound way to tune a layer by hand, which is worth
 knowing independently of finding F.
+
+## Exposure, closed against the authoritative reconciliation
+
+`f5c813e` adds `King_Road_Tender_Reconciliation_v019.xlsx`, which the
+readiness audit names as the file that supersedes v018 and carries the live
+takeoff quantities. Searched in full:
+
+- **No reference to `E_Dittop` or `P_Ditch top` anywhere in the workbook.**
+  The layers finding F distorts are not used as a quantity source at all.
+- The one layer-sourced ditch quantity cites `E_Ditbtm`: item 32.30's
+  `Takeoff_Source` records "865 m = ALL existing ditch bottoms `E_Ditbtm` on
+  sheets 03-06 (343.3 + 177.3 + ...)". That first figure, 343.3 m, is what
+  this code path returns for `E_Ditbtm` on `page_index` 2 — so the tier was
+  produced by `chains_on_layer`, and `E_Ditbtm` is one of the unimodal
+  layers whose tolerance neither the defect nor the prototype changes.
+- `Basis_for_Bid` for 32.30 is 345 lin.m (the City's schedule quantity)
+  regardless, per decisions D-14 and D-20.
+
+So F is narrower than "a forward risk on 32.30": the quantities that exist
+come from the layers it does not touch, and the layers it does touch are
+used for nothing. It bites only if a future measurement reaches for a ditch
+**top** layer - `E_Dittop` or `P_Ditch top` - which is exactly where the
+automatic tolerance welds hundreds of points of blank paper.
