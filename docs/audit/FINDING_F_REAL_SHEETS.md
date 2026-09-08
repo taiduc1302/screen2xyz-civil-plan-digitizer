@@ -112,3 +112,53 @@ The exposure is live rather than historical: the operator call documented in
 `gap_tol`, so the automatic tolerance is what a future measurement gets.
 
 Nothing was pushed to `task/plan-layer-extraction`.
+
+## A measured direction, and why it is not yet a patch
+
+`docs/audit/linetype_mode_prototype.py` replaces the p90 with the gap
+population the **median** belongs to: the split is the first step of 3x or
+more *above* the median, so it can never fall inside the low mode and
+collapse the tolerance onto its floor. Measured over the same 42 layers:
+
+| | current | prototype |
+| --- | ---: | ---: |
+| blank paper welded | 2,619 m | **0 m** |
+| layers refused a tolerance | 0 | 0 |
+| layers whose tolerance is unchanged | — | 30 of 42 |
+
+An earlier version that searched the whole range for the largest step
+scored the same 0 m of phantom but refused a tolerance on 9 layers that
+work today and drove 3 more onto the 0.5 pt floor, which would silently
+stop them chaining at all. Anchoring the split above the median fixes that;
+the phantom figure alone would not have caught it.
+
+### The open question — why this is a direction and not a fix
+
+On `E_Dittop` at `page_index` 7 the prototype's tolerance produces **338
+chains from 339 fragments**: essentially nothing joins, and the total lands
+exactly on the drawn ink (972.8 m against 972.7 m). The layer has 106 gaps
+at 2.9 pt, so a 4.41 pt tolerance should be joining dashes — and it does
+not. Whatever those 2.9 pt gaps are, `_links` refuses them for a reason
+that is not the tolerance: mutual-best matching, the 25 degree angle test,
+or the lateral band.
+
+So the prototype removes the over-count without establishing that what is
+left is right. The true length of that layer is somewhere between the raw
+ink and a correctly chained figure, and I have not pinned it down.
+
+### A second behaviour found on the way
+
+Chaining is **not monotonic** in `gap_tol` on this layer:
+
+```
+tol    4.41 pt -> 338 chains,  972.82 m
+tol   10.00 pt -> 337 chains,  973.59 m
+tol   20.70 pt -> 336 chains,  975.26 m
+tol   50.00 pt -> 258 chains, 1231.58 m
+tol 1010.52 pt -> 285 chains, 2103.23 m   <- more tolerance, MORE chains
+```
+
+A larger tolerance changes which pairs are mutual-best, so it can break
+chains apart rather than merge them. That makes "raise the tolerance until
+it looks right" an unsound way to tune a layer by hand, which is worth
+knowing independently of finding F.
