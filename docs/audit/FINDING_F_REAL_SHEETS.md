@@ -247,3 +247,95 @@ composite symbol layer and **refuse to chain it**, the way
 layer is a number with no meaning behind it.
 
 Probe: `docs/audit/hachure_vs_line_probe.py`.
+
+## Scope, measured over the whole drawing — F is not a ditch-top problem
+
+Every layer on all 13 pages, 446 layer-pages in total.
+
+The raw headline is misleading and worth stating so it is not quoted: 161
+layer-pages weld large gaps, totalling **50,529 m**. But the top entries are
+`Notes`, `P_Text`, `XREF`, `P_PROFILE GRID`, `P_Road_Txt` and title-block
+frames - text and annotation, where chaining is meaningless by construction
+and nobody would ask for a length. Counting those metres would be alarmism.
+
+Excluding annotation (text, dimensions, grid, frames, xrefs, symbols,
+labels) leaves **302 plausible-geometry layer-pages, 48 of which weld blank
+paper, totalling 6,133 m**:
+
+| layer | phantom | what it is |
+| --- | ---: | --- |
+| `E_Dittop` | 2,170.6 m | ditch top - hachure |
+| `E_PL` | 1,088.7 m | property line, profile sheets 8-9 |
+| `Abby_Cover Sheet Linework` | 513.3 m | cover sheet |
+| `E_Feat_Pt`, `E_Hydro_Pt` | 827.6 m | **point/marker layers** - meaningless to chain, like text |
+| `P_Ditch top` | 448.7 m | ditch top - hachure |
+| `P_Sw` | 309.4 m | sidewalk - real linework |
+| `P_Wall` | 134.9 m | wall - real linework, and quantity-bearing |
+
+My earlier figure - 11 of 39 layers, 2,619 m - was scoped to the
+ditch/pavement/curb subset and is still right for it. The drawing-wide
+number is 48 of 302 and 6,133 m.
+
+### `P_Wall` is a third failure mode, and neither patch nor prototype helps
+
+`P_Wall` carries a quantity (items 3.03/3.05/3.07). Measured:
+
+```
+page_index 10:  drawn  68.14 m  ->  chained 125.46 m   (+84%)
+    gap_stats = {median: 248.85, p90: 290.58, max: 290.58, count: 8}
+page_index  7:  drawn  68.13 m  ->  chained 103.59 m   (+52%)
+    gap_stats = {median: 237.12, p90: 237.12, max: 237.12, count: 2}
+```
+
+There is **no low mode at all** - every measured gap is hundreds of points.
+So `MIN_GAP_SAMPLE` picks the median (237.12) and gets the same huge
+tolerance; the linetype-cluster prototype finds no cluster to take. The
+layer simply has no linetype: the walls are genuinely separate objects that
+should never be joined to each other, and every statistic derived from
+their gaps is meaningless.
+
+`P_Sw` is the ordinary bimodal case by contrast - `median 4.24, p90 186.30`
+- and goes from 65.17 m drawn to 140.35 m chained, +115%.
+
+So there are three distinct shapes, and the automatic tolerance handles
+none of them: a hachure layer (tick pitch mistaken for a linetype gap), a
+bimodal line layer (real breaks pull the p90 into the wrong mode), and a
+layer of separate objects with no linetype at all.
+
+## The geometric classifier does not work - measured, not assumed
+
+Yesterday I concluded the fix was to "recognise a composite symbol layer
+and refuse to chain it". That does not reduce to a rule. Testing the
+sharpest discriminator I could build - are the short fragments
+perpendicular to the long ones - over 77 layers:
+
+| | score |
+| --- | ---: |
+| ditch tops (the target) | 36-100% |
+| `E_Fence` p10 | 96% |
+| `P_Toe` p4 | 94% |
+| `P_Culv` p3 | 71% |
+
+No separating threshold exists. And `P_Toe` is the instructive
+counterexample: it scores 94% yet is a perfectly sound dashed line -
+
+```
+page_index 3: drawn 74.02 m -> chained 103.27 m
+    gap_stats = {median: 8.52, p90: 8.53, max: 298.46, count: 86}
+    gap_tol 12.80; the 298 pt outlier is NOT bridged
+```
+
+39 joins at about 8.5 pt each account for the whole +29 m. That is dash
+restoration working exactly as intended.
+
+So the operative signal is the **shape of the gap distribution**, not
+fragment geometry. The hachure finding explains *why* the ditch tops are
+bimodal; it is not itself the detector.
+
+### One more thing the P_Toe measurement establishes
+
+`SCOPE_LEDGER_Sheet03_page3_2026-09-02.md` records `P_Toe` at **103.3 m**.
+`chains_on_layer` returns **103.27 m**. The ledger takes figures verbatim
+from this code path - that pathway is confirmed rather than assumed, which
+is what makes the tolerance defect worth fixing even though every quantity
+checked so far is sound.
