@@ -339,3 +339,59 @@ bimodal; it is not itself the detector.
 from this code path - that pathway is confirmed rather than assumed, which
 is what makes the tolerance defect worth fixing even though every quantity
 checked so far is sound.
+
+## A fourth attempt, and what four failures together say
+
+The gap-shape rule I proposed at the end of the last section does not work
+either. Two tests: refuse when the median gap exceeds the median fragment
+("a linetype's gap is smaller than its dash"), otherwise take the gap
+population the median belongs to.
+
+Measured over 243 de-duplicated linework layer-pages, with both acceptance
+criteria this time:
+
+| | current | candidate |
+| --- | ---: | ---: |
+| phantom | 4,735 m | 382 m |
+| currently-correct layers changed | — | **51 of 200** |
+| refusals on layers that compute correctly today | — | **33** |
+
+The first test is wrong on its face:
+
+```
+P_Pavement edge p7:  median dash 8.52 pt,  median gap 12.73 pt  -> REFUSED
+E_Ep            p7:  median dash 8.52 pt,  median gap 12.78 pt  -> REFUSED
+P_Wall         p10:  median dash 3.42 pt,  median gap  0.00 pt  -> allowed
+```
+
+A dash of 8.52 pt with a gap of 12.73 pt is an ordinary dashed pattern -
+there is no rule that a linetype's gap must be shorter than its dash. So
+the test refuses `P_Pavement edge` and `E_Ep`, both working
+quantity-bearing linework, and misses `P_Wall`, the layer it was designed
+for. Wrong in both directions.
+
+### Four attempts, one conclusion
+
+| attempt | result |
+| --- | --- |
+| `MIN_GAP_SAMPLE` (in the A-E patch) | repairs 1 of the 11 welding layers |
+| linetype-cluster prototype | removes the phantom, cannot show the remainder is right |
+| geometric hachure classifier | no separating threshold; `P_Toe` scores 94% and is sound |
+| dash-versus-gap rule | false premise; refuses working layers, misses its target |
+
+The common thread is not that each rule was badly chosen. It is that **the
+information needed is not present in the data these rules read.** Layers
+that must be chained and layers that must not produce indistinguishable
+gap distributions and indistinguishable fragment geometry: `P_Toe` looks
+like a hachure and is a line; `P_Pavement edge` has a gap longer than its
+dash and is a line; `P_Wall` has no linetype and looks unremarkable.
+
+That points somewhere different from a better statistic.
+`chains_on_layer` should not silently derive a tolerance for a number that
+becomes a quantity. Either the caller supplies `gap_tol` - which the
+documented operator call currently does not - or the function returns what
+it inferred **and the evidence for it** (the gap histogram, the share of
+fragments it welded, the largest single weld) so that a person or a QA gate
+can see when a chain is meaningless. The defect that made finding F
+invisible was never the percentile. It was that a layer nobody should have
+chained returned a plausible number with nothing attached to say so.
