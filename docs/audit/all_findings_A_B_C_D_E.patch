@@ -294,15 +294,15 @@ index 5c78e6b..ebcb004 100644
              f"tracked path matches prohibited term #{index}"
              for index, pattern in enumerate(_TERM_RES)
 diff --git a/tests_civil/run_civil_tests.py b/tests_civil/run_civil_tests.py
-index ea5be2e..93bed17 100644
+index 3284c0a..7335e6a 100644
 --- a/tests_civil/run_civil_tests.py
 +++ b/tests_civil/run_civil_tests.py
 @@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
  sys.path.insert(0, str(ROOT / "src"))
  sys.path.insert(0, str(ROOT))
  
--EXPECTED_TEST_COUNT = 629
-+EXPECTED_TEST_COUNT = 640
+-EXPECTED_TEST_COUNT = 639
++EXPECTED_TEST_COUNT = 650
  
  
  def main() -> int:
