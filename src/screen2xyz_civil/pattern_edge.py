@@ -385,7 +385,8 @@ LATTICE_TOL = 0.12
 
 
 def lattice_report(
-    points: Iterable[Sequence[float]], *, pitch_pt: float, min_edges: int = 8
+    points: Iterable[Sequence[float]], *, pitch_pt: float, min_edges: int = 8,
+    grid_angle_deg: float = 0.0,
 ) -> dict[str, Any]:
     """Is this boundary a hull drawn through the points of a stipple?
 
@@ -398,8 +399,14 @@ def lattice_report(
     other check.
     """
 
-    if pitch_pt is None or pitch_pt <= 0:
+    if pitch_pt is None or not math.isfinite(pitch_pt) or pitch_pt <= 0:
         raise PatternEdgeError("pitch_pt must be a positive length")
+    if not math.isfinite(grid_angle_deg):
+        raise PatternEdgeError("grid_angle_deg must be finite")
+    # Supply this angle from the stipple itself, never fit the boundary being
+    # tested. Searching many orientations on that boundary inflates false hits.
+    angle = math.radians(grid_angle_deg)
+    ca, sa = math.cos(angle), math.sin(angle)
     rows = _as_points(points)
     if len(rows) >= 2 and rows[0] == rows[-1]:
         rows = rows[:-1]
@@ -419,14 +426,13 @@ def lattice_report(
     # A stipple is a grid, so an edge between two of its points has BOTH
     # components on the pitch: (dx, dy) = (i, j) x pitch. Its length is a
     # multiple only when i or j is zero, which is why a length test misses
-    # the diagonals. Axis-aligned grids only; a rotated stipple would need
-    # its axes found first.
+    # the diagonals. Rotate into the independently supplied stipple axes.
     vectors = []
     for i in range(len(rows)):
         a, b = rows[i], rows[(i + 1) % len(rows)]
         dx, dy = b[0] - a[0], b[1] - a[1]
         if abs(dx) > 1e-9 or abs(dy) > 1e-9:
-            vectors.append((dx, dy))
+            vectors.append((dx * ca + dy * sa, -dx * sa + dy * ca))
     on = 0
     tol = LATTICE_TOL * pitch_pt
     for dx, dy in vectors:
@@ -440,6 +446,7 @@ def lattice_report(
         "on_lattice_edges": on,
         "share": share,
         "pitch_pt": pitch_pt,
+        "grid_angle_deg": grid_angle_deg,
         "on_lattice": on_lattice,
         "detail": (
             f"{on} of {len(vectors)} edges (after merging collinear runs) have both components "

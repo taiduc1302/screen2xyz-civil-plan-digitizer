@@ -399,7 +399,13 @@ def objects_on_layer(
         if kind_ == "clip":
             sc = d.get("scissor")
             if sc is not None:
-                stack.append((level, sc, _clip_polygon(d.get("items", ()))))
+                try:
+                    polygon = _clip_polygon(d.get("items", ()))
+                except ValueError:
+                    # Unsupported compound paths must not erase candidates.
+                    # [] means unknown; printed_objects remains authoritative.
+                    polygon = []
+                stack.append((level, sc, polygon))
             continue
         if kind_ == "group" or "items" not in d:
             continue
@@ -422,6 +428,8 @@ def objects_on_layer(
             for sx, sy in samples:
                 ok = True
                 for _, sc, poly in stack:
+                    if poly == []:
+                        continue
                     if poly is not None:
                         if not _point_in_polygon(sx, sy, poly):
                             ok = False
@@ -474,35 +482,64 @@ def objects_on_layer(
             "points_raw": dedup,
             "rect_raw": (float(rect.x0), float(height - rect.y1), float(rect.x1), float(height - rect.y0)),
             "clipped": clipped, "visible_fraction": round(visible_fraction, 3), "clip_raw": clip_raw,
+            "clip_geometry_status": ("UNSUPPORTED_RENDER_REQUIRED" if any(poly == [] for _, _, poly in stack)
+                                     else "SAMPLED_CANDIDATE" if stack else "UNCLIPPED"),
         })
     return out
 
 
-def _clip_polygon(items: Any) -> list[tuple[float, float]] | None:
-    """The clip path as a polygon in get_drawings space, or None for a plain
-    rectangle (then the scissor box is exact). Curved clips are sampled by
-    their control points, which is good enough to say inside or outside."""
+def _clip_polygon(items: Any, *, tolerance: float = 0.05) -> list[tuple[float, float]] | None:
+    """Flatten one clip ring within a point-space tolerance, not its control hull.
 
-    pts: list[tuple[float, float]] = []
-    only_rect = True
-    for it in items:
-        op = it[0]
-        if op == "l":
-            only_rect = False
-            for p in it[1:3]:
-                q = (float(p.x), float(p.y))
-                if not pts or pts[-1] != q:
-                    pts.append(q)
-        elif op == "c":
-            only_rect = False
-            for p in it[1:5]:
-                q = (float(p.x), float(p.y))
-                if not pts or pts[-1] != q:
-                    pts.append(q)
-        elif op in ("re", "qu"):
-            pass
-    if only_rect or len(pts) < 3:
+    None denotes one axis-aligned rectangle. Unsupported/multiple rings raise
+    ValueError, so callers can require renderer verification instead of joining
+    unrelated subpaths. Curve approximation is not a visibility certificate.
+    """
+    import math
+    if not math.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError("clip tolerance must be finite and positive")
+    items = list(items)
+    if len(items) == 1 and items[0][0] == "re":
         return None
+    pts: list[tuple[float, float]] = []
+
+    def point(p):
+        return (float(p.x), float(p.y))
+
+    def flatten(a, b, c, d, depth=0):
+        # Distance to the chord segment also detects collinear overshoot.
+        dx, dy = d[0]-a[0], d[1]-a[1]
+        denom = dx*dx + dy*dy
+        def distance(p):
+            t = max(0.0, min(1.0, ((p[0]-a[0])*dx + (p[1]-a[1])*dy)/denom)) if denom else 0.0
+            return math.hypot(p[0]-a[0]-t*dx, p[1]-a[1]-t*dy)
+        if max(distance(b), distance(c)) <= tolerance:
+            return [d]
+        if depth >= 20:
+            raise ValueError("curve subdivision limit reached")
+        def mid(p, q):
+            return ((p[0]+q[0])/2, (p[1]+q[1])/2)
+        ab, bc, cd = mid(a,b), mid(b,c), mid(c,d)
+        abc, bcd = mid(ab,bc), mid(bc,cd)
+        m = mid(abc,bcd)
+        return flatten(a,ab,abc,m,depth+1) + flatten(m,bcd,cd,d,depth+1)
+
+    for it in items:
+        if it[0] == "l":
+            segment = [point(p) for p in it[1:3]]
+        elif it[0] == "c":
+            a,b,c,d = [point(p) for p in it[1:5]]
+            segment = [a] + flatten(a,b,c,d)
+        elif it[0] == "qu" and len(items) == 1:
+            q = it[1]
+            segment = [point(p) for p in (q.ul,q.ur,q.lr,q.ll,q.ul)]
+        else:
+            raise ValueError("unsupported or compound clip path")
+        if pts and (math.dist(pts[-1], segment[0]) > 1e-5 or pts[-1] == pts[0]):
+            raise ValueError("multiple clip subpaths")
+        pts.extend(segment if not pts else segment[1:])
+    if len(pts) < 3:
+        raise ValueError("degenerate clip")
     return pts
 
 

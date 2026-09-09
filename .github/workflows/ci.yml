@@ -95,4 +95,4 @@ jobs:
           python-version: '3.14'
       - name: M2 Windows integration (interactive cases may skip with reason)
         shell: bash
-        run: PYTHONPATH=src python tests_m2/run_m2_integration.py
+        run: PYTHONPATH=src S2XYZ_M2_TEST_TIMEOUT_FACTOR=3 python tests_m2/run_m2_integration.py

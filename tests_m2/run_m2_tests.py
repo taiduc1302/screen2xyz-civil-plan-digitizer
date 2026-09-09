@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-EXPECTED_TEST_COUNT = 498  # frozen 2026-07-21; update intentionally with tests
+EXPECTED_TEST_COUNT = 501  # +3 harness-only timeout headroom tests, 2026-09-07
 
 
 def main() -> int:

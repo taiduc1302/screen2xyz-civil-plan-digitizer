@@ -190,6 +190,7 @@ def polygon_health(
     metres_per_unit: float | None = None,
     sliver_ratio_threshold: float = 25.0,
     pattern_pitch_pt: float | None = None,
+    pattern_grid_angle_deg: float = 0.0,
     check_pattern_chase: bool = True,
 ) -> dict[str, Any]:
     """Check a polygon before it is written to Bluebeam.
@@ -284,7 +285,8 @@ def polygon_health(
     # check above passes it; its edges are integer multiples of the pitch.
     # Five ditch-infill polygons on DEMO-001-06 reached the host that way.
     if check_pattern_chase and pattern_pitch_pt and len(rows) >= 8:
-        lattice = pattern_edge.lattice_report(rows, pitch_pt=pattern_pitch_pt)
+        lattice = pattern_edge.lattice_report(rows, pitch_pt=pattern_pitch_pt,
+                                             grid_angle_deg=pattern_grid_angle_deg)
         if lattice["on_lattice"]:
             findings.append(
                 Finding(
