@@ -185,3 +185,65 @@ come from the layers it does not touch, and the layers it does touch are
 used for nothing. It bites only if a future measurement reaches for a ditch
 **top** layer - `E_Dittop` or `P_Ditch top` - which is exactly where the
 automatic tolerance welds hundreds of points of blank paper.
+
+## The open question, answered — and it corrects the prototype's premise
+
+I said the prototype's tolerance "should be joining" `E_Dittop`'s 106 gaps
+at 2.9 pt and that something in `_links` was wrongly refusing them. That was
+wrong, and the correction matters more than the original claim.
+
+Instrumenting `_links` on that layer: of 678 fragment ends, 355 have no
+neighbour within 4.41 pt at all, **321 have one but fail the 25 degree
+test**, and 2 pass. The angles are not near zero, where a dash continuing
+its own line would sit - they cluster at 90 and 180 degrees.
+
+The coordinates say why:
+
+```
+fragment 1: (1521.2, 394.3) -> (1521.1, 400.1)   vertical, 5.82 pt
+fragment 5: (1459.6, 388.3) -> (1459.6, 399.9)   vertical, 11.64 pt
+fragment 0: (1553.3, 400.3) -> (1526.9, 400.1)   horizontal, 26.40 pt
+```
+
+The two verticals are 2.94 pt apart and both end on the same horizontal
+line. They are not dashes of a line - they are **hachure ticks hanging off
+a baseline**, the standard civil symbol for the top of a ditch. `_links`
+refuses them correctly. There is no bug there.
+
+So `nearest_gap_stats` on these layers is measuring the **tick pitch**, and
+its whole premise - "a dashed linetype has a constant gap, so the 90th
+percentile is the linetype's gap" - does not apply to a layer that is not a
+linetype at all.
+
+### The layers split cleanly on their own geometry
+
+| layer | median fragment | longest | perpendicular to main axis | F hits |
+| --- | ---: | ---: | ---: | --- |
+| `E_Dittop` (7 sheets) | **11.64 pt** | 119-132 pt | 36-64% | 7 of 7 |
+| `P_Ditch top` (7 sheets) | **11.64 pt** | 70-84 pt | 33-50% | 4 of 7 |
+| `E_Ditbtm` (6 sheets) | 8.52 pt | 19-20 pt | 0-33% | none |
+| `P_Ditch bottom` (6) | 8.52-16.68 pt | 19-143 pt | 0-49% | none |
+
+The ditch **tops** are a baseline plus ticks; the ditch **bottoms** are
+plain dashed lines with uniform short fragments and no perpendicular
+component. That is the whole difference, and it is why the bottoms chain
+correctly and the tops cannot.
+
+Note the three `P_Ditch top` layers F does *not* hit (pages 4, 5, 11) are
+the same kind of layer - their gap distribution simply happened to yield a
+small tolerance. **All fourteen ditch-top layers are unchainable; eleven of
+them happen to produce an inflated number and three happen to produce a
+plausible one.** A plausible number from a meaningless computation is the
+worse of the two.
+
+### What this means for the fix
+
+The prototype does not repair these layers either - it fails in the safer
+direction, returning the raw ink instead of 2,103 m of welded baseline. The
+correct behaviour is not a better percentile: it is to recognise a
+composite symbol layer and **refuse to chain it**, the way
+`layer_dictionary` already separates `outline_objects` from
+`stroke_objects` for the shading layers. Any tolerance at all on a hachure
+layer is a number with no meaning behind it.
+
+Probe: `docs/audit/hachure_vs_line_probe.py`.
