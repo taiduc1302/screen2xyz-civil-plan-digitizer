@@ -115,15 +115,15 @@ index 45e05b6..8824bd4 100644
  
      links, branches = _links(live, gap_tol=gap_tol, angle_tol=angle_tol)
 diff --git a/tests_civil/run_civil_tests.py b/tests_civil/run_civil_tests.py
-index ea5be2e..a0e6e6a 100644
+index 3284c0a..dd2b025 100644
 --- a/tests_civil/run_civil_tests.py
 +++ b/tests_civil/run_civil_tests.py
 @@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
  sys.path.insert(0, str(ROOT / "src"))
  sys.path.insert(0, str(ROOT))
  
--EXPECTED_TEST_COUNT = 629
-+EXPECTED_TEST_COUNT = 634
+-EXPECTED_TEST_COUNT = 639
++EXPECTED_TEST_COUNT = 644
  
  
  def main() -> int:
