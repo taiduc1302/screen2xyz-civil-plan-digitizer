@@ -314,3 +314,37 @@ class TakeoffDomainTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DegenerateGeometryTests(unittest.TestCase):
+    """Coverage must be earned by real geometry (audit gap batch A/B)."""
+
+    def test_zero_length_line_is_refused(self):
+        with self.assertRaises(TakeoffError):
+            TakeoffGeometry(
+                LINE, vertices=(TakeoffVertex(10.0, 10.0), TakeoffVertex(10.0, 10.0))
+            )
+
+    def test_self_intersecting_ring_is_refused(self):
+        crossed = (
+            TakeoffVertex(0.0, 200.0),
+            TakeoffVertex(100.0, 200.0),
+            TakeoffVertex(0.0, 300.0),
+            TakeoffVertex(160.0, 300.0),
+        )
+        with self.assertRaises(TakeoffError):
+            TakeoffGeometry(POLYGON, vertices=crossed)
+
+    def test_concave_but_simple_ring_is_still_accepted(self):
+        # An L-shaped widening or a ditch infill is concave and perfectly valid;
+        # the self-intersection guard must not reject ordinary civil geometry.
+        concave = (
+            TakeoffVertex(0.0, 0.0),
+            TakeoffVertex(100.0, 0.0),
+            TakeoffVertex(100.0, 40.0),
+            TakeoffVertex(40.0, 40.0),
+            TakeoffVertex(40.0, 100.0),
+            TakeoffVertex(0.0, 100.0),
+        )
+        geometry = TakeoffGeometry(POLYGON, vertices=concave)
+        self.assertAlmostEqual(geometry.area_px2, 6400.0, places=6)

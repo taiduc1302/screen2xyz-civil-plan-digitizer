@@ -1,0 +1,552 @@
+diff --git a/src/screen2xyz_civil/agent_session.py b/src/screen2xyz_civil/agent_session.py
+index bd509b7..31f35c9 100644
+--- a/src/screen2xyz_civil/agent_session.py
++++ b/src/screen2xyz_civil/agent_session.py
+@@ -611,6 +611,33 @@ class AgentTakeoffSession:
+         base["scale"] = self.scale.to_dict()
+         base["unresolved"] = self.context.unresolved_summary()
+         base["source_sha256"] = self.source_sha256
++        # scope_ledger imports agent_session, so this import is local.
++        from .scope_ledger import scope_summary  # noqa: PLC0415
++
++        base["scope"] = scope_summary(self)
++        unsearched = base["scope"].get("unsearched_rule_ids") or []
++        if unsearched:
++            # Coverage was computed and then not read: the gateway attached
++            # it beside the QA result, nothing consulted it, and a pass with
++            # whole rules never searched came back with issues: [].
++            base.setdefault("issues", []).append(
++                {
++                    "severity": "ERROR",
++                    "code": "SCOPE_NOT_SEARCHED",
++                    "unsearched_rule_ids": sorted(unsearched),
++                    "detail": (
++                        "Scope rules were never searched. Propose, withhold, or record "
++                        "them as not-present with evidence before reporting completion."
++                    ),
++                }
++            )
++            base["issue_counts"] = {
++                severity: sum(
++                    issue["severity"] == severity for issue in base["issues"]
++                )
++                for severity in ("CRITICAL", "ERROR", "WARNING", "INFO")
++            }
++            base["blocked"] = base.get("blocked", 0) + 1
+         return base
+ 
+     def takeoff_summary(self, item: TakeoffMeasurement) -> dict[str, Any]:
+diff --git a/src/screen2xyz_civil/fill_layers.py b/src/screen2xyz_civil/fill_layers.py
+index f793275..cd1b2d1 100644
+--- a/src/screen2xyz_civil/fill_layers.py
++++ b/src/screen2xyz_civil/fill_layers.py
+@@ -211,6 +211,20 @@ def render_viewport(
+             raise FillLayerError(f"page index {page_index} is outside {source.name}")
+         page = document[page_index]
+         rotation = int(page.rotation)
++        # `page.rect` is the CropBox; a markup's /Rect is in MediaBox-anchored
++        # user space. Where the two differ, every coordinate this module
++        # returns is out by the CropBox origin - a pure translation, so
++        # lengths and areas stay right while the geometry lands somewhere
++        # else on the sheet, and the session's own bounds check cannot see it
++        # because a shifted polygon is smaller than the frame it is compared
++        # against. Refuse rather than place a markup that looks measured.
++        media, crop = page.mediabox, page.cropbox
++        if any(abs(float(a) - float(b)) > 1e-6 for a, b in zip(media, crop)):
++            raise FillLayerError(
++                f"page {page_index} has a CropBox {tuple(crop)} that is not its "
++                f"MediaBox {tuple(media)}; raw-frame coordinates from this "
++                "module would be out by the CropBox origin"
++            )
+         width, height = float(page.rect.width), float(page.rect.height)
+         if rotation == 180:
+             clip = (width - viewport.x1, viewport.y0, width - viewport.x0, viewport.y1)
+@@ -224,9 +238,17 @@ def render_viewport(
+             alpha=False,
+         )
+         rgb = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)[:, :, :3].copy()
++        # get_pixmap snaps the clip outward to whole pixels, so the first
++        # pixel is at pix.irect.x0 / zoom, not at clip[0]. Taking the origin
++        # from the request instead of the pixmap put every traced boundary
++        # up to one pixel out - 0.8 pt at 90 DPI, about 0.07 m at 1:250 - in
++        # one direction, so it biases rather than averaging away.
++        zoom = dpi / 72.0
++        irect = tuple(pix.irect)
+         frame = RenderFrame(
+             dpi=dpi, rotation=rotation, page_width_pt=width, page_height_pt=height,
+-            display_x0=clip[0], display_y0=clip[1], width_px=pix.w, height_px=pix.h,
++            display_x0=irect[0] / zoom, display_y0=irect[1] / zoom,
++            width_px=pix.w, height_px=pix.h,
+         )
+         return rgb, frame
+     finally:
+diff --git a/src/screen2xyz_civil/layer_chains.py b/src/screen2xyz_civil/layer_chains.py
+index 45e05b6..8824bd4 100644
+--- a/src/screen2xyz_civil/layer_chains.py
++++ b/src/screen2xyz_civil/layer_chains.py
+@@ -33,6 +33,13 @@ DEFAULT_ANGLE_TOL_DEG = 25.0
+ GAP_TOL_FACTOR = 1.5
+ #: Never let an automatic tolerance collapse below this many points.
+ MIN_GAP_TOL = 0.5
++#: Below this many measured gaps the 90th percentile IS the largest gap on
++#: the layer, so an automatic tolerance read from it is 1.5x the biggest
++#: break the engineer drew and welds separate lines into one. Under that,
++#: read the median instead: a real linetype gap sits at it, and a single
++#: isolated fragment cannot inflate it. Layers get small exactly when the
++#: method is working - `only_visible` drops what the sheet does not print.
++MIN_GAP_SAMPLE = 10
+ #: A continuation on our own line sits within this many points of the
+ #: line's axis. The proposed pavement edge on 24-047 sheet 04 is drawn
+ #: beside a parallel line 3.4 pt away (the printed 0.30 m gravel shoulder);
+@@ -99,12 +106,47 @@ def nearest_gap_stats(fragments: Sequence[Sequence[Point]]) -> dict[str, float]:
+     gaps.sort()
+     return {
+         "median": gaps[len(gaps) // 2],
+-        "p90": gaps[min(len(gaps) - 1, int(len(gaps) * 0.9))],
++        "p90": gaps[max(0, math.ceil(0.9 * len(gaps)) - 1)],
+         "max": gaps[-1],
+         "count": float(len(gaps)),
+     }
+ 
+ 
++def _point_at(pts: Sequence[Point], t: float) -> Point:
++    """The point at fraction ``t`` of a fragment's own length."""
++
++    total = _length(pts)
++    if total <= 0:
++        return (float(pts[0][0]), float(pts[0][1]))
++    target, run = t * total, 0.0
++    for a, b in zip(pts, pts[1:]):
++        step = math.dist(a, b)
++        if run + step >= target:
++            f = 0.0 if step <= 0 else (target - run) / step
++            return (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
++        run += step
++    return (float(pts[-1][0]), float(pts[-1][1]))
++
++
++def _paths_agree(a: Sequence[Point], b: Sequence[Point], tol: float) -> bool:
++    """Do two fragments that share their ends also share the way between?
++
++    Endpoints alone cannot tell a plotted copy from the far side of an
++    island, the other half of a circle, or an arc from its chord - each of
++    those meets at both ends and encloses the drawing in between, and
++    dropping one of them silently removes real line. A plotted copy matches
++    everywhere, so comparing the length and three interior samples separates
++    the two cases and costs nothing.
++    """
++
++    if abs(_length(a) - _length(b)) > tol:
++        return False
++    return all(
++        math.dist(_point_at(a, t), _point_at(b, t)) <= tol
++        for t in (0.25, 0.5, 0.75)
++    )
++
++
+ #: Two fragments whose ends coincide within this many points are one
+ #: fragment plotted twice. A CAD export plots the same line once per xref
+ #: that carries it - 24-047 sheet 04's pavement edge arrives in two or
+@@ -117,26 +159,31 @@ def dedupe_fragments(frags: Sequence[Sequence[Point]], *, tol: float = DUPLICATE
+     """Indexes of the fragments to keep, and how many duplicates were dropped.
+ 
+     A duplicate has both ends within ``tol`` of another fragment's ends, in
+-    either orientation. The first occurrence is kept.
++    either orientation, **and** the same path between them. The first
++    occurrence is kept.
+     """
+ 
+     keep: list[int] = []
+-    kept_ends: list[tuple[Point, Point]] = []
++    kept: list[tuple[Point, Point, list[Point]]] = []
+     dropped = 0
+     for i, f in enumerate(frags):
+         a, b = f[0], f[-1]
+         dup = False
+-        for (ka, kb) in kept_ends:
+-            if (math.dist(a, ka) <= tol and math.dist(b, kb) <= tol) or (
+-                math.dist(a, kb) <= tol and math.dist(b, ka) <= tol
+-            ):
++        for (ka, kb, kept_points) in kept:
++            if math.dist(a, ka) <= tol and math.dist(b, kb) <= tol:
++                same = _paths_agree(f, kept_points, tol)
++            elif math.dist(a, kb) <= tol and math.dist(b, ka) <= tol:
++                same = _paths_agree(f, kept_points[::-1], tol)
++            else:
++                continue
++            if same:
+                 dup = True
+                 break
+         if dup:
+             dropped += 1
+             continue
+         keep.append(i)
+-        kept_ends.append((a, b))
++        kept.append((a, b, list(f)))
+     return keep, dropped
+ 
+ 
+@@ -242,7 +289,8 @@ def chain_fragments(
+     live = [frags[i] for i in index]
+     stats = nearest_gap_stats(live)
+     if gap_tol is None:
+-        gap_tol = max(MIN_GAP_TOL, GAP_TOL_FACTOR * stats["p90"])
++        basis = stats["p90"] if stats["count"] >= MIN_GAP_SAMPLE else stats["median"]
++        gap_tol = max(MIN_GAP_TOL, GAP_TOL_FACTOR * basis)
+     angle_tol = math.radians(angle_tol_deg)
+ 
+     links, branches = _links(live, gap_tol=gap_tol, angle_tol=angle_tol)
+diff --git a/src/screen2xyz_civil/pdf.py b/src/screen2xyz_civil/pdf.py
+index 09d103c..6eb0cbf 100644
+--- a/src/screen2xyz_civil/pdf.py
++++ b/src/screen2xyz_civil/pdf.py
+@@ -72,6 +72,33 @@ def pypdf_available() -> bool:
+     return importlib.util.find_spec("pypdf") is not None
+ 
+ 
++def _effective_page_size(page: Any) -> tuple[float, float]:
++    """The rendered box: the CropBox clipped to the MediaBox, else the MediaBox.
++
++    Every renderer that matters here - PDFium, Revu, PyMuPDF - rasterises the
++    CropBox, and PyMuPDF's `page.rect` is that box. Reading the MediaBox
++    instead makes the declared page size disagree with the frame the geometry
++    is actually measured and drawn in whenever a sheet is cropped, which a
++    re-issue or an addendum can do at any time; the bounds check downstream
++    then passes geometry that is out of frame, because a shifted polygon is
++    smaller than the box it is compared against.
++    """
++
++    try:
++        media = [float(value) for value in page.mediabox]
++        crop = [float(value) for value in page.cropbox]
++    except Exception:
++        return float(page.mediabox.width), float(page.mediabox.height)
++    left = max(min(media[0], media[2]), min(crop[0], crop[2]))
++    bottom = max(min(media[1], media[3]), min(crop[1], crop[3]))
++    right = min(max(media[0], media[2]), max(crop[0], crop[2]))
++    top = min(max(media[1], media[3]), max(crop[1], crop[3]))
++    width, height = right - left, top - bottom
++    if width <= 0 or height <= 0:
++        return float(page.mediabox.width), float(page.mediabox.height)
++    return width, height
++
++
+ def inspect_pdf(path: Path) -> PdfDocumentInfo:
+     candidate = path.expanduser().resolve()
+     if not candidate.is_file() or candidate.suffix.lower() != ".pdf":
+@@ -85,8 +112,7 @@ def inspect_pdf(path: Path) -> PdfDocumentInfo:
+             raise PdfAdapterError("encrypted PDFs require an unlocked local copy")
+         pages = []
+         for index, page in enumerate(reader.pages):
+-            width = float(page.mediabox.width)
+-            height = float(page.mediabox.height)
++            width, height = _effective_page_size(page)
+             rotation = int(page.rotation or 0) % 360
+             if width <= 0 or height <= 0:
+                 raise PdfAdapterError("PDF page dimensions are invalid")
+diff --git a/tests/test_repository_sanitization.py b/tests/test_repository_sanitization.py
+index 5c78e6b..ebcb004 100644
+--- a/tests/test_repository_sanitization.py
++++ b/tests/test_repository_sanitization.py
+@@ -41,10 +41,21 @@ def _tracked_files() -> list[str]:
+     return [relpath for relpath in listing.stdout.split("\0") if relpath]
+ 
+ 
++#: Tracked deliberately under the owner's 2026-09-04 decision to keep the
++#: pilot tender's own material in this private repository (see CLAUDE.md).
++#: Everything outside these prefixes is still scanned; drop the prefix here
++#: to re-tighten once `pilot/` is removed.
++_EXEMPT_PREFIXES = ("pilot/",)
++
++
++def _scanned_files() -> list[str]:
++    return [p for p in _tracked_files() if not p.startswith(_EXEMPT_PREFIXES)]
++
++
+ def _tracked_text_files() -> list[str]:
+     return [
+         relpath
+-        for relpath in _tracked_files()
++        for relpath in _scanned_files()
+         if not relpath.lower().endswith(".png")
+     ]
+ 
+@@ -53,16 +64,15 @@ class RepositorySanitizationTests(unittest.TestCase):
+     # Retired by the owner on 2026-09-04: the repository is private and the
+     # owner chose to keep the pilot tender's drawings, ledger and reports in
+     # `pilot/24-047/` so that any AI or contributor has everything in one
+-    # place. The scan is kept (skipped) in case the repository is ever made
+-    # public - remove `pilot/` first, then re-enable it.
++    # place. Scoped rather than retired: `pilot/` is out of the scan and
++    # everything else stays in it, so the guard still reports on src/, docs/,
++    # tests/ and anything added later. A green no-op reported PASS while
++    # scanning zero files, which is worse than the visible SKIP it replaced.
+     def test_T_PRI_004_tracked_content_sensitive_term_scan(self):
+-        # Retired, not skipped: tests/run_all.py treats any skip as a failure.
+-        self.assertTrue(True, "sensitive-term scan retired by the owner on 2026-09-04")
+-        return
+         findings: list[str] = []
+         texts: list[str] = []
+         # File paths can leak identifiers just like file contents.
+-        all_paths = "\n".join(_tracked_files())
++        all_paths = "\n".join(_scanned_files())
+         findings.extend(
+             f"tracked path matches prohibited term #{index}"
+             for index, pattern in enumerate(_TERM_RES)
+diff --git a/tests_civil/run_civil_tests.py b/tests_civil/run_civil_tests.py
+index 3284c0a..7335e6a 100644
+--- a/tests_civil/run_civil_tests.py
++++ b/tests_civil/run_civil_tests.py
+@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
+ sys.path.insert(0, str(ROOT / "src"))
+ sys.path.insert(0, str(ROOT))
+ 
+-EXPECTED_TEST_COUNT = 639
++EXPECTED_TEST_COUNT = 650
+ 
+ 
+ def main() -> int:
+diff --git a/tests_civil/test_layer_chains.py b/tests_civil/test_layer_chains.py
+index b6b0855..0ef26f8 100644
+--- a/tests_civil/test_layer_chains.py
++++ b/tests_civil/test_layer_chains.py
+@@ -3,7 +3,11 @@ from __future__ import annotations
+ import math
+ import unittest
+ 
+-from screen2xyz_civil.layer_chains import chain_fragments, nearest_gap_stats
++from screen2xyz_civil.layer_chains import (
++    MIN_GAP_SAMPLE,
++    chain_fragments,
++    nearest_gap_stats,
++)
+ 
+ 
+ def dashes(x0, y, dash=10.0, gap=5.0, n=10, reverse_some=False):
+@@ -189,5 +193,66 @@ class InputTests(unittest.TestCase):
+         self.assertEqual(r["chains"][1]["members"], [0])
+ 
+ 
++class EnclosingPairTests(unittest.TestCase):
++    """Two fragments can share both ends and still be different line.
++
++    Endpoint-only dedupe dropped one of them and took its length with it,
++    with `duplicates_removed` as the only trace and no finding raised.
++    """
++
++    def test_a_shape_drawn_as_two_polylines_keeps_both_sides(self):
++        # a median island, a pavement patch, a curb return closed by its own
++        # tie line: the two sides meet at both ends and enclose the shape
++        top = [(0.0, 0.0), (10.0, 6.0), (30.0, 6.0), (40.0, 0.0)]
++        bottom = [(0.0, 0.0), (10.0, -6.0), (30.0, -6.0), (40.0, 0.0)]
++        drawn = sum(
++            math.dist(a, b) for f in (top, bottom) for a, b in zip(f, f[1:])
++        )
++        r = chain_fragments([top, bottom])
++        self.assertEqual(r["duplicates_removed"], 0)
++        self.assertEqual(r["fragments_used"], 2)
++        self.assertAlmostEqual(r["total_length"], drawn, places=6)
++
++    def test_an_arc_and_its_chord_are_not_the_same_line(self):
++        arc = [(0.0, 0.0), (5.0, 4.0), (10.0, 5.0), (15.0, 4.0), (20.0, 0.0)]
++        chord = [(0.0, 0.0), (20.0, 0.0)]
++        r = chain_fragments([arc, chord])
++        self.assertEqual(r["duplicates_removed"], 0)
++        self.assertEqual(r["fragments_used"], 2)
++
++    def test_a_reversed_plotted_copy_is_still_a_duplicate(self):
++        # the path check must not cost us the dedupe the method relies on
++        arc = [(0.0, 0.0), (5.0, 4.0), (10.0, 5.0), (15.0, 4.0), (20.0, 0.0)]
++        r = chain_fragments([arc, list(reversed(arc))])
++        self.assertEqual(r["duplicates_removed"], 1)
++        self.assertEqual(r["fragments_used"], 1)
++
++
++class GapStatisticTests(unittest.TestCase):
++    def test_a_full_layer_still_reads_its_tolerance_from_the_linetype(self):
++        # the guard below must not disturb the case that works: ten dashes
++        # give eighteen measured gaps, well over MIN_GAP_SAMPLE, so the
++        # tolerance still comes from the percentile as before
++        frags = dashes(0, 0, dash=10.0, gap=5.0, n=10)
++        stats = nearest_gap_stats(frags)
++        self.assertGreaterEqual(stats["count"], MIN_GAP_SAMPLE)
++        self.assertAlmostEqual(chain_fragments(frags)["gap_tol"], 7.5, places=6)
++
++    def test_a_small_layer_does_not_read_its_tolerance_from_its_largest_gap(self):
++        # four dashes plus one separate line 254 pt away: eight measured
++        # gaps, too few for a 90th percentile to mean anything. Reading the
++        # max would weld the two into one chain and count the blank paper
++        # between them as line.
++        frags = [[(x, 0.0), (x + 10.0, 0.0)] for x in (0.0, 12.0, 24.0, 36.0)]
++        frags.append([(300.0, 0.0), (310.0, 0.0)])
++        drawn = sum(
++            math.dist(a, b) for f in frags for a, b in zip(f, f[1:])
++        )
++        r = chain_fragments(frags)
++        self.assertLess(r["gap_tol"], 254.0)
++        self.assertEqual(len(r["chains"]), 2)
++        self.assertLess(r["total_length"], drawn + 20.0)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests_civil/test_page_frame.py b/tests_civil/test_page_frame.py
+new file mode 100644
+index 0000000..e573006
+--- /dev/null
++++ b/tests_civil/test_page_frame.py
+@@ -0,0 +1,110 @@
++"""The page frame the toolkit declares must be the one it draws in.
++
++`page.rect` in PyMuPDF is the CropBox and every renderer that matters here
++rasterises that box, but a PDF annotation's `/Rect` is in MediaBox-anchored
++user space. Where a sheet is cropped - a re-issue, an addendum, a re-print -
++the two disagree by the CropBox origin. It is a pure translation, so lengths
++and areas stay right and nothing looks wrong; only the placement moves, and
++the session's own bounds check cannot catch it because a shifted polygon is
++smaller than the frame it is compared against.
++"""
++
++from __future__ import annotations
++
++import unittest
++
++from screen2xyz_civil.pdf import inspect_pdf
++
++from .helpers_civil import fresh_dir
++
++MEDIA = (0.0, 0.0, 612.0, 792.0)
++CROP = (20.0, 30.0, 592.0, 762.0)
++
++
++def write_pdf(path, media, crop=None):
++    """A one-page PDF with a line at user-space (100,100)-(100,200)."""
++
++    content = b"1 w 0 G\n100 100 m 100 200 l S\n"
++    crop_entry = ("/CropBox [%g %g %g %g]" % crop) if crop else ""
++    objects = [
++        b"<< /Type /Catalog /Pages 2 0 R >>",
++        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
++        (
++            "<< /Type /Page /Parent 2 0 R /MediaBox [%g %g %g %g] %s "
++            "/Contents 4 0 R /Resources << >> >>" % (media + (crop_entry,))
++        ).encode(),
++        b"<< /Length %d >>\nstream\n" % len(content) + content + b"endstream",
++    ]
++    out = bytearray(b"%PDF-1.7\n")
++    offsets = []
++    for number, body in enumerate(objects, start=1):
++        offsets.append(len(out))
++        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
++    startxref = len(out)
++    out += b"xref\n0 %d\n" % (len(objects) + 1) + b"0000000000 65535 f \n"
++    for offset in offsets:
++        out += b"%010d 00000 n \n" % offset
++    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (
++        len(objects) + 1,
++        startxref,
++    )
++    path.write_bytes(bytes(out))
++    return path
++
++
++class DeclaredPageSizeTests(unittest.TestCase):
++    def test_an_uncropped_page_reports_the_mediabox_unchanged(self):
++        pdf = write_pdf(fresh_dir() / "plain.pdf", MEDIA)
++        page = inspect_pdf(pdf).pages[0]
++        self.assertAlmostEqual(page.width_points, 612.0, places=6)
++        self.assertAlmostEqual(page.height_points, 792.0, places=6)
++
++    def test_a_cropped_page_reports_the_rendered_box_not_the_mediabox(self):
++        pdf = write_pdf(fresh_dir() / "cropped.pdf", MEDIA, CROP)
++        page = inspect_pdf(pdf).pages[0]
++        self.assertAlmostEqual(page.width_points, 572.0, places=6)
++        self.assertAlmostEqual(page.height_points, 732.0, places=6)
++
++
++class RenderFrameTests(unittest.TestCase):
++    def setUp(self):
++        try:
++            import pymupdf  # noqa: F401,PLC0415
++        except ImportError:  # pragma: no cover - optional dependency
++            self.skipTest("pymupdf is not installed")
++
++    def test_the_fill_renderer_refuses_a_page_whose_cropbox_is_not_its_mediabox(self):
++        from screen2xyz_civil.fill_layers import FillLayerError, render_viewport
++        from screen2xyz_civil.plan_layers import Viewport
++
++        pdf = write_pdf(fresh_dir() / "cropped.pdf", MEDIA, CROP)
++        viewport = Viewport(
++            name="v", x0=50.0, y0=50.0, x1=300.0, y1=300.0,
++            metres_per_point_x=0.1, metres_per_point_y=0.1,
++        )
++        with self.assertRaises(FillLayerError) as caught:
++            render_viewport(pdf, 0, viewport, dpi=90)
++        self.assertIn("CropBox", str(caught.exception))
++
++    def test_the_render_frame_origin_comes_from_the_pixmap_not_the_request(self):
++        # get_pixmap snaps the clip outward to whole pixels; reading the
++        # origin back off the request put every traced boundary up to one
++        # pixel out, always in the same direction
++        from screen2xyz_civil.fill_layers import render_viewport
++        from screen2xyz_civil.plan_layers import Viewport
++
++        pdf = write_pdf(fresh_dir() / "plain.pdf", MEDIA)
++        viewport = Viewport(
++            name="v", x0=100.3, y0=200.7, x1=300.3, y1=400.7,
++            metres_per_point_x=0.1, metres_per_point_y=0.1,
++        )
++        _, frame = render_viewport(pdf, 0, viewport, dpi=90)
++        zoom = 90 / 72.0
++        self.assertAlmostEqual(frame.display_x0 * zoom % 1.0, 0.0, places=9)
++        self.assertAlmostEqual(frame.display_y0 * zoom % 1.0, 0.0, places=9)
++        self.assertLessEqual(frame.display_x0, 100.3)
++        self.assertLessEqual(frame.display_y0, 200.7)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests_civil/test_scope_ledger.py b/tests_civil/test_scope_ledger.py
+index 3523c6d..21b96af 100644
+--- a/tests_civil/test_scope_ledger.py
++++ b/tests_civil/test_scope_ledger.py
+@@ -149,5 +149,39 @@ class ScopeLedgerTests(unittest.TestCase):
+             )
+ 
+ 
++class CoverageGateTests(unittest.TestCase):
++    """Coverage has to fail QA, not merely appear beside it.
++
++    The gateway attached `scope` to the QA result and nothing consulted it,
++    so a pass with whole rules never searched came back with `issues: []` -
++    a clean bill for a half-finished sheet.
++    """
++
++    make_session = ScopeLedgerTests.make_session
++
++    def test_qa_refuses_a_sheet_with_rules_that_were_never_searched(self):
++        qa = self.make_session().qa_summary()
++        codes = [issue["code"] for issue in qa["issues"]]
++        self.assertIn("SCOPE_NOT_SEARCHED", codes)
++        self.assertGreaterEqual(qa["issue_counts"]["ERROR"], 1)
++        self.assertGreaterEqual(qa["blocked"], 1)
++
++    def test_qa_stops_objecting_once_every_rule_is_accounted(self):
++        session = self.make_session()
++        for rule_id in RULES:
++            set_scope_status(
++                session,
++                rule_id=rule_id,
++                status=WITHHELD,
++                detail=f"Synthetic coverage accounting for {rule_id}.",
++                now=LATER,
++            )
++        qa = session.qa_summary()
++        self.assertNotIn(
++            "SCOPE_NOT_SEARCHED", [issue["code"] for issue in qa["issues"]]
++        )
++        self.assertTrue(qa["scope"]["ready_for_coverage_review"])
++
++
+ if __name__ == "__main__":
+     unittest.main()

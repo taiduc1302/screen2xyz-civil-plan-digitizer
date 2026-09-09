@@ -4,7 +4,7 @@ on:
   push:
     branches: [feat/m2-live-region-watch-impl]
   pull_request:
-    branches: [main, feature/assisted-c03-validation]
+    branches: [main, feature/assisted-c03-validation, integration/open-source-takeoff-stack]
   workflow_dispatch: {}
 
 # No secrets are used. No capture artifacts are uploaded. Windows-only
@@ -13,9 +13,13 @@ on:
 # report a skip with an explicit reason on the headless GitHub runner.
 #
 # Screen2XYZ targets Windows only (Windows.Media.Ocr, PrintWindow). The
-# baseline and M1 OCR suites invoke powershell.exe, so the whole deterministic
-# suite runs on windows-latest — the product's only supported platform — not a
-# Linux runner where those tests would error on a missing powershell.exe.
+# baseline and M1 OCR suites invoke powershell.exe, so the deterministic suite
+# runs on windows-latest. The operator job installs fixed public tool builds
+# only to prove real stdio MCP, sheet-image rendering, proposal persistence,
+# and OpenTakeoff protocol flow against owned synthetic PDFs; it does not
+# establish real-drawing or Bluebeam accuracy. The Claude operator uses the
+# pinned pypdfium2/Pillow renderer from requirements-civil.txt; Poppler remains
+# a supported legacy fallback but is not a CI/operator prerequisite.
 
 jobs:
   deterministic:
@@ -35,7 +39,7 @@ jobs:
       - name: M2 deterministic suite (incl. worker-contract mock)
         shell: bash
         run: PYTHONPATH=src python tests_m2/run_m2_tests.py
-      - name: Install Civil Plan Digitizer optional PDF dependency
+      - name: Install Civil Plan Digitizer dependencies
         shell: bash
         run: python -m pip install -r requirements-civil.txt
       - name: Civil Plan Digitizer deterministic suite
@@ -49,6 +53,37 @@ jobs:
         run: |
           PYTHONPATH="src;tests" python -m unittest tests.test_repository_sanitization
           PYTHONPATH=src python -m unittest tests_m2.test_profiles_privacy
+
+  opentakeoff-protocol:
+    name: real Claude-style MCP + OpenTakeoff synthetic smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Screen2XYZ dependencies
+        shell: bash
+        run: python -m pip install -r requirements-civil.txt
+      - name: Install fixed public OpenTakeoff MCP build
+        shell: bash
+        run: npm install -g opentakeoff-mcp@0.9.68
+      - name: Deep environment / MCP tool-contract probe
+        shell: bash
+        run: PYTHONPATH=src python -m screen2xyz_civil doctor --deep
+      - name: External stdio MCP sheet-image + proposal smoke
+        shell: bash
+        env:
+          SCREEN2XYZ_RUN_OPERATOR_LIVE: '1'
+        run: PYTHONPATH=src python -m unittest tests_civil.test_operator_live -v
+      - name: Real OpenTakeoff stdio MCP + synthetic One-Click smoke
+        shell: bash
+        env:
+          SCREEN2XYZ_RUN_OPENTAKEOFF_LIVE: '1'
+        run: PYTHONPATH=src python -m unittest tests_civil.test_opentakeoff_runtime_live -v
 
   windows-integration:
     name: windows integration (headless CI host)

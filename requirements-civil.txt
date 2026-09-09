@@ -1,9 +1,17 @@
-# Optional dependency for vector PDF page/text inspection.
-# The guaranteed manual PNG workflow remains standard-library only.
+# Local PDF page/text/vector inspection.
 pypdf==6.14.2
+
+# Self-contained cross-platform PDF rasterization for the Claude/takeoff MCP
+# path. pypdfium2 is Apache-2.0/BSD-3-Clause; Pillow is MIT-CMU.
+pypdfium2==5.13.0
+Pillow==12.3.0
 
 # Estimator-facing XLSX creation and generated-workbook round-trip validation.
 openpyxl==3.1.5
 
 # XML hardening used by openpyxl when reading generated or supplied workbooks.
 defusedxml==0.7.1
+
+# Vendor-neutral MCP server/client runtime. 2.x is the current stable SDK line
+# supporting stdio for Claude Code and Streamable HTTP for remote clients.
+mcp>=2.0,<3
