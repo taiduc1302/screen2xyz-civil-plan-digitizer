@@ -21,8 +21,8 @@ jobs:
     name: deterministic tests (windows-latest)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: Baseline suite
@@ -53,8 +53,8 @@ jobs:
     name: windows integration (real worker)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: M2 Windows integration (skips headless with reason)
