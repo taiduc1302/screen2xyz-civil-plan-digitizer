@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [feat/m2-live-region-watch-impl]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch: {}
