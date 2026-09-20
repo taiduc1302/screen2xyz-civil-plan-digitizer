@@ -3448,11 +3448,15 @@ class M2App:
             ttk.Label(frame, text=f"Journal events: "
                                  f"{summary.get('event_count')}"
                       ).pack(anchor="w")
+            verification_note = (
+                "verified against journal"
+                if verified
+                else "NOT VERIFIED - see warnings below"
+            )
             ttk.Label(
                 frame,
                 text=f"Final CSV rows: {summary.get('final_csv_row_count')} "
-                    f"({'verified against journal' if verified else 'NOT '
-                       'VERIFIED - see warnings below'})",
+                    f"({verification_note})",
                 foreground=("#1a7f37" if verified else "#b42318")
             ).pack(anchor="w")
             # Explicit XYZ outcome - the owner never has to open the folder to

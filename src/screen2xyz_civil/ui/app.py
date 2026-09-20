@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -10,10 +11,16 @@ from typing import Callable
 
 from .. import PRELIMINARY_WARNING
 from .. import contracts as C
+from ..assisted_capture import (
+    ElevationUnderCursorService,
+    HoverSuggestion,
+    SpatialCandidateIndex,
+    build_candidate_evidence,
+)
 from ..exports import ExportError, export_handoff
 from ..detection import detect_symbols
 from ..models import CivilPoint, CropRegion, PixelPoint
-from ..ocr import OcrAdapterError, WindowsOcrAdapter
+from ..ocr import OcrAdapterError, TesseractOcrAdapter, WindowsOcrAdapter
 from ..pdf import (
     PdfAdapterError,
     extract_pdf_text_candidates,
@@ -26,9 +33,10 @@ from ..persistence import (
     load_project,
     save_project,
 )
-from ..qa import qa_summary
+from ..qa import duplicate_pairs, qa_summary
 from ..source import inspect_png
 from ..surface import SurfaceError, build_project_surface, cut_fill_preview
+from ..sheet_metadata import infer_sheet_metadata
 from ..workflow import CivilWorkflow, WorkflowError, new_project
 from .layout import (
     canvas_to_source,
@@ -42,6 +50,8 @@ from .layout import (
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+OCR_UPSCALE = 3
 
 
 class CivilPlanDigitizerApp:
@@ -71,9 +81,25 @@ class CivilPlanDigitizerApp:
         self._collect_count = 0
         self._collect_callback: Callable[[list[PixelPoint]], None] | None = None
         self._manual_payload: tuple[float, str] | None = None
+        self._candidate_index = SpatialCandidateIndex()
+        self._hover_service: ElevationUnderCursorService | None = None
+        self._hover_suggestion: HoverSuggestion | None = None
+        self._sort_reverse: dict[str, bool] = {}
+        self._index_generation = 0
+        self._indexing = False
+        self._candidate_cycle_offset = 0
 
         self.status = tk.StringVar(value="Open a local PDF or PNG to begin.")
         self.calibration_status = tk.StringVar(value="Calibration: not set")
+        self.capture_mode = tk.StringVar(value=C.EXISTING_GROUND)
+        self.capture_workflow = tk.StringVar(value="SAFE")
+        self.candidate_summary = tk.StringVar(value="Candidate index: empty")
+        self.cursor_status = tk.StringVar(
+            value=(
+                "Cursor: -- | Mode: Existing | Elevation: -- | "
+                "Source/confidence: -- | NO CANDIDATE"
+            )
+        )
         self.selected_reason = tk.StringVar(value="Select a point to review.")
         self._build()
         self._bind_shortcuts()
@@ -147,6 +173,7 @@ class CivilPlanDigitizerApp:
             ("Add exclusion", lambda: self.begin_geometry("exclusion")),
             ("Add breakline", lambda: self.begin_geometry("breakline")),
             ("Add no-cross line", lambda: self.begin_geometry("no_cross")),
+            ("Add contour line", self.begin_contour_line),
             ("Preview Existing TIN", lambda: self.show_surface(C.EXISTING_GROUND)),
             ("Preview Design TIN", lambda: self.show_surface(C.DESIGN_GRADE)),
             ("Cut/fill samples", self.show_cut_fill),
@@ -155,6 +182,52 @@ class CivilPlanDigitizerApp:
             ttk.Button(geometry, text=label, command=command).pack(
                 side="left", padx=(5, 0)
             )
+
+        capture = ttk.Frame(self.root, padding=(8, 0, 8, 6))
+        capture.pack(fill="x")
+        ttk.Label(
+            capture,
+            text="Assisted capture:",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(side="left")
+        for label, value in (
+            ("Existing (E)", C.EXISTING_GROUND),
+            ("Design (D)", C.DESIGN_GRADE),
+            ("Contour (C)", C.CONTOUR_ELEVATION),
+        ):
+            ttk.Radiobutton(
+                capture,
+                text=label,
+                value=value,
+                variable=self.capture_mode,
+                command=self._capture_mode_changed,
+            ).pack(side="left", padx=(7, 0))
+        ttk.Separator(capture, orient="vertical").pack(
+            side="left", fill="y", padx=9
+        )
+        ttk.Radiobutton(
+            capture,
+            text="Safe review",
+            value="SAFE",
+            variable=self.capture_workflow,
+        ).pack(side="left")
+        ttk.Radiobutton(
+            capture,
+            text="Rapid >=90%",
+            value="RAPID",
+            variable=self.capture_workflow,
+        ).pack(side="left", padx=(7, 0))
+        ttk.Button(
+            capture,
+            text="Elevation range",
+            command=self.set_elevation_range,
+        ).pack(side="left", padx=(12, 0))
+        ttk.Label(capture, text="Click or Enter accepts the highlighted suggestion.").pack(
+            side="left", padx=12
+        )
+        ttk.Label(capture, textvariable=self.candidate_summary).pack(
+            side="right", padx=8
+        )
 
         vertical = ttk.Panedwindow(self.root, orient="vertical")
         vertical.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -181,6 +254,15 @@ class CivilPlanDigitizerApp:
         self.canvas.grid(row=0, column=0, sticky="nsew")
         xscroll.grid(row=1, column=0, sticky="ew")
         yscroll.grid(row=0, column=1, sticky="ns")
+        tk.Label(
+            canvas_frame,
+            textvariable=self.cursor_status,
+            bg="#0f172a",
+            fg="#f8fafc",
+            anchor="w",
+            padx=8,
+            pady=5,
+        ).grid(row=2, column=0, columnspan=2, sticky="ew")
         canvas_frame.rowconfigure(0, weight=1)
         canvas_frame.columnconfigure(0, weight=1)
         self.canvas.bind("<ButtonPress-1>", self._on_left_press)
@@ -189,9 +271,51 @@ class CivilPlanDigitizerApp:
         self.canvas.bind("<ButtonPress-2>", self._pan_start)
         self.canvas.bind("<B2-Motion>", self._pan_move)
         self.canvas.bind("<MouseWheel>", self._mouse_wheel)
+        self.canvas.bind("<Motion>", self._on_pointer_motion, add="+")
+        self.canvas.bind("<Leave>", self._on_pointer_leave, add="+")
 
-        details = ttk.Frame(upper, padding=(10, 0, 0, 0), width=330)
-        upper.add(details, weight=1)
+        details_host = ttk.Frame(upper, width=340)
+        upper.add(details_host, weight=1)
+        details_canvas = tk.Canvas(
+            details_host,
+            highlightthickness=0,
+            borderwidth=0,
+            width=330,
+        )
+        details_scroll = ttk.Scrollbar(
+            details_host,
+            orient="vertical",
+            command=details_canvas.yview,
+        )
+        details_canvas.configure(yscrollcommand=details_scroll.set)
+        details_scroll.pack(side="right", fill="y")
+        details_canvas.pack(side="left", fill="both", expand=True)
+        details = ttk.Frame(details_canvas, padding=(10, 0, 2, 0))
+        details_window = details_canvas.create_window(
+            (0, 0),
+            window=details,
+            anchor="nw",
+        )
+        details.bind(
+            "<Configure>",
+            lambda _event: details_canvas.configure(
+                scrollregion=details_canvas.bbox("all")
+            ),
+        )
+        details_canvas.bind(
+            "<Configure>",
+            lambda event: details_canvas.itemconfigure(
+                details_window,
+                width=event.width,
+            ),
+        )
+        details_canvas.bind(
+            "<MouseWheel>",
+            lambda event: details_canvas.yview_scroll(
+                -1 if event.delta > 0 else 1,
+                "units",
+            ),
+        )
         ttk.Label(details, text="Point review", font=("Segoe UI", 12, "bold")).pack(
             anchor="w"
         )
@@ -218,6 +342,29 @@ class CivilPlanDigitizerApp:
             values=tuple(sorted(C.POINT_TYPES)),
         )
         self.type_combo.grid(row=3, column=0, sticky="ew", pady=(0, 6))
+        ttk.Label(form, text="Point number").grid(row=4, column=0, sticky="w")
+        self.point_number_entry = ttk.Entry(form)
+        self.point_number_entry.grid(row=5, column=0, sticky="ew", pady=(0, 6))
+        ttk.Label(form, text="Description").grid(row=6, column=0, sticky="w")
+        self.description_entry = ttk.Entry(form)
+        self.description_entry.grid(row=7, column=0, sticky="ew", pady=(0, 6))
+        source_meta = ttk.Frame(form)
+        source_meta.grid(row=8, column=0, sticky="ew")
+        ttk.Label(source_meta, text="Sheet").grid(row=0, column=0, sticky="w")
+        ttk.Label(source_meta, text="Revision").grid(
+            row=0, column=1, sticky="w", padx=(8, 0)
+        )
+        self.sheet_entry = ttk.Entry(source_meta, width=12)
+        self.sheet_entry.grid(row=1, column=0, sticky="ew")
+        self.revision_entry = ttk.Entry(source_meta, width=10)
+        self.revision_entry.grid(row=1, column=1, sticky="ew", padx=(8, 0))
+        source_meta.columnconfigure(0, weight=1)
+        source_meta.columnconfigure(1, weight=1)
+        ttk.Label(form, text="Notes").grid(
+            row=9, column=0, sticky="w", pady=(6, 0)
+        )
+        self.notes_entry = ttk.Entry(form)
+        self.notes_entry.grid(row=10, column=0, sticky="ew", pady=(0, 6))
         form.columnconfigure(0, weight=1)
 
         actions = ttk.Frame(details)
@@ -229,7 +376,8 @@ class CivilPlanDigitizerApp:
             ("Review required", self.review_selected),
             ("Merge duplicate", self.merge_selected),
             ("Use next association", self.use_alternative_selected),
-            ("Delete manual", self.delete_selected),
+            ("Jump to source", self.jump_to_selected),
+            ("Delete cart row", self.delete_selected),
         ):
             ttk.Button(actions, text=label, command=command).pack(
                 fill="x", pady=2
@@ -237,51 +385,164 @@ class CivilPlanDigitizerApp:
 
         table_frame = ttk.Frame(vertical)
         vertical.add(table_frame, weight=2)
+        cart_tools = ttk.Frame(table_frame)
+        cart_tools.pack(fill="x", pady=(0, 4))
+        ttk.Label(
+            cart_tools,
+            text="Point Cart",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(side="left")
+        for label, command in (
+            ("Undo (Ctrl+Z)", self.undo_action),
+            ("Redo (Ctrl+Y)", self.redo_action),
+            ("Renumber", self.renumber_selected),
+            ("Bulk approve", self.bulk_approve_selected),
+            ("Bulk description", self.bulk_description_selected),
+            ("Find duplicates", self.find_duplicates),
+            ("Export selected", self.export_selected),
+        ):
+            ttk.Button(cart_tools, text=label, command=command).pack(
+                side="left", padx=(6, 0)
+            )
+        self.class_filter = tk.StringVar(value="All classes")
+        self.status_filter = tk.StringVar(value="All statuses")
+        ttk.Combobox(
+            cart_tools,
+            state="readonly",
+            width=18,
+            textvariable=self.class_filter,
+            values=(
+                "All classes",
+                C.EXISTING_GROUND,
+                C.DESIGN_GRADE,
+                C.CONTOUR_ELEVATION,
+            ),
+        ).pack(side="right", padx=(4, 0))
+        ttk.Combobox(
+            cart_tools,
+            state="readonly",
+            width=18,
+            textvariable=self.status_filter,
+            values=("All statuses",) + tuple(sorted(C.REVIEW_STATUSES)),
+        ).pack(side="right", padx=(4, 0))
+        ttk.Button(
+            cart_tools, text="Apply filter", command=self._refresh_table
+        ).pack(side="right", padx=(4, 0))
         columns = (
-            "id",
-            "type",
-            "elevation",
+            "point_number",
+            "page",
+            "sheet",
+            "revision",
             "east",
             "north",
-            "status",
+            "elevation",
+            "type",
+            "description",
             "source",
-            "confidence",
+            "text_confidence",
+            "symbol_confidence",
+            "association_confidence",
+            "status",
+            "notes",
+            "created",
+            "updated",
         )
+        table_body = ttk.Frame(table_frame)
+        table_body.pack(fill="both", expand=True)
         self.table = ttk.Treeview(
-            table_frame, columns=columns, show="headings", selectmode="browse"
+            table_body, columns=columns, show="headings", selectmode="extended"
         )
         headings = {
-            "id": "Point",
-            "type": "Classification",
+            "point_number": "Point Number",
+            "page": "Page",
+            "sheet": "Sheet",
+            "revision": "Revision",
+            "east": "Easting",
+            "north": "Northing",
             "elevation": "Elevation",
-            "east": "Local East",
-            "north": "Local North",
+            "type": "Class",
+            "description": "Description",
+            "source": "Source Method",
+            "text_confidence": "Text Confidence",
+            "symbol_confidence": "Symbol Confidence",
+            "association_confidence": "Association Confidence",
             "status": "Review status",
-            "source": "Source method",
-            "confidence": "Class confidence",
+            "notes": "Notes",
+            "created": "Created Timestamp",
+            "updated": "Last Edited Timestamp",
         }
-        widths = (85, 155, 90, 110, 110, 155, 100, 100)
+        widths = (
+            110,
+            55,
+            75,
+            70,
+            105,
+            105,
+            90,
+            150,
+            140,
+            100,
+            95,
+            105,
+            120,
+            145,
+            170,
+            155,
+            155,
+        )
         for column, width in zip(columns, widths):
-            self.table.heading(column, text=headings[column])
+            self.table.heading(
+                column,
+                text=headings[column],
+                command=lambda value=column: self._sort_cart(value),
+            )
             self.table.column(column, width=width, anchor="w")
         table_scroll = ttk.Scrollbar(
-            table_frame, orient="vertical", command=self.table.yview
+            table_body, orient="vertical", command=self.table.yview
         )
         self.table.configure(yscrollcommand=table_scroll.set)
-        self.table.pack(side="left", fill="both", expand=True)
+        table_xscroll = ttk.Scrollbar(
+            table_body, orient="horizontal", command=self.table.xview
+        )
+        self.table.configure(xscrollcommand=table_xscroll.set)
+        table_xscroll.pack(side="bottom", fill="x")
         table_scroll.pack(side="right", fill="y")
+        self.table.pack(side="left", fill="both", expand=True)
         self.table.bind("<<TreeviewSelect>>", lambda _event: self._show_selected())
 
     def _bind_shortcuts(self) -> None:
-        self.root.bind("<KeyPress-a>", lambda _event: self.approve_selected())
-        self.root.bind("<KeyPress-r>", lambda _event: self.reject_selected())
-        self.root.bind("<KeyPress-e>", lambda _event: self._classify_shortcut(C.EXISTING_GROUND))
-        self.root.bind("<KeyPress-d>", lambda _event: self._classify_shortcut(C.DESIGN_GRADE))
-        self.root.bind("<KeyPress-m>", lambda _event: self.begin_manual_point())
+        self.root.bind(
+            "<KeyPress-a>",
+            lambda event: self._plain_shortcut(event, self.approve_selected),
+        )
+        self.root.bind(
+            "<KeyPress-r>",
+            lambda event: self._plain_shortcut(event, self.reject_selected),
+        )
+        self.root.bind(
+            "<KeyPress-e>",
+            lambda event: self._capture_mode_shortcut(event, C.EXISTING_GROUND),
+        )
+        self.root.bind(
+            "<KeyPress-d>",
+            lambda event: self._capture_mode_shortcut(event, C.DESIGN_GRADE),
+        )
+        self.root.bind(
+            "<KeyPress-c>",
+            lambda event: self._capture_mode_shortcut(event, C.CONTOUR_ELEVATION),
+        )
+        self.root.bind(
+            "<KeyPress-m>",
+            lambda event: self._plain_shortcut(event, self.begin_manual_point),
+        )
+        self.root.bind("<Return>", lambda _event: self.capture_hover_suggestion())
         self.root.bind("<Delete>", lambda _event: self.delete_selected())
+        self.root.bind("<Control-z>", lambda _event: self.undo_action())
+        self.root.bind("<Control-y>", lambda _event: self.redo_action())
         self.root.bind("<Escape>", lambda _event: self.cancel_tool())
         self.root.bind("<Down>", lambda _event: self._select_adjacent(1))
         self.root.bind("<Up>", lambda _event: self._select_adjacent(-1))
+        self.root.bind("<Tab>", self._cycle_candidate)
 
     # -- source / project -------------------------------------------------
 
@@ -355,6 +616,7 @@ class CivilPlanDigitizerApp:
         self.project_path = None
         self.source_path = selected
         self.display_source_path = display_path
+        self._clear_candidate_index()
         self._load_image(display_path)
         if self.original_image is not None:
             project.source_manifest["width_px"] = self.original_image.width()
@@ -392,6 +654,7 @@ class CivilPlanDigitizerApp:
         self.project = project
         self.workflow = CivilWorkflow(project, now=_utc_now)
         self.project_path = Path(filename).resolve()
+        self._clear_candidate_index()
         local_path = project.source_manifest.get("local_path")
         self.source_path = Path(str(local_path)) if local_path else None
         if self.source_path and self.source_path.is_file():
@@ -448,55 +711,170 @@ class CivilPlanDigitizerApp:
                 parent=self.root,
             )
             return
-        try:
-            candidates = extract_pdf_text_candidates(
-                self.source_path,
-                self.pdf_page_index,
-                dpi=self.render_dpi,
-            )
-            shapes = extract_pdf_vector_shapes(
-                self.source_path,
-                self.pdf_page_index,
-                dpi=self.render_dpi,
-            )
-            symbols = detect_symbols(shapes)
-            result = self.workflow.ingest_text_candidates(candidates, symbols)
-        except (PdfAdapterError, WorkflowError) as exc:
-            messagebox.showerror(
-                "PDF extraction failed", str(exc), parent=self.root
-            )
+        if self._indexing:
+            self.status.set("PDF indexing is already running.")
             return
+        self._index_generation += 1
+        generation = self._index_generation
+        self._indexing = True
+        source_path = self.source_path
+        page_index = self.pdf_page_index
+        dpi = self.render_dpi
+        project = self.project
+        self.status.set("PDF indexing: reading vector text and symbols in background...")
+
+        def worker() -> None:
+            try:
+                candidates = extract_pdf_text_candidates(
+                    source_path, page_index, dpi=dpi
+                )
+                shapes = extract_pdf_vector_shapes(
+                    source_path, page_index, dpi=dpi
+                )
+                symbols = detect_symbols(shapes)
+                evidence = build_candidate_evidence(project, candidates, symbols)
+                result = (candidates, symbols, evidence, None)
+            except (PdfAdapterError, WorkflowError, ValueError) as exc:
+                result = ((), (), (), exc)
+            self.root.after(
+                0, lambda: self._finish_pdf_index(generation, result)
+            )
+
+        threading.Thread(
+            target=worker,
+            name=f"civil-pdf-index-{generation}",
+            daemon=True,
+        ).start()
+
+    def _finish_pdf_index(self, generation: int, result) -> None:
+        if generation != self._index_generation:
+            return
+        self._indexing = False
+        candidates, symbols, evidence, error = result
+        if error is not None:
+            messagebox.showerror("PDF extraction failed", str(error), parent=self.root)
+            return
+        if self.project is None:
+            return
+        metadata = infer_sheet_metadata(
+            candidates,
+            width_px=float(self.project.source_manifest.get("width_px", 0)),
+            height_px=float(self.project.source_manifest.get("height_px", 0)),
+        )
+        self.project.source_manifest.update(metadata)
+        for page in self.project.pages:
+            if int(page.get("page_index", -1)) == self.pdf_page_index:
+                page.update(metadata)
+        self._set_candidate_index(evidence)
+        capturable = sum(item.capturable for item in evidence)
+        rejected = sum(item.rejected for item in evidence)
+        metadata_note = (
+            f"; sheet {metadata.get('sheet_id', '?')}, "
+            f"revision {metadata.get('revision', '?')}"
+        )
         self.status.set(
             f"PDF: {len(candidates)} text boxes and {len(symbols)} symbol "
-            f"proposals inspected; "
-            f"{len(result['added'])} numeric review candidates added; "
-            f"{len(result['filtered'])} filtered."
+            f"proposals inspected; {capturable} capturable suggestions indexed; "
+            f"{rejected} rejected evidence retained; Point Cart unchanged"
+            f"{metadata_note}."
         )
         self._refresh()
 
     def run_local_ocr(self) -> None:
         if not self._ready_for_canvas() or self.project is None or self.workflow is None:
             return
+        if self._indexing:
+            self.status.set("Candidate indexing is already running.")
+            return
         crop = self.project.crop or CropRegion(
             0, 0, self.original_image.width(), self.original_image.height()
         )
         try:
             crop_path = self._write_ocr_crop(crop)
-            adapter = WindowsOcrAdapter(self._repository_root())
-            result = adapter.extract(crop_path)
-            candidates = result.text_candidates(
-                page_index=self.pdf_page_index,
-                offset_x=crop.x,
-                offset_y=crop.y,
-            )
-            ingestion = self.workflow.ingest_text_candidates(candidates)
-        except (OcrAdapterError, WorkflowError, tk.TclError, OSError) as exc:
+        except (OcrAdapterError, tk.TclError, OSError) as exc:
             messagebox.showerror("Local OCR failed", str(exc), parent=self.root)
             return
+        tesseract = TesseractOcrAdapter(self._repository_root())
+        adapter = (
+            tesseract
+            if tesseract.available
+            else WindowsOcrAdapter(self._repository_root())
+        )
+        self._index_generation += 1
+        generation = self._index_generation
+        self._indexing = True
+        project = self.project
+        source_path = self.source_path
+        page_index = self.pdf_page_index
+        dpi = self.render_dpi
         self.status.set(
-            f"Local OCR: {len(candidates)} word boxes inspected; "
-            f"{len(ingestion['added'])} numeric review candidates added; "
-            f"{len(ingestion['filtered'])} filtered."
+            f"Local OCR ({type(adapter).__name__}): processing the selected "
+            "crop in the background..."
+        )
+
+        def worker() -> None:
+            try:
+                result = adapter.extract(crop_path)
+                candidates = result.text_candidates(
+                    page_index=page_index,
+                    offset_x=crop.x,
+                    offset_y=crop.y,
+                    coordinate_scale=OCR_UPSCALE,
+                )
+                symbols = ()
+                if (
+                    source_path is not None
+                    and project.source_manifest.get("source_type") == "PDF"
+                ):
+                    symbols = tuple(
+                        detect_symbols(
+                            extract_pdf_vector_shapes(
+                                source_path,
+                                page_index,
+                                dpi=dpi,
+                            )
+                        )
+                    )
+                evidence = build_candidate_evidence(
+                    project,
+                    candidates,
+                    symbols,
+                )
+                payload = (candidates, evidence, result.engine, None)
+            except (
+                OcrAdapterError,
+                PdfAdapterError,
+                WorkflowError,
+                ValueError,
+                OSError,
+            ) as exc:
+                payload = ((), (), "", exc)
+            self.root.after(
+                0,
+                lambda: self._finish_ocr_index(generation, payload),
+            )
+
+        threading.Thread(
+            target=worker,
+            name=f"civil-ocr-index-{generation}",
+            daemon=True,
+        ).start()
+
+    def _finish_ocr_index(self, generation: int, payload) -> None:
+        if generation != self._index_generation:
+            return
+        self._indexing = False
+        candidates, evidence, engine, error = payload
+        if error is not None:
+            messagebox.showerror("Local OCR failed", str(error), parent=self.root)
+            return
+        self._set_candidate_index(evidence)
+        capturable = sum(item.capturable for item in evidence)
+        rejected = sum(item.rejected for item in evidence)
+        self.status.set(
+            f"Local OCR ({engine}): {len(candidates)} word boxes inspected; "
+            f"{capturable} capturable suggestions indexed; "
+            f"{rejected} rejected evidence retained; Point Cart unchanged."
         )
         self._refresh()
 
@@ -505,9 +883,13 @@ class CivilPlanDigitizerApp:
             raise OcrAdapterError("source image is unavailable")
         x1, y1 = int(crop.x), int(crop.y)
         x2, y2 = int(crop.x + crop.width), int(crop.y + crop.height)
-        image = tk.PhotoImage(width=x2 - x1, height=y2 - y1, master=self.root)
-        image.tk.call(
-            str(image),
+        source_crop = tk.PhotoImage(
+            width=x2 - x1,
+            height=y2 - y1,
+            master=self.root,
+        )
+        source_crop.tk.call(
+            str(source_crop),
             "copy",
             str(self.original_image),
             "-from",
@@ -516,7 +898,12 @@ class CivilPlanDigitizerApp:
             x2,
             y2,
         )
-        target = self._civil_cache() / self.project.project_id / "selected-crop.png"
+        image = source_crop.zoom(OCR_UPSCALE, OCR_UPSCALE)
+        target = (
+            self._civil_cache()
+            / self.project.project_id
+            / f"selected-crop-{OCR_UPSCALE}x.png"
+        )
         target.parent.mkdir(parents=True, exist_ok=True)
         image.write(str(target), format="png")
         return target
@@ -553,6 +940,37 @@ class CivilPlanDigitizerApp:
             return
         self._tool = "crop"
         self.status.set("Crop tool: drag a rectangle around the working plan region.")
+
+    def set_elevation_range(self) -> None:
+        if self.project is None or self.workflow is None:
+            return
+        minimum = simpledialog.askfloat(
+            "Plausible elevation range",
+            "Minimum terrain elevation (metres):",
+            initialvalue=self.project.plausible_elevation_min,
+            parent=self.root,
+        )
+        if minimum is None:
+            return
+        maximum = simpledialog.askfloat(
+            "Plausible elevation range",
+            "Maximum terrain elevation (metres):",
+            initialvalue=self.project.plausible_elevation_max,
+            parent=self.root,
+        )
+        if maximum is None:
+            return
+        try:
+            self.workflow.set_plausible_elevation_range(minimum, maximum)
+        except WorkflowError as exc:
+            messagebox.showerror("Elevation range", str(exc), parent=self.root)
+            return
+        self._set_candidate_index(())
+        self.status.set(
+            f"Elevation range set to {minimum:g} through {maximum:g} m; "
+            "re-run extraction to rebuild the candidate index."
+        )
+        self._refresh()
 
     def begin_calibration(self) -> None:
         if not self._ready_for_canvas():
@@ -677,6 +1095,8 @@ class CivilPlanDigitizerApp:
                     pixel=points[0],
                     elevation=self._manual_payload[0],
                     point_type=self._manual_payload[1],
+                    page_index=self.pdf_page_index,
+                    page_label=str(self.pdf_page_index + 1),
                 )
             except WorkflowError as exc:
                 messagebox.showerror("Point rejected", str(exc), parent=self.root)
@@ -745,6 +1165,50 @@ class CivilPlanDigitizerApp:
             f"Click {count} reviewed vertices for the {kind.replace('_', '-')} in order.",
         )
 
+    def begin_contour_line(self) -> None:
+        if not self._ready_for_canvas() or self.workflow is None:
+            return
+        elevation = simpledialog.askfloat(
+            "Contour elevation line",
+            "Explicit constant elevation in metres:",
+            parent=self.root,
+        )
+        if elevation is None:
+            return
+
+        def apply(vertices: list[PixelPoint]) -> None:
+            assert self.workflow is not None
+            try:
+                line = self.workflow.add_elevation_line(
+                    vertices,
+                    elevation=elevation,
+                )
+                if messagebox.askyesno(
+                    "Approve contour line",
+                    (
+                        f"Approve {line.id} at {line.elevation:.3f} m with "
+                        f"{len(line.vertices)} reviewed vertices?"
+                    ),
+                    parent=self.root,
+                ):
+                    self.workflow.approve_elevation_line(line.id)
+            except WorkflowError as exc:
+                messagebox.showerror(
+                    "Contour line rejected", str(exc), parent=self.root
+                )
+                return
+            self.status.set(
+                f"Stored {line.id} at {line.elevation:.3f} m; "
+                f"status {line.review_status}."
+            )
+            self._refresh()
+
+        self._begin_collect(
+            2,
+            apply,
+            "Click two reviewed endpoints for the constant-elevation contour line.",
+        )
+
     def _begin_collect(
         self,
         count: int,
@@ -770,6 +1234,11 @@ class CivilPlanDigitizerApp:
         if self.original_image is None:
             return
         point = self._event_source_point(event)
+        current = self.canvas.find_withtag("current")
+        if current:
+            tags = self.canvas.gettags(current[0])
+            if any(tag.startswith("point:") for tag in tags):
+                return
         if self._tool == "collect":
             self._collector.append(point)
             self._draw_collection_marker(point, len(self._collector))
@@ -795,6 +1264,155 @@ class CivilPlanDigitizerApp:
             self._drag_rect = self.canvas.create_rectangle(
                 x, y, x, y, outline="#facc15", width=2, dash=(6, 3)
             )
+            return
+        if self._tool == "select":
+            self._update_hover(point)
+            self.capture_hover_suggestion(capture_method="CLICK")
+
+    def _on_pointer_motion(self, event) -> None:
+        if self.original_image is None:
+            return
+        point = self._event_source_point(event)
+        if self._tool == "select":
+            self._update_hover(point)
+        else:
+            self._set_cursor_status(point, None)
+
+    def _on_pointer_leave(self, _event) -> None:
+        self.canvas.delete("hover")
+        self._hover_suggestion = None
+        mode = self._capture_mode_label()
+        self.cursor_status.set(
+            f"Cursor: outside plan | Mode: {mode} | Elevation: -- | "
+            "Source/confidence: -- | NO CANDIDATE"
+        )
+
+    def _update_hover(self, point: PixelPoint) -> None:
+        self.canvas.delete("hover")
+        suggestion = (
+            None
+            if self._hover_service is None
+            else self._hover_service.suggest(
+                point,
+                capture_mode=self.capture_mode.get(),
+                alternative_offset=self._candidate_cycle_offset,
+            )
+        )
+        self._hover_suggestion = suggestion
+        self._set_cursor_status(point, suggestion)
+        canvas_x = source_to_canvas(point.x, self.zoom)
+        canvas_y = source_to_canvas(point.y, self.zoom)
+        self.canvas.create_line(
+            canvas_x - 6,
+            canvas_y,
+            canvas_x + 6,
+            canvas_y,
+            fill="#e2e8f0",
+            tags=("hover",),
+        )
+        self.canvas.create_line(
+            canvas_x,
+            canvas_y - 6,
+            canvas_x,
+            canvas_y + 6,
+            fill="#e2e8f0",
+            tags=("hover",),
+        )
+        if suggestion is None or suggestion.evidence is None:
+            return
+        evidence = suggestion.evidence
+        snap_x = source_to_canvas(evidence.pixel.x, self.zoom)
+        snap_y = source_to_canvas(evidence.pixel.y, self.zoom)
+        color = "#ef4444" if evidence.rejected else "#22d3ee"
+        radius = 10
+        self.canvas.create_oval(
+            snap_x - radius,
+            snap_y - radius,
+            snap_x + radius,
+            snap_y + radius,
+            outline=color,
+            width=3,
+            tags=("hover",),
+        )
+        self.canvas.create_line(
+            canvas_x,
+            canvas_y,
+            snap_x,
+            snap_y,
+            fill=color,
+            dash=(3, 2),
+            tags=("hover",),
+        )
+        bbox = evidence.text_bbox
+        self.canvas.create_rectangle(
+            source_to_canvas(float(bbox["x0"]), self.zoom),
+            source_to_canvas(float(bbox["y0"]), self.zoom),
+            source_to_canvas(float(bbox["x1"]), self.zoom),
+            source_to_canvas(float(bbox["y1"]), self.zoom),
+            outline=color,
+            dash=(4, 2),
+            tags=("hover",),
+        )
+
+    def _cycle_candidate(self, event) -> str | None:
+        focus = self.root.focus_get()
+        if focus is not None and focus.winfo_class() in {
+            "Entry", "TEntry", "TCombobox", "Text"
+        }:
+            return None
+        if self._hover_suggestion is None:
+            return "break"
+        self._candidate_cycle_offset += -1 if event.state & 0x0001 else 1
+        self._update_hover(self._hover_suggestion.cursor)
+        return "break"
+
+    def _set_cursor_status(
+        self,
+        point: PixelPoint,
+        suggestion: HoverSuggestion | None,
+    ) -> None:
+        mode = self._capture_mode_label()
+        if suggestion is None:
+            coordinates = f"px ({point.x:.1f}, {point.y:.1f})"
+            self.cursor_status.set(
+                f"Cursor: page {self.pdf_page_index + 1}, {coordinates} | "
+                f"Mode: {mode} | Elevation: -- | Source/confidence: -- | "
+                "NO CANDIDATE"
+            )
+            return
+        if suggestion.local_east is None:
+            coordinates = f"px ({point.x:.1f}, {point.y:.1f})"
+        else:
+            coordinates = (
+                f"E {suggestion.local_east:.3f}, "
+                f"N {suggestion.local_north:.3f}"
+            )
+        evidence = suggestion.evidence
+        if evidence is None:
+            elevation = "--"
+            source_confidence = "--"
+        else:
+            elevation = (
+                "--" if evidence.elevation is None else f"{evidence.elevation:.3f} m"
+            )
+            source_confidence = (
+                f"{evidence.source_method}; class {evidence.likely_type}; "
+                f"text {self._format_confidence(evidence.text_confidence)}, "
+                f"assoc {self._format_confidence(evidence.association_confidence)}, "
+                f"class {evidence.classification_confidence:.2f}"
+            )
+        snap_distance = (
+            ""
+            if suggestion.snap_distance_px is None
+            else f"; {suggestion.snap_distance_px:.1f}px"
+        )
+        self.cursor_status.set(
+            f"Cursor: page {self.pdf_page_index + 1}, {coordinates} | "
+            f"Mode: {mode} | Elevation: {elevation} | "
+            f"Source/confidence: {source_confidence} | "
+            f"{suggestion.snap_status}{snap_distance} | "
+            f"{suggestion.lookup_ms:.2f}ms"
+        )
 
     def _on_left_motion(self, event) -> None:
         if self._tool != "crop" or self._crop_start is None or self._drag_rect is None:
@@ -832,6 +1450,136 @@ class CivilPlanDigitizerApp:
         )
         self._refresh()
 
+    # -- assisted capture ------------------------------------------------
+
+    def _set_candidate_index(self, evidence) -> None:
+        self._candidate_index = SpatialCandidateIndex(evidence)
+        self._rebuild_hover_service()
+        capturable = sum(item.capturable for item in self._candidate_index.candidates)
+        rejected = sum(item.rejected for item in self._candidate_index.candidates)
+        review = len(self._candidate_index) - capturable - rejected
+        self.candidate_summary.set(
+            f"Candidate index: {capturable} capturable / "
+            f"{rejected} rejected / {review} no elevation"
+        )
+
+    def _clear_candidate_index(self) -> None:
+        self._candidate_index = SpatialCandidateIndex()
+        self._hover_service = None
+        self._hover_suggestion = None
+        self.candidate_summary.set("Candidate index: empty")
+        self.canvas.delete("hover")
+
+    def _rebuild_hover_service(self) -> None:
+        if len(self._candidate_index) == 0:
+            self._hover_service = None
+            return
+        calibration = None if self.project is None else self.project.calibration
+        self._hover_service = ElevationUnderCursorService(
+            self._candidate_index,
+            calibration=calibration,
+        )
+
+    def _capture_mode_changed(self) -> None:
+        self.status.set(
+            f"Capture mode: {self._capture_mode_label()}. "
+            "Hover a proposal, then click or press Enter."
+        )
+        if self._hover_suggestion is not None:
+            self._update_hover(self._hover_suggestion.cursor)
+
+    def _plain_shortcut(self, event, action) -> str | None:
+        focus = self.root.focus_get()
+        if (
+            event.state & 0x000C
+            or (
+                focus is not None
+                and focus.winfo_class()
+                in {"Entry", "TEntry", "TCombobox", "Text"}
+            )
+        ):
+            return None
+        action()
+        return "break"
+
+    def _capture_mode_shortcut(self, event, point_type: str) -> str | None:
+        focus = self.root.focus_get()
+        if event.state & 0x000C or (
+            focus is not None
+            and focus.winfo_class()
+            in {"Entry", "TEntry", "TCombobox", "Text"}
+        ):
+            return None
+        self.capture_mode.set(point_type)
+        self._capture_mode_changed()
+        return "break"
+
+    def capture_hover_suggestion(
+        self,
+        *,
+        capture_method: str = "ENTER",
+    ) -> CivilPoint | None:
+        if self.workflow is None or self.project is None:
+            return None
+        focus = self.root.focus_get()
+        if (
+            capture_method == "ENTER"
+            and focus is not None
+            and focus.winfo_class() in {"Entry", "TEntry", "TCombobox", "Text"}
+        ):
+            return None
+        suggestion = self._hover_suggestion
+        if suggestion is None or suggestion.evidence is None:
+            self.status.set("No indexed elevation is under the cursor.")
+            return None
+        if not suggestion.can_capture:
+            category = suggestion.evidence.rejection_category or "NO_ELEVATION"
+            self.status.set(
+                f"Capture blocked: {category}. Rejected evidence stays out of the Point Cart."
+            )
+            return None
+        try:
+            point = self.workflow.capture_assisted_point(
+                suggestion.evidence,
+                capture_mode=self.capture_mode.get(),
+                click_pixel=suggestion.cursor,
+                snap_distance_px=float(suggestion.snap_distance_px or 0.0),
+                capture_method=capture_method,
+            )
+        except WorkflowError as exc:
+            self.status.set(f"Capture blocked: {exc}")
+            return None
+        if (
+            self.capture_workflow.get() == "RAPID"
+            and point.capture_confidence is not None
+            and point.capture_confidence >= 0.90
+        ):
+            try:
+                self.workflow.approve_point(point.id)
+            except WorkflowError:
+                pass
+        self.status.set(
+            f"Captured {point.id} from {point.source_method}; "
+            + (
+                "rapid-mode threshold met and explicit capture approved."
+                if point.approved
+                else "correct if needed, then explicitly approve or continue."
+            )
+        )
+        self._refresh(select_id=point.id)
+        return point
+
+    def _capture_mode_label(self) -> str:
+        return {
+            C.EXISTING_GROUND: "Existing",
+            C.DESIGN_GRADE: "Design",
+            C.CONTOUR_ELEVATION: "Contour",
+        }.get(self.capture_mode.get(), self.capture_mode.get())
+
+    @staticmethod
+    def _format_confidence(value: float | None) -> str:
+        return "--" if value is None else f"{value:.2f}"
+
     # -- review actions ---------------------------------------------------
 
     def edit_selected(self) -> None:
@@ -842,7 +1590,14 @@ class CivilPlanDigitizerApp:
             elevation = float(self.elevation_entry.get().strip())
             point_type = self.type_combo.get()
             self.workflow.edit_point(
-                point.id, elevation=elevation, point_type=point_type
+                point.id,
+                elevation=elevation,
+                point_type=point_type,
+                point_number=self.point_number_entry.get(),
+                description=self.description_entry.get(),
+                sheet=self.sheet_entry.get(),
+                revision_label=self.revision_entry.get(),
+                notes=self.notes_entry.get(),
             )
         except (ValueError, WorkflowError) as exc:
             messagebox.showerror("Edit rejected", str(exc), parent=self.root)
@@ -909,17 +1664,20 @@ class CivilPlanDigitizerApp:
         if point is None or self.workflow is None:
             return
         if not messagebox.askyesno(
-            "Delete manual point",
-            f"Delete {point.id}? Only manual points can be deleted.",
+            "Delete Point Cart row",
+            (
+                f"Delete {point.point_number or point.id} ({point.id}) from "
+                "the Point Cart? Ctrl+Z can restore it."
+            ),
             parent=self.root,
         ):
             return
         try:
-            self.workflow.delete_manual_point(point.id)
+            self.workflow.delete_cart_point(point.id)
         except WorkflowError as exc:
             messagebox.showerror("Delete blocked", str(exc), parent=self.root)
             return
-        self.status.set(f"Deleted manual point {point.id}.")
+        self.status.set(f"Deleted Point Cart row {point.id}.")
         self._refresh()
 
     def use_alternative_selected(self) -> None:
@@ -937,6 +1695,173 @@ class CivilPlanDigitizerApp:
             f"Applied an alternative association to {point.id}; re-review required."
         )
         self._refresh(select_id=point.id)
+
+    def undo_action(self) -> None:
+        if self.workflow is None:
+            return
+        try:
+            detail = self.workflow.undo()
+        except WorkflowError as exc:
+            self.status.set(str(exc))
+            return
+        self.status.set(detail)
+        self._refresh()
+
+    def redo_action(self) -> None:
+        if self.workflow is None:
+            return
+        try:
+            detail = self.workflow.redo()
+        except WorkflowError as exc:
+            self.status.set(str(exc))
+            return
+        self.status.set(detail)
+        self._refresh()
+
+    def renumber_selected(self) -> None:
+        if self.workflow is None:
+            return
+        selected = self._selected_ids()
+        prefix = simpledialog.askstring(
+            "Renumber Point Cart",
+            "Point-number prefix:",
+            initialvalue="P",
+            parent=self.root,
+        )
+        if prefix is None:
+            return
+        start = simpledialog.askinteger(
+            "Renumber Point Cart",
+            "Starting number:",
+            initialvalue=1,
+            minvalue=0,
+            parent=self.root,
+        )
+        if start is None:
+            return
+        try:
+            changed = self.workflow.renumber_points(
+                point_ids=selected or None,
+                prefix=prefix,
+                start=start,
+            )
+        except WorkflowError as exc:
+            messagebox.showerror("Renumber blocked", str(exc), parent=self.root)
+            return
+        self.status.set(f"Renumbered {len(changed)} Point Cart rows.")
+        self._refresh(select_id=changed[0].id if changed else None)
+
+    def bulk_approve_selected(self) -> None:
+        if self.workflow is None:
+            return
+        point_ids = self._selected_ids()
+        if not point_ids:
+            self.status.set("Select Point Cart rows to bulk approve.")
+            return
+        if not messagebox.askyesno(
+            "Bulk approve",
+            f"Explicitly approve {len(point_ids)} selected Point Cart rows?",
+            parent=self.root,
+        ):
+            return
+        try:
+            self.workflow.bulk_approve(point_ids)
+        except WorkflowError as exc:
+            messagebox.showerror("Bulk approval blocked", str(exc), parent=self.root)
+            return
+        self.status.set(f"Bulk approved {len(point_ids)} rows.")
+        self._refresh(select_id=point_ids[0])
+
+    def bulk_description_selected(self) -> None:
+        if self.workflow is None:
+            return
+        point_ids = self._selected_ids()
+        if not point_ids:
+            self.status.set("Select Point Cart rows first.")
+            return
+        description = simpledialog.askstring(
+            "Bulk description",
+            f"Description for {len(point_ids)} selected rows:",
+            parent=self.root,
+        )
+        if description is None:
+            return
+        try:
+            self.workflow.bulk_change_description(point_ids, description)
+        except WorkflowError as exc:
+            messagebox.showerror("Bulk edit blocked", str(exc), parent=self.root)
+            return
+        self.status.set(f"Changed description on {len(point_ids)} rows.")
+        self._refresh(select_id=point_ids[0])
+
+    def find_duplicates(self) -> None:
+        if self.project is None:
+            return
+        pairs = duplicate_pairs(self.project)
+        if not pairs:
+            self.status.set("No Point Cart duplicates within the configured tolerance.")
+            return
+        ids = []
+        for pair in pairs:
+            ids.extend(pair["point_ids"])
+        visible = [point_id for point_id in dict.fromkeys(ids) if self.table.exists(point_id)]
+        if visible:
+            self.table.selection_set(visible)
+            self.table.see(visible[0])
+        conflicts = sum(pair["conflicting"] for pair in pairs)
+        self.status.set(
+            f"Found {len(pairs)} duplicate pairs; {conflicts} have class/elevation conflicts."
+        )
+
+    def jump_to_selected(self) -> None:
+        point = self._selected_point()
+        if point is None or self.original_image is None:
+            return
+        full_width = max(1.0, self.original_image.width() * self.zoom)
+        full_height = max(1.0, self.original_image.height() * self.zoom)
+        x = source_to_canvas(point.pixel_x, self.zoom)
+        y = source_to_canvas(point.pixel_y, self.zoom)
+        x_fraction = max(
+            0.0,
+            min(1.0, (x - self.canvas.winfo_width() / 2) / full_width),
+        )
+        y_fraction = max(
+            0.0,
+            min(1.0, (y - self.canvas.winfo_height() / 2) / full_height),
+        )
+        self.canvas.xview_moveto(x_fraction)
+        self.canvas.yview_moveto(y_fraction)
+        self._select_point(point.id)
+        self.status.set(f"Jumped to source location for {point.id}.")
+
+    def _sort_cart(self, column: str) -> None:
+        if self.workflow is None:
+            return
+        key = {
+            "point_number": "point_number",
+            "page": "page",
+            "elevation": "elevation",
+            "type": "class",
+            "status": "status",
+            "created": "created",
+        }.get(column)
+        if key is None:
+            self.status.set(f"Sorting by {column} is not available.")
+            return
+        reverse = not self._sort_reverse.get(column, False)
+        self._sort_reverse[column] = reverse
+        try:
+            self.workflow.sort_points(key, reverse=reverse)
+        except WorkflowError as exc:
+            self.status.set(str(exc))
+            return
+        self.status.set(
+            f"Point Cart sorted by {column} ({'descending' if reverse else 'ascending'})."
+        )
+        self._refresh_table()
+
+    def _selected_ids(self) -> list[str]:
+        return [str(point_id) for point_id in self.table.selection()]
 
     def _classify_shortcut(self, point_type: str) -> None:
         point = self._selected_point()
@@ -1147,6 +2072,16 @@ class CivilPlanDigitizerApp:
         self.status.set("Preliminary LandXML gate accepted for the next export.")
 
     def export_reviewed(self) -> None:
+        self._export_reviewed()
+
+    def export_selected(self) -> None:
+        point_ids = self._selected_ids()
+        if not point_ids:
+            self.status.set("Select one or more Point Cart rows to export.")
+            return
+        self._export_reviewed(point_ids=point_ids)
+
+    def _export_reviewed(self, *, point_ids: list[str] | None = None) -> None:
         if self.project is None:
             self._need_project()
             return
@@ -1156,7 +2091,12 @@ class CivilPlanDigitizerApp:
         if not folder:
             return
         try:
-            result = export_handoff(self.project, Path(folder), now=_utc_now)
+            result = export_handoff(
+                self.project,
+                Path(folder),
+                now=_utc_now,
+                point_ids=point_ids,
+            )
         except ExportError as exc:
             messagebox.showerror("Export blocked", str(exc), parent=self.root)
             return
@@ -1267,6 +2207,18 @@ class CivilPlanDigitizerApp:
             self._draw_polyline(line, "#22d3ee", closed=False, width=3)
         for line in self.project.no_cross_lines:
             self._draw_polyline(line, "#f472b6", closed=False, width=3)
+        for line in self.project.elevation_lines:
+            color = "#a3e635" if line.approved else "#facc15"
+            self._draw_polyline(line.vertices, color, closed=False, width=3)
+            midpoint = line.vertices[len(line.vertices) // 2]
+            self.canvas.create_text(
+                source_to_canvas(midpoint.x, self.zoom),
+                source_to_canvas(midpoint.y, self.zoom) - 8,
+                text=f"{line.id} {line.elevation:.2f} m",
+                fill=color,
+                anchor="s",
+                tags=("overlay",),
+            )
 
     def _draw_polyline(
         self,
@@ -1368,6 +2320,7 @@ class CivilPlanDigitizerApp:
         )
 
     def _refresh(self, *, select_id: str | None = None) -> None:
+        self._rebuild_hover_service()
         self._refresh_table()
         self._draw_overlays()
         if self.project and self.project.calibration:
@@ -1392,20 +2345,35 @@ class CivilPlanDigitizerApp:
         wanted: set[str] = set()
         if self.project is not None:
             for point in self.project.points:
+                if (
+                    self.class_filter.get() != "All classes"
+                    and point.point_type != self.class_filter.get()
+                ):
+                    continue
+                if (
+                    self.status_filter.get() != "All statuses"
+                    and point.review_status != self.status_filter.get()
+                ):
+                    continue
                 wanted.add(point.id)
                 values = (
-                    point.id,
+                    point.point_number or point.id,
+                    point.page_index + 1,
+                    point.sheet or point.page_label,
+                    point.revision_label,
+                    "" if point.local_east is None else f"{point.local_east:.3f}",
+                    "" if point.local_north is None else f"{point.local_north:.3f}",
+                    f"{point.elevation:.3f}",
                     point.point_type,
-                    f"{point.elevation:.6f}",
-                    "" if point.local_east is None else f"{point.local_east:.6f}",
-                    "" if point.local_north is None else f"{point.local_north:.6f}",
-                    point.review_status,
+                    point.description,
                     point.source_method,
-                    (
-                        ""
-                        if point.classification_confidence is None
-                        else f"{point.classification_confidence:.2f}"
-                    ),
+                    self._format_confidence(point.text_confidence),
+                    self._format_confidence(point.symbol_confidence),
+                    self._format_confidence(point.association_confidence),
+                    point.review_status,
+                    point.notes,
+                    point.created_at,
+                    point.updated_at,
                 )
                 if point.id in current:
                     self.table.item(point.id, values=values)
@@ -1421,6 +2389,15 @@ class CivilPlanDigitizerApp:
         self.elevation_entry.delete(0, "end")
         self.elevation_entry.insert(0, format(point.elevation, ".12g"))
         self.type_combo.set(point.point_type)
+        for entry, value in (
+            (self.point_number_entry, point.point_number or point.id),
+            (self.description_entry, point.description),
+            (self.sheet_entry, point.sheet or point.page_label),
+            (self.revision_entry, point.revision_label),
+            (self.notes_entry, point.notes),
+        ):
+            entry.delete(0, "end")
+            entry.insert(0, value)
         reasons = "; ".join(point.classification_reason) or "No reason recorded."
         confidence = (
             f"text={point.text_confidence}, symbol={point.symbol_confidence}, "
@@ -1433,7 +2410,10 @@ class CivilPlanDigitizerApp:
             else ""
         )
         self.selected_reason.set(
-            f"{point.id} — {point.review_status}\n{reasons}\n{confidence}.{alternatives}"
+            f"{point.id} — {point.review_status}\n"
+            f"Raw: {point.detected_text or '(none)'}; "
+            f"normalized: {point.normalized_text or '(none)'}\n"
+            f"{reasons}\n{confidence}.{alternatives}"
         )
         self._update_crop_preview(point)
 

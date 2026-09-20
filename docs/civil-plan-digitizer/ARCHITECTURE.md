@@ -3,9 +3,10 @@
 ## Safety boundary
 
 `screen2xyz_civil` is an isolated sibling of the sealed baseline,
-`screen2xyz_m1`, and `screen2xyz_m2`. It reuses only stable atomic-write,
-hash/manifest, formula-safe CSV, and local OCR patterns. It does not modify
-retained evidence or place civil state in the live-region watcher.
+`screen2xyz_m1`, and `screen2xyz_m2`. The civil package now owns its atomic
+write, hash/manifest, formula-safe CSV, persistence, and export helpers; it
+does not import the legacy product packages. It does not modify retained
+evidence or place civil state in the live-region watcher.
 
 All extraction is local. The state model distinguishes immutable source
 coordinates from derived local coordinates. Automatic candidates cannot enter
@@ -36,13 +37,14 @@ PDF/OCR adapters are unavailable.
 | `models.py` | Project, point, crop, calibration, geometry, serialization |
 | `source.py` | Bounded PNG identity and dimensions |
 | `pdf.py` | PDF inspection, selected-page rendering, approximate text boxes, path extraction |
-| `ocr.py`, `adapters/` | Swappable OCR contract and bounded Windows Media OCR |
+| `ocr.py`, `adapters/` | Swappable OCR contract, multi-angle Tesseract, and Windows Media fallback |
 | `detection.py` | Normalization, exclusions, symbols, associations, explainable classes |
 | `transform.py` | Scale/origin/East basis and invertible pixel/local transform |
 | `workflow.py` | State transitions, review invalidation, geometry operations |
 | `qa.py` | Counts, duplicates/conflicts, calibration and export blockers |
 | `surface.py` | Deterministic, feature-flagged preliminary TIN and sampled cut/fill |
-| `exports.py`, `advanced_exports.py` | Approved-only handoff and advanced local formats |
+| `exports.py`, `estimator_exports.py`, `advanced_exports.py` | Staged approved-only handoff, estimator XLSX, round-trip checks, and advanced local formats |
+| `io_utils.py` | Standalone atomic files, deterministic CSV/JSON, hashes, manifest |
 | `persistence.py` | Atomic project save/open and schema migration |
 | `ui/` | Tkinter estimator review workspace |
 
@@ -68,15 +70,18 @@ internally; display and export apply explicit formatting.
   point to review.
 - Recalibration preserves prior calibration records and makes exports stale.
 - Approved Existing and Design points are never silently combined.
-- A new handoff writes to a new versioned directory and fails if it exists.
+- A handoff is built and verified below a hidden staging root, then published
+  by one same-volume directory rename; a failure leaves no partial final.
 - Source local paths do not appear in export manifests.
 
 ## Optional dependency boundary
 
 `pypdf==6.14.2` is pinned for PDF structure/text/path access. A host-installed
 Poppler `pdftoppm` is used for local rendering and is not redistributed.
-Windows Media OCR runs in a bounded local PowerShell process. Adapter absence
-produces an actionable error; it does not disable manual entry.
+Tesseract, when installed, runs a bounded 15/20/25-degree local sweep and maps
+TSV boxes back into crop coordinates. Windows Media OCR runs in a bounded
+local PowerShell process as fallback. Adapter absence produces an actionable
+error; it does not disable manual entry.
 
 ## Surface boundary
 

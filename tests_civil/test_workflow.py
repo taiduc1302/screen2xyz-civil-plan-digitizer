@@ -11,6 +11,108 @@ from .helpers_civil import FIXED_NOW, add_approved, project_and_workflow
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_contour_line_is_persistent_reviewed_geometry(self):
+        project, flow = project_and_workflow()
+        line = flow.add_elevation_line(
+            [PixelPoint(60, 90), PixelPoint(90, 80)],
+            elevation=49.5,
+        )
+        self.assertEqual(line.review_status, C.UNREVIEWED)
+        flow.approve_elevation_line(line.id)
+        self.assertTrue(line.approved)
+        self.assertEqual(project.elevation_lines[0].vertices[1], PixelPoint(90, 80))
+        flow.undo()
+        self.assertEqual(
+            project.elevation_lines[0].review_status, C.UNREVIEWED
+        )
+
+    def test_undo_and_redo_restore_cart_mutations(self):
+        project, flow = project_and_workflow()
+        point = flow.add_manual_point(
+            pixel=PixelPoint(60, 90),
+            elevation=49.06,
+            point_type=C.EXISTING_GROUND,
+            page_index=2,
+            page_label="3",
+        )
+        self.assertEqual(len(project.points), 1)
+        flow.undo()
+        self.assertEqual(project.points, [])
+        flow.redo()
+        self.assertEqual(len(project.points), 1)
+        self.assertEqual(project.points[0].id, point.id)
+
+    def test_edit_preserves_estimator_cart_fields(self):
+        _project, flow = project_and_workflow()
+        point = flow.add_manual_point(
+            pixel=PixelPoint(60, 90),
+            elevation=49.06,
+            point_type=C.EXISTING_GROUND,
+        )
+        flow.edit_point(
+            point.id,
+            point_number="EX-101",
+            description="EX GROUND",
+            sheet="C03",
+            revision_label="G",
+            notes="Confirm curb return",
+        )
+        self.assertEqual(point.point_number, "EX-101")
+        self.assertEqual(point.sheet, "C03")
+        self.assertEqual(point.revision_label, "G")
+        self.assertEqual(point.notes, "Confirm curb return")
+        self.assertEqual(point.review_status, C.REVIEW_REQUIRED)
+
+    def test_bulk_approve_is_one_undoable_action(self):
+        project, flow = project_and_workflow()
+        first = flow.add_manual_point(
+            pixel=PixelPoint(60, 90),
+            elevation=49.06,
+            point_type=C.EXISTING_GROUND,
+        )
+        second = flow.add_manual_point(
+            pixel=PixelPoint(80, 80),
+            elevation=49.50,
+            point_type=C.DESIGN_GRADE,
+        )
+        flow.bulk_approve([first.id, second.id])
+        self.assertTrue(all(point.approved for point in project.points))
+        flow.undo()
+        self.assertTrue(
+            all(point.review_status == C.UNREVIEWED for point in project.points)
+        )
+
+    def test_renumber_and_sort_point_cart(self):
+        project, flow = project_and_workflow()
+        high = flow.add_manual_point(
+            pixel=PixelPoint(60, 90),
+            elevation=52,
+            point_type=C.EXISTING_GROUND,
+        )
+        low = flow.add_manual_point(
+            pixel=PixelPoint(80, 80),
+            elevation=48,
+            point_type=C.DESIGN_GRADE,
+        )
+        flow.renumber_points(prefix="C03-", start=10, padding=3)
+        self.assertEqual(high.point_number, "C03-010")
+        self.assertEqual(low.point_number, "C03-011")
+        flow.sort_points("elevation")
+        self.assertEqual([point.id for point in project.points], [low.id, high.id])
+
+    def test_assisted_cart_row_can_be_deleted_and_restored(self):
+        project, flow = project_and_workflow()
+        point = flow.add_manual_point(
+            pixel=PixelPoint(60, 90),
+            elevation=49.06,
+            point_type=C.EXISTING_GROUND,
+        )
+        point.source_method = C.PDF_TEXT
+        flow.delete_cart_point(point.id)
+        self.assertEqual(project.points, [])
+        flow.undo()
+        self.assertEqual(project.points[0].id, point.id)
+
     def test_manual_point_requires_review_then_approves(self):
         _project, flow = project_and_workflow()
         point = flow.add_manual_point(
@@ -73,6 +175,18 @@ class WorkflowTests(unittest.TestCase):
                 elevation=101,
                 point_type=C.EXISTING_GROUND,
             )
+
+    def test_project_elevation_range_is_validated_and_audited(self):
+        project, flow = project_and_workflow()
+        flow.set_plausible_elevation_range(40, 60)
+        self.assertEqual(project.plausible_elevation_min, 40)
+        self.assertEqual(project.plausible_elevation_max, 60)
+        self.assertEqual(
+            project.decision_log[-1]["action"],
+            "PLAUSIBLE_ELEVATION_RANGE_SET",
+        )
+        with self.assertRaises(WorkflowError):
+            flow.set_plausible_elevation_range(60, 40)
 
     def test_non_terrain_manual_class_rejected(self):
         _project, flow = project_and_workflow()

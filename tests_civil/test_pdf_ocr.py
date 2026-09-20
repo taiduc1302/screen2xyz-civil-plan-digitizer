@@ -13,6 +13,7 @@ from screen2xyz_civil.ocr import (
     OcrLine,
     OcrResult,
     OcrWord,
+    TesseractOcrAdapter,
     WindowsOcrAdapter,
 )
 from screen2xyz_civil.pdf import (
@@ -87,6 +88,16 @@ class PdfOcrTests(unittest.TestCase):
         candidate = result.text_candidates(page_index=2, offset_x=100, offset_y=200)[0]
         self.assertEqual(candidate.bbox.to_dict(), {"x0": 101, "y0": 202, "x1": 111, "y1": 212})
         self.assertEqual(candidate.page_index, 2)
+        upscaled = result.text_candidates(
+            page_index=2,
+            offset_x=100,
+            offset_y=200,
+            coordinate_scale=2,
+        )[0]
+        self.assertEqual(
+            upscaled.bbox.to_dict(),
+            {"x0": 100.5, "y0": 201.0, "x1": 105.5, "y1": 206.0},
+        )
 
     def test_mock_ocr_adapter_is_swappable(self):
         expected = OcrResult("SUCCESS", "", "mock", "en-US", 0, ())
@@ -122,3 +133,50 @@ class PdfOcrTests(unittest.TestCase):
             result = WindowsOcrAdapter(ROOT).extract(image)
         self.assertEqual(result.lines[0].words[0].text, "49.06")
         self.assertEqual(result.lines[0].words[0].bbox.x1, 11)
+
+    def test_tesseract_adapter_parses_confidence_and_deduplicates_angles(self):
+        image = make_png(fresh_dir() / "crop.png", 20, 20)
+        payload = {
+            "schema_version": "1.0",
+            "status": "SUCCESS",
+            "raw_text": "49.06\n49.06",
+            "engine": "tesseract-multirotation",
+            "language": "eng",
+            "duration_ms": 5,
+            "lines": [
+                {
+                    "text": "49.06",
+                    "words": [
+                        {
+                            "text": "49.06",
+                            "x": 1,
+                            "y": 2,
+                            "width": 10,
+                            "height": 8,
+                            "confidence": 0.92,
+                        }
+                    ],
+                },
+                {
+                    "text": "49.06",
+                    "words": [
+                        {
+                            "text": "49.06",
+                            "x": 2,
+                            "y": 2,
+                            "width": 10,
+                            "height": 8,
+                            "confidence": 0.80,
+                        }
+                    ],
+                },
+            ],
+        }
+        completed = subprocess.CompletedProcess([], 0, json.dumps(payload), "")
+        with mock.patch("screen2xyz_civil.ocr.subprocess.run", return_value=completed):
+            result = TesseractOcrAdapter(
+                ROOT,
+                executable=image,
+            ).extract(image)
+        self.assertEqual(len(result.lines), 1)
+        self.assertEqual(result.lines[0].words[0].confidence, 0.92)
