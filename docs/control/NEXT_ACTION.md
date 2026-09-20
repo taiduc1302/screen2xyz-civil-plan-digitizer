@@ -1,19 +1,38 @@
 # Next Action
 
-## Current stage: Civil Plan Digitizer owner handoff
+## Current stage: reconciled Civil mainline, owner-controlled follow-up
 
-The local feature implementation is complete on
-`feature/civil-plan-digitizer-overnight`. It has not been pushed, merged, or
-publicly released.
+The assisted Civil Plan Digitizer workflow is integrated into `main` through PR #1. Repository/CI maintenance is also current on `main`, including the reviewed Actions runtime update merged through PR #21.
 
-## Exactly one recommended next action
+## Exactly one repository-admin action
 
-The owner reviews the feature branch, Civil operator/QA/limitations documents,
-synthetic benchmark boundary, and final validation disposition—including the
-unchanged M2 Windows OCR test that ran 15/16 twice—then decides whether to
-authorize a push/review PR and a separate local real-plan/downstream validation
-session.
+Change the GitHub repository default branch from `feature/assisted-c03-validation` to `main` (Issue #19).
 
-Real proprietary-drawing use, AGTEK/Civil 3D/Kubla acceptance, default-branch
-merge, licence selection, packaging, and public release remain separate owner
-gates.
+The code/history reconciliation is complete. The remaining blocker is the repository setting itself, which the connected GitHub integration available here cannot change. Until it is changed, treat `main` as the intended canonical code line and avoid starting new work from the stale default branch.
+
+## Draft review order after the default-branch switch
+
+Do not merge the open draft stack merely to reduce the PR count.
+
+1. PR #2 — reconcile the unified-capture draft against current `main`.
+2. PRs #3 → #4 → #5 — review only in dependency order because each is stacked on the prior draft.
+3. PR #7 — separately review the open-source takeoff integration for licensing, provenance, local-processing boundaries, dependency risk, and current-main CI.
+4. PR #8 — review only after PR #7 has a disposition because it is stacked on that branch.
+5. PR #10 — independently reconcile the plan-layer extraction draft against current `main`.
+
+Each draft must earn its own current evidence and merge decision.
+
+## Separate owner gates
+
+Real proprietary-drawing validation, downstream AGTEK/Civil 3D/Kubla acceptance, automatic quantity promotion, public release, licence selection, redistribution, and certified accuracy claims remain separate owner decisions. Existing merges do not grant those approvals.
+
+## Standing workflow
+
+For new work:
+
+1. read `AGENTS.md`, `PROJECT_STATE.md`, and this file;
+2. branch from current `main` after the default-branch setting is corrected;
+3. preserve retained evidence and review-first behavior;
+4. use synthetic/public-safe data unless an explicit local real-data validation session is authorized;
+5. require reproducible tests and current-main CI;
+6. update these control files only when accepted repository state actually changes.
