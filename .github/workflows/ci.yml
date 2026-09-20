@@ -2,9 +2,9 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/assisted-c03-validation]
   pull_request:
-    branches: [main]
+    branches: [main, feature/assisted-c03-validation]
   workflow_dispatch: {}
 
 # No secrets are used. No capture artifacts are uploaded. Windows-only
