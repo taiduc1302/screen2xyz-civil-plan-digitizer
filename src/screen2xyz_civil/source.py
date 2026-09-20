@@ -6,9 +6,8 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
-from screen2xyz_lab.evidence import sha256_file
-
 from . import contracts as C
+from .io_utils import sha256_file
 from .models import CivilModelError, CropRegion
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"

@@ -145,3 +145,65 @@
 - Human gates remaining: authorized representative real-plan accuracy;
   estimator acceptance; AGTEK/Civil 3D/Kubla import; preliminary LandXML
   acceptance; packaging/licensing; default-branch merge and public release.
+
+## 2026-07-29 — Standalone assisted C03 stabilization
+
+- Phase: review-first real-drawing validation and export hardening on
+  `feature/assisted-c03-validation`.
+- Repository safety: all work remained in the standalone local repository.
+  The protected hackathon checkout and default branch were not modified; no
+  remote was configured and no push was attempted.
+- Implemented: estimator Point Cart fields and sorting; undo/redo and bulk
+  actions; selected export; reviewed contour lines/vertices; sheet/revision
+  inference; configurable project elevation range; asynchronous PDF/OCR
+  indexing; capture-at-cursor; Safe/Rapid policies; duplicate click guards;
+  integer-fragment and competing-label rejection; scrollable review pane.
+- OCR: added a bounded local Tesseract adapter that sweeps 15/20/25 degrees,
+  inverse-maps TSV boxes, deduplicates overlap, and falls back to Windows
+  Media OCR. No cloud service or network path was added.
+- Real local check: the private C03 page calibrated at approximately
+  0.168919 m/source-pixel; the independent distance check passed at
+  approximately 0.34% error. Local multi-angle OCR indexed 1,007 word boxes,
+  with 76 capturable suggestions, 170 rejected evidence items, and 761
+  non-elevation boxes. One suggestion was visually matched to its raster crop,
+  explicitly approved, saved, and reopened. These counts are diagnostic, not
+  accuracy metrics.
+- Defect found: a custom PDF font's embedded text mapping disagreed with a
+  visible grade glyph.
+- Resolution: discarded the unapproved point, lowered confidence for custom
+  PDF encodings, made the raster crop prominent, and validated the local OCR
+  path against the visible glyph before approval.
+- Export hardening: removed all `screen2xyz_civil` imports of legacy product
+  packages; added standalone deterministic/atomic I/O; handoffs now build in
+  a hidden staging root and publish only after XLSX/CSV/XYZ/NEZ round-trip
+  verification. Injected late failure leaves no final or staging folder and
+  restores project export history.
+- Workbook QA: eight sheets, numeric coordinate/elevation cells, filters,
+  freeze panes, contour vertices, formula-safe text, redacted source path, and
+  generated-file round-trip checks.
+- Tests: Civil 113/113 PASS; civil compile PASS; synthetic benchmark retained
+  exact deterministic scores. Full repository regression and sanitized
+  packaging are the next gates.
+- Privacy: the private PDF, project, OCR cache, and raster crops remain ignored
+  local files. No proprietary image or extracted drawing content was placed
+  in documentation, Git, or user-facing outputs.
+
+## 2026-07-29 — Final standalone regression
+
+- PASS: baseline 42/42, M1 34/34, M2 deterministic 498/498, M2 Windows
+  integration 16/16, Civil 113/113, retained-evidence verification, and
+  compile.
+- PASS: synthetic rule benchmark remained exact and repeatable.
+- PASS: the ignored private C03 project generated 19 reviewed handoff
+  artifacts; workbook/CSV/XYZ/NEZ round-trip validation passed and the package
+  contained no exported absolute local path.
+- Test environment note: the baseline Windows OCR suite requires
+  process-scoped `PSExecutionPolicyPreference=Bypass` on this machine. Without
+  it, PowerShell policy blocks the local adapter before OCR; this is an
+  environment gate, not an application result.
+- Commit: `2a80876` (`feat: complete assisted civil point cart and local OCR`).
+- Remaining gates: representative labelled real-plan accuracy, estimator
+  acceptance, downstream AGTEK/Civil 3D/Kubla import, packaging/licensing,
+  and any future merge or release authorization.
+- Next: create and inspect a sanitized source ZIP and validation report. Keep
+  all private drawings, projects, caches, and handoff data outside the package.

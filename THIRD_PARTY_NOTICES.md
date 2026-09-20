@@ -11,7 +11,10 @@ or datasets. It uses the following components in place on the host machine:
 | Windows.Media.Ocr | Local OCR engine | OS component; not redistributed |
 | Arial (system font) | Fixture rendering, used in place | Font binary must never be committed or redistributed |
 | pypdf 6.14.2 (BSD-3-Clause) | Optional local Civil PDF text/page inspection | Installed from PyPI; not vendored or redistributed |
+| openpyxl 3.1.5 (MIT) | Local estimator XLSX creation and round-trip verification | Installed from PyPI; not vendored or redistributed |
+| defusedxml 0.7.1 (PSFL) | XML hardening for workbook reads | Installed from PyPI; not vendored or redistributed |
 | Poppler `pdfinfo` / `pdftoppm` (GPL-2.0-or-later) | Optional local Civil PDF metadata/raster adapter | Host executable only; not redistributed |
+| Tesseract OCR (Apache-2.0) | Optional local multi-angle OCR for small rotated civil grades | Host executable/language data only; not redistributed |
 
 Full identities, versions, hashes, and licence-evidence status are recorded
 in `docs/guardrails/Screen2XYZ_Dependency_and_Licence_Register_v0.1.csv` and

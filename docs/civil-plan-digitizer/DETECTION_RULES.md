@@ -12,6 +12,8 @@ not permission to export.
   mark the result ambiguous.
 - Convert `O`/`o` between digits to zero and mark the result ambiguous.
 - Reject mixed comma/point notation and unsafe characters.
+- Reject integer-only and incomplete decimal fragments as ambiguous evidence;
+  do not promote them into terrain elevations.
 - Reject percentages, dates, drawing scales, and station notation as
   elevations.
 - Values outside the configured plausible elevation range remain unknown and
@@ -60,6 +62,11 @@ The selected association and alternatives remain visible and editable. An oval
 proposes Design Grade. A cross, dot, or survey-like marker proposes Existing
 Ground. A plausible decimal without a reliable terrain symbol remains
 review-required.
+
+Two labels competing for the same marker are not capturable until the
+association is disambiguated. Strict slope, utility, title-block, crop, and
+range rejections guard nearby clicks; soft OCR fragments are retained as
+evidence but do not mask a separate valid label on the same marker.
 
 ## Review state
 

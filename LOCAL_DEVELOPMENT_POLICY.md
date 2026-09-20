@@ -22,7 +22,7 @@ repository from which the initial tracked tree was exported.
   machine-readable evaluation results only in ignored local folders.
 - Never upload drawing content to OCR, AI, analytics, or other network
   services. PDF extraction, rendering, and OCR are local-only.
-- Never commit `Civil IFCclean for gradeworks.pdf` or any derivative page/crop.
+- Never commit a private validation drawing or any derivative page/crop.
 - Evidence committed to Git must contain only sanitized aggregate results and
   synthetic fixtures.
 

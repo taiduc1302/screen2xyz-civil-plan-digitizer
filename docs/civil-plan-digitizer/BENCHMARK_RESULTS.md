@@ -7,7 +7,7 @@ Command:
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe tests_civil\benchmark_civil.py
+.\.venv\Scripts\python.exe -m tests_civil.benchmark_civil
 ```
 
 > This is a synthetic rule-level benchmark. It does not run an OCR engine or
@@ -29,9 +29,9 @@ $env:PYTHONPATH = "src"
 | Surface fixture | 5 vertices, 4 triangles |
 | Repeated classification evaluations | 10,500 |
 | Classification repeatability | identical across 100 iterations |
-| Timed classification loop | 0.634 s on this run |
-| Mean classification time | 60.35 microseconds/case on this run |
-| Peak Python traced memory | 73,510 bytes on this run |
+| Timed classification loop | 0.448 s on this run |
+| Mean classification time | 42.63 microseconds/case on this run |
+| Peak Python traced memory | 71,686 bytes on this run |
 
 Timing and memory are observational machine results and will vary. The
 classification fixture covers Existing crosses, Design ovals, plausible

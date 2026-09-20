@@ -7,9 +7,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from screen2xyz_lab.evidence import atomic_write_json, sha256_file
-
 from . import contracts as C
+from .io_utils import atomic_write_json, sha256_file
 from .models import CivilModelError, CivilProject
 
 
