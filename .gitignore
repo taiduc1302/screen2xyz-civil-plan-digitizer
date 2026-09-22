@@ -59,3 +59,9 @@ local-screenshots/
 .local-evaluation-results.json
 Civil_Plan_Digitizer_Evidence/private/
 *.s2c.json
+
+# Public repository: real work stays local, never tracked
+pilot/
+raw/
+local_restricted_data/
+*.s2a.json
