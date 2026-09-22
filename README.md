@@ -1,17 +1,17 @@
+> **Public source - September 2026:** This branch retains its own experimental
+> runtime and is not promoted to production by the privacy cleanup.
+> For the newsletter MCP/vector work, start with the
+> [issue 4 reader guide](docs/public/ISSUE_4_READER_GUIDE.md).
+> Read [the current audit](PUBLIC_RELEASE_AUDIT.md), not old private-scope notes.
+
 # Screen2XYZ
 
 Screen2XYZ is a controlled Windows research/product repository for local
 screen/OCR review and preliminary civil-plan digitization.
 
-> **Current status:** the synthetic OCR baseline, M1 PNG review lab, and
-> M2-Live watcher are merged on private `main`. The Civil Plan Digitizer is
-> implemented and being stabilized on
-> `feature/civil-plan-digitizer-overnight`; it is not merged, released, or
-> downstream-certified.
-
 All PDF/image-derived coordinates and elevations are preliminary and require
 estimator or survey review. They are not certified survey data. The repository
-has no selected public licence and is not authorized for public release.
+retains its existing licence status; this cleanup grants no new licence.
 
 ## Civil Plan Digitizer
 

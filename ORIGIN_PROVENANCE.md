@@ -24,3 +24,11 @@ and retained historical evidence were preserved in the initial commit.
 
 No licence has been selected for the repository content. All rights remain
 reserved unless and until the owner records a licence decision.
+
+## Public privacy export - 2026-09-22
+
+Original authorship and notices remain. Private operator inputs were excluded
+from public ordinary-ref history; identifying operational paths and labels
+were redacted. The encrypted original history is retained separately.
+This is an export of existing work, not newly claimed authorship.
+No new licence or ownership transfer is implied.
