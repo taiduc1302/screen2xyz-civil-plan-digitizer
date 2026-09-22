@@ -1,38 +1,35 @@
-# Security Policy
+# Security and public-data policy
 
-## Status
+This is publicly visible research source, not a supported production deployment.
+Never put sensitive reports, drawings, credentials or private screenshots in
+public issues or pull requests. Use GitHub private vulnerability reporting only
+when it is enabled; otherwise contact the maintainer through a private channel.
 
-Screen2XYZ is a private, pre-release proof-of-concept. There is no supported
-production deployment, no network surface, and no public release. Security
-issues should be raised directly with the repository owner through a private
-channel (repository issues remain private while the repository is private).
+## Public inputs
 
-## Scope and threat model
+Only deliberately synthetic fixtures belong in the repository. Real drawings,
+project ledgers, company procedures, exported quantities, user home paths,
+access tokens and local AI transcripts must stay outside Git and releases.
+The source-snapshot checker is `python tools/publication_check.py`.
+An allowlisted image hash proves file identity, not drawing accuracy.
 
-The implemented laboratory:
+## Application boundary
 
-- runs entirely on the local machine; the source code contains no network
-  client, and an automated test (T-PRI-003) fails if one is introduced;
-- treats raw OCR output as untrusted text: control characters are rejected,
-  CSV output is formula-escaped (`exporters.formula_safe_display`), and raw
-  text is retained as base64 plus SHA-256 rather than interpolated;
-- validates every input image against a manifest (relative path, size cap,
-  exact dimensions, SHA-256, and an allowlist of PNG chunk types) before OCR
-  (`pipeline.validate_image`);
-- runs OCR and rendering in bounded, non-interactive PowerShell child
-  processes with timeouts;
-- writes evidence atomically, copy-on-write, and refuses to overwrite
-  retained artifacts;
-- scans retained evidence for credentials, identity assignments, network
-  addresses, and absolute personal paths (`evidence.privacy_findings`,
-  tests T-PRI-001 and T-PRI-004).
+Treat external PDFs, OCR, model output and MCP results as untrusted. Keep the
+source PDF immutable and use a separately registered working copy for markups.
+The estimator must verify feature identity and scale independently; QA/reference
+geometry is never a bid quantity. AI does not grant estimator approval.
 
-## Known limitations
+Local parsing does not mean an AI host is offline: the selected host/provider
+may receive content returned through MCP. Check its data permissions before use.
+Do not expose local MCP/GUI services to an untrusted network.
 
-- The threat review (`docs/guardrails/Screen2XYZ_Privacy_and_Threat_Review_v0.1.md`)
-  covers only the synthetic, current-machine scope. Real-source capture,
-  cloud services, or public release each require a new review.
-- Git history metadata (commit author identity on two early commits) is
-  employer-identifying and cannot be removed without a history rewrite; see
-  `AUDIT_AND_REMEDIATION_REPORT.md`. This blocks public release of the
-  repository as-is.
+## September 2026 privacy remediation
+
+Real operator inputs were excluded from the rewritten ordinary branch/tag
+histories. Original evidence remains in an encrypted, restore-verified backup.
+Do not push an old local clone or an old branch back into the public repository.
+Re-clone after the rewrite, then port only individually reviewed source changes.
+Rewriting a branch does not purge GitHub cached objects, server-managed PR refs,
+previous downloads or third-party clones; those require separate handling.
+See `PUBLIC_RELEASE_AUDIT.md` for the actual checks and residual scope.
