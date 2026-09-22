@@ -4,12 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, feature/assisted-c03-validation]
   workflow_dispatch: {}
 
 # No secrets are used. No capture artifacts are uploaded. Windows-only
-# integration/acceptance/performance tests and real-target validation are
-# NOT run in CI; they are reported as skipped with a reason.
+# owner-machine acceptance/performance tests and proprietary real-plan
+# validation are NOT run in CI. Tests that require an interactive desktop may
+# report a skip with an explicit reason on the headless GitHub runner.
 #
 # Screen2XYZ targets Windows only (Windows.Media.Ocr, PrintWindow). The
 # baseline and M1 OCR suites invoke powershell.exe, so the whole deterministic
@@ -50,13 +51,13 @@ jobs:
           PYTHONPATH=src python -m unittest tests_m2.test_profiles_privacy
 
   windows-integration:
-    name: windows integration (real worker)
+    name: windows integration (headless CI host)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
-      - name: M2 Windows integration (skips headless with reason)
+      - name: M2 Windows integration (interactive cases may skip with reason)
         shell: bash
         run: PYTHONPATH=src python tests_m2/run_m2_integration.py
