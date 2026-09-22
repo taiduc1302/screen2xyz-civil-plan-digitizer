@@ -47,3 +47,42 @@ Publication retains the existing licence status on each branch. It does not
 invent a new licence, grant ownership rights, authorize proprietary-data uploads,
 or turn synthetic/unit tests into estimator approval. Live Windows OCR, native
 Revu and downstream engineering imports retain their own acceptance gates.
+
+## Executed publication checks
+
+Hosted run: https://github.com/taiduc1302/screen2xyz-civil-plan-digitizer/actions/runs/35752904631
+
+Supplemental optional-geometry/stdio run: https://github.com/taiduc1302/screen2xyz-civil-plan-digitizer/actions/runs/35754740497
+
+Both the main baseline and MCP research snapshots were tested on Windows with Python 3.14.
+
+| Snapshot | Suite | Tests discovered | Skipped | Exit |
+|---|---|---:|---:|---:|
+| main | `python -m unittest discover -s publication_snapshot_tests -v` | 9 | 0 | 0 |
+| main | `python tools/publication_check.py` | - | 0 | 0 |
+| main | `python tests/run_all.py` | 42 | 0 | 0 |
+| main | `python tests_m1/run_m1_tests.py` | 34 | 0 | 0 |
+| main | `python tests_m2/run_m2_tests.py` | 498 | 0 | 0 |
+| main | `python tests_civil/run_civil_tests.py` | 113 | 1 | 0 |
+| main | `python -m screen2xyz_lab.cli verify-evidence` | - | 0 | 0 |
+| research | `python -m unittest discover -s publication_snapshot_tests -v` | 9 | 0 | 0 |
+| research | `python tools/publication_check.py` | - | 0 | 0 |
+| research | `python tests/run_all.py` | 42 | 0 | 0 |
+| research | `python tests_m1/run_m1_tests.py` | 34 | 0 | 0 |
+| research | `python tests_m2/run_m2_tests.py` | 501 | 0 | 0 |
+| research | `python tests_civil/run_civil_tests.py` | 639 | 57 | 0 |
+| research | `python -m screen2xyz_lab.cli verify-evidence` | - | 0 | 0 |
+| research with optional geometry and stdio | `python -m unittest discover -s publication_snapshot_tests -v` | 9 | 0 | 0 |
+| research with optional geometry and stdio | `python tools/publication_check.py` | - | 0 | 0 |
+| research with optional geometry and stdio | `python tests/run_all.py` | 42 | 0 | 0 |
+| research with optional geometry and stdio | `python tests_m1/run_m1_tests.py` | 34 | 0 | 0 |
+| research with optional geometry and stdio | `python tests_m2/run_m2_tests.py` | 501 | 0 | 0 |
+| research with optional geometry and stdio | `python tests_civil/run_civil_tests.py` | 639 | 3 | 0 |
+| research with optional geometry and stdio | `python -m screen2xyz_lab.cli verify-evidence` | - | 0 | 0 |
+
+The exact tested SHAs and log hashes are in `publication/validation.json`.
+The post-validation commit adds this record only; it does not change runtime code.
+
+**PUBLIC_SOURCE_SNAPSHOT_READY: YES.** This means the reviewed source package, not production use.
+**GITHUB_HISTORICAL_CACHE_PURGE: NOT COMPLETED.** The owner must request server-side
+cleanup of retained sensitive commit/PR views; this workflow cannot certify their removal.
