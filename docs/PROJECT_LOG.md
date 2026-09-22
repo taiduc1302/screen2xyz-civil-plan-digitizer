@@ -91,6 +91,13 @@ Append new entries at the end. Each entry must state the date, decision, reason,
 - **Why:** Each condition occurred in the first field session and was absent or weaker in the earlier white-background fixtures.
 - **Evidence:** Seven-check matrix in `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/ADDITIONAL_FIELD_CHECKS.md`.
 
+### 2026-09-22 — Add source-agnostic sheet geometry helpers on a new branch
+
+- **Decision:** Add `src/screen2xyz_civil/sheet_geometry.py` with vector helpers for combined plan-and-profile sheets: coordinate flip, curve/rectangle/quad expansion, style-aware segment chaining, closed-ring detection, label projection, plan-band detection, and a marking-group boundary rule. Develop on `feature/v2.8-sheet-geometry` from `feature/v2.7-agtek-field-fixes` and target that branch, per the existing chain policy.
+- **Why:** Four extraction defects were observed repeatedly on real combined sheets, and every one of them returns a plausible wrong answer rather than an error: a top-down/bottom-up coordinate mismatch that is nearly invisible near mid-page; dropped curve items that delete rounded noses and kerb returns; a chain snap tolerance that merges the two sides of a narrow feature when loosened; and a sheet title that names both views on every page, so plan and profile cannot be separated by page.
+- **Scope limits:** The module is source-agnostic and carries no job, client or drawing identifiers; every dimension is a caller parameter. It depends on `pymupdf` and `shapely`, which the rest of the application does not use, so they are not added to `requirements.txt` and the page-level tests skip when they are absent.
+- **Evidence:** `tests_civil/test_sheet_geometry.py`, 25 tests.
+
 ## Measurement log
 
 Append every new measured number at the end with exact configuration and retained evidence path.
@@ -176,6 +183,13 @@ Append every new measured number at the end with exact configuration and retaine
 - **Bundle:** Fresh PyInstaller 6.21.0 build launched as `Screen2XYZ v2.7`; 1,010 files, 46,828,509 bytes (44.659 MiB), executable SHA-256 `06E846905916F8CC2BEC65B2E7D234FF11CC2DFC00857272A89807A97D7F8FA4`.
 - **Evidence:** `runs/evidence/S2XYZ-V2.7-AGTEK-2026-08-04/FINAL_VERIFICATION.md`.
 
+### 2026-09-22 — Sheet geometry helper verification
+
+- **Result:** `tests_civil/test_sheet_geometry.py` 25/25 with `pymupdf` 1.28.0 and `shapely` 2.1.2 present; 19/25 with 6 skipped in the repository virtual environment, which has neither. Full Civil suite 138/138 in 178.279 s, 0 failures, 0 errors, 7 skipped (113 before this change plus the 25 added). Application suite 77/77 in 307.252 s. `tests_app.test_project_log` 3/3.
+- **Defect found by the tests, not by review:** the first implementation handled only line and curve items. PyMuPDF emits a drawn rectangle as a single `re` item, so every axis-aligned box was being dropped silently — the same class of loss as skipping curves. `re` and `qu` handling was added and a named regression test asserts the fixture still exercises the `re` path.
+- **Snap tolerance:** raising the chain snap to force an open outline closed merges the two sides of any feature narrower than the tolerance. Validate a snap change against a control feature of known area; if the control moves, the tolerance is too high whatever it does to the stubborn outline. Recorded in the module as `SNAP_CEILING_NOTE`.
+- **Evidence:** test module in this commit; no external run evidence is claimed.
+
 ## Known traps
 
 - **`main` looks valid but is not the product.** It is the abandoned `5525a29` stub.
@@ -185,6 +199,9 @@ Append every new measured number at the end with exact configuration and retaine
 - **Never use `auto` as a malformed grouped-number fallback.** `1.844.850` under `auto` becomes `1844850`, silently accepting a roughly 1000x error.
 - **Partial one-field tweaks do not fix cursor OCR.** On the 48-label set, precision alone left 8 wrong; range left 7; consensus alone left 13; confidence alone left 7. PSM and upscale are also material.
 - **Zero wrong-accepted is more important than maximizing raw capture.** Report safe rejections plainly.
+
+- **A plausible extraction is not a correct one.** A coordinate flip near mid-page, a dropped curve or rectangle item, and a loosened chain tolerance each produce output that looks right. Run a control case of known answer alongside every sweep and report it in the same output; a sweep reported without its control should not be believed.
+- **An interpolation that lands outside its domain has failed, not degraded.** Treat an out-of-range result as a failed check and stop, rather than reporting it with a caveat and reasoning onward from it.
 
 ## Open questions for the owner
 
