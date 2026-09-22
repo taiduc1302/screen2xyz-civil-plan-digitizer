@@ -955,7 +955,11 @@ def main() -> int:
                 NumberTypeCoordinateHintIntegrationTests,
                 DemoProtocolIntegrationTests):
         suite.addTests(loader.loadTestsFromTestCase(case))
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    # Test harness only: leave production intervals and elapsed assertions alone.
+    from timeout_headroom import controller_headroom
+    with controller_headroom() as factor:
+        print(f"M2 test-only request timeout factor: {factor}")
+        result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(f"M2 integration: run={result.testsRun} "
           f"failures={len(result.failures)} errors={len(result.errors)} "
           f"skipped={len(result.skipped)}")

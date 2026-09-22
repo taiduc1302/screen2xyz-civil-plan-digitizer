@@ -1,0 +1,362 @@
+from __future__ import annotations
+
+import unittest
+
+from screen2xyz_civil.pattern_edge import flatten_to_envelope
+from screen2xyz_civil.bluebeam_bridge import (
+    BridgeError,
+    MAX_LABEL_CHARS,
+    audit_host_text,
+    cross_check_quantity,
+    markup_text_plan,
+    page_identity_report,
+    perimeter,
+    polygon_health,
+    reconcile,
+    render_shows_host_state,
+    self_intersections,
+    shoelace_area,
+)
+
+
+# Synthetic geometry only. Each case reproduces the shape of a failure seen on a
+# real sheet without carrying any coordinate from a proprietary drawing.
+CLEAN_RECT = [(100.0, 100.0), (300.0, 100.0), (300.0, 180.0), (100.0, 180.0)]
+
+# A sane local outline with one vertex dragged far away and back - the shape
+# that a host reported as a small, plausible area with a nonsense perimeter.
+SPIKED_RECT = [
+    (100.0, 100.0),
+    (300.0, 100.0),
+    (300.0, 180.0),
+    (2000.0, 190.0),
+    (2000.0, 195.0),
+    (100.0, 180.0),
+]
+
+BOWTIE = [(0.0, 0.0), (100.0, 100.0), (100.0, 0.0), (0.0, 100.0)]
+
+
+class GeometryPrimitiveTests(unittest.TestCase):
+    def test_shoelace_area_of_known_rectangle(self):
+        self.assertAlmostEqual(shoelace_area(CLEAN_RECT), 200.0 * 80.0, places=6)
+
+    def test_perimeter_closed_and_open_differ_by_closing_segment(self):
+        closed = perimeter(CLEAN_RECT, closed=True)
+        open_path = perimeter(CLEAN_RECT, closed=False)
+        self.assertAlmostEqual(closed - open_path, 80.0, places=6)
+
+    def test_area_requires_three_points(self):
+        with self.assertRaises(BridgeError):
+            shoelace_area([(0.0, 0.0), (1.0, 1.0)])
+
+    def test_non_finite_coordinates_are_rejected(self):
+        with self.assertRaises(BridgeError):
+            perimeter([(0.0, 0.0), (float("inf"), 1.0)])
+
+
+class SelfIntersectionTests(unittest.TestCase):
+    def test_clean_rectangle_has_no_crossings(self):
+        self.assertEqual(self_intersections(CLEAN_RECT), [])
+
+    def test_a_ring_that_repeats_its_first_vertex_is_not_self_intersecting(self):
+        # shapely writes rings closed; the zero-length closing edge touched
+        # its neighbours at a shared point and was reported as a crossing on
+        # five valid polygons on 2026-09-03.
+        self.assertEqual(self_intersections(CLEAN_RECT + [CLEAN_RECT[0]]), [])
+        self.assertTrue(polygon_health(CLEAN_RECT + [CLEAN_RECT[0]])["safe_to_write"])
+
+    def test_a_consecutive_duplicate_vertex_is_not_self_intersecting(self):
+        # The host rounds to 0.1 pt and can hand back two equal vertices in a row.
+        doubled = CLEAN_RECT[:2] + [CLEAN_RECT[1]] + CLEAN_RECT[2:]
+        self.assertEqual(self_intersections(doubled), [])
+        self.assertTrue(polygon_health(doubled)["safe_to_write"])
+
+    def test_normalising_does_not_hide_a_real_crossing(self):
+        self.assertTrue(self_intersections(BOWTIE + [BOWTIE[0]]))
+
+    def test_reported_vertex_count_is_the_ring_without_degenerate_edges(self):
+        report = polygon_health(CLEAN_RECT + [CLEAN_RECT[0]])
+        self.assertEqual(report["vertex_count"], 4)
+
+    def test_bowtie_is_detected(self):
+        self.assertTrue(self_intersections(BOWTIE))
+
+    def test_triangle_cannot_self_intersect(self):
+        self.assertEqual(self_intersections([(0.0, 0.0), (10.0, 0.0), (5.0, 8.0)]), [])
+
+
+class PolygonHealthTests(unittest.TestCase):
+    def test_clean_rectangle_is_safe_to_write(self):
+        report = polygon_health(CLEAN_RECT, metres_per_unit=0.1)
+        self.assertTrue(report["safe_to_write"])
+        self.assertFalse(report["blocking"])
+        self.assertEqual(report["self_intersections"], [])
+        self.assertAlmostEqual(report["area_m2"], 200.0 * 80.0 * 0.01, places=6)
+
+    def test_self_intersecting_polygon_blocks_the_write(self):
+        report = polygon_health(BOWTIE)
+        self.assertFalse(report["safe_to_write"])
+        self.assertTrue(report["blocking"])
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("POLYGON_SELF_INTERSECTS", codes)
+
+    def test_stray_vertex_outline_blocks_the_write(self):
+        # The real 2026-09-02 failure: a simple, non-self-intersecting outline
+        # with one vertex dragged far away. It must not be writable.
+        report = polygon_health(SPIKED_RECT)
+        self.assertEqual(report["self_intersections"], [])
+        self.assertFalse(report["safe_to_write"])
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("POLYGON_SLIVER_SUSPECTED", codes)
+
+    def test_sliver_threshold_is_tunable_for_a_deliberate_override(self):
+        report = polygon_health(SPIKED_RECT, sliver_ratio_threshold=1000.0)
+        self.assertTrue(report["safe_to_write"])
+
+    def test_long_thin_corridor_is_not_reported_as_a_sliver(self):
+        # A real road corridor is legitimately elongated and must not trip the
+        # sliver guard, or the check becomes noise the operator learns to ignore.
+        corridor = [(0.0, 0.0), (1600.0, 0.0), (1600.0, 150.0), (0.0, 150.0)]
+        report = polygon_health(corridor)
+        self.assertTrue(report["safe_to_write"])
+        self.assertEqual(report["findings"], [])
+
+    def test_metres_per_unit_must_be_positive(self):
+        with self.assertRaises(BridgeError):
+            polygon_health(CLEAN_RECT, metres_per_unit=0.0)
+
+
+class CrossCheckQuantityTests(unittest.TestCase):
+    def test_agreeing_values_pass(self):
+        result = cross_check_quantity(expected=17.6388, reported=17.64, unit="m")
+        self.assertTrue(result["agrees"])
+        self.assertFalse(result["blocking"])
+        self.assertIsNone(result["integer_ratio"])
+
+    def test_exact_integer_ratio_points_at_a_scale_context_mismatch(self):
+        # The real 2026-09-02 case: a plan-scale area computed for geometry that
+        # was actually sitting in the profile band. The ratio is that sheet's
+        # plan/profile axis-scale ratio, not a host defect.
+        result = cross_check_quantity(expected=1682.4, reported=336.48, unit="m2")
+        self.assertFalse(result["agrees"])
+        self.assertTrue(result["blocking"])
+        self.assertEqual(result["integer_ratio"], 5)
+        codes = {finding["code"] for finding in result["findings"]}
+        self.assertIn("SCALE_CONTEXT_MISMATCH", codes)
+        detail = result["findings"][0]["detail"]
+        self.assertIn("viewport", detail)
+
+    def test_ordinary_mismatch_is_reported_without_an_integer_ratio(self):
+        result = cross_check_quantity(expected=100.0, reported=87.3, unit="m2")
+        self.assertTrue(result["blocking"])
+        self.assertIsNone(result["integer_ratio"])
+        codes = {finding["code"] for finding in result["findings"]}
+        self.assertIn("HOST_QUANTITY_MISMATCH", codes)
+
+    def test_expected_quantity_must_be_positive(self):
+        with self.assertRaises(BridgeError):
+            cross_check_quantity(expected=0.0, reported=1.0, unit="m")
+
+
+class MarkupTextTests(unittest.TestCase):
+    def test_label_is_never_populated_and_provenance_is_handed_back(self):
+        plan = markup_text_plan(
+            rule_id="DITCH_INFILL",
+            instance="North driveway crossing",
+            quantity_text="19.79 sq m",
+            sheet_label="DEMO-001-03",
+            provenance="Long provenance paragraph that must not reach the drawing." * 5,
+        )
+        self.assertEqual(plan["label"], "")
+        self.assertTrue(plan["session_notes"])
+        self.assertIn("DITCH_INFILL", plan["subject"])
+
+    def test_overlong_subject_is_trimmed(self):
+        plan = markup_text_plan(
+            rule_id="ROAD_WIDENING_FULL_STRUCTURE",
+            instance="x" * 200,
+        )
+        self.assertLessEqual(len(plan["subject"]), 96)
+        codes = {finding["code"] for finding in plan["findings"]}
+        self.assertIn("SUBJECT_TRUNCATED", codes)
+
+    def test_rule_id_is_required(self):
+        with self.assertRaises(BridgeError):
+            markup_text_plan(rule_id="   ", instance="anything")
+
+    def test_audit_flags_host_markups_that_render_as_clutter(self):
+        audit = audit_host_text(
+            {
+                "AAA-1": {"subject": "31.02 | driveway", "label": ""},
+                "BBB-2": {"subject": "31.02 | driveway", "label": "y" * (MAX_LABEL_CHARS + 1)},
+            }
+        )
+        self.assertFalse(audit["clean"])
+        self.assertEqual(len(audit["offenders"]), 1)
+        self.assertEqual(audit["offenders"][0]["markup_id"], "BBB-2")
+
+    def test_audit_passes_clean_markups(self):
+        audit = audit_host_text({"AAA-1": {"subject": "33.01 | culvert", "label": ""}})
+        self.assertTrue(audit["clean"])
+
+
+class PageIdentityTests(unittest.TestCase):
+    def test_drawing_number_found_in_page_text_confirms_the_page(self):
+        report = page_identity_report(
+            expected_drawing_number="DEMO-001-03",
+            page_text="CONSULTANT DWG. NO. DEMO-001-03  SHEET 03 OF 17",
+            viewer_page_label="03 STA 1+000",
+        )
+        self.assertTrue(report["confirmed"])
+        self.assertFalse(report["blocking"])
+
+    def test_missing_drawing_number_blocks(self):
+        report = page_identity_report(
+            expected_drawing_number="DEMO-001-03",
+            page_text="CONSULTANT DWG. NO. DEMO-001-05",
+        )
+        self.assertFalse(report["confirmed"])
+        self.assertTrue(report["blocking"])
+
+    def test_viewer_label_that_disagrees_is_flagged_but_not_blocking(self):
+        report = page_identity_report(
+            expected_drawing_number="DEMO-001-03",
+            page_text="DEMO-001-03",
+            viewer_page_label="01 STA 1+000 TO 1+140",
+        )
+        self.assertTrue(report["confirmed"])
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("VIEWER_LABEL_DIFFERS_FROM_DRAWING_NUMBER", codes)
+        self.assertFalse(report["blocking"])
+
+    def test_expected_drawing_number_is_required(self):
+        with self.assertRaises(BridgeError):
+            page_identity_report(expected_drawing_number="", page_text="anything")
+
+
+class RenderTrustTests(unittest.TestCase):
+    def test_matching_counts_support_visual_verification(self):
+        report = render_shows_host_state(host_markup_count=4, rendered_annotation_count=4)
+        self.assertTrue(report["visual_verification_supported"])
+        self.assertEqual(report["findings"], [])
+
+    def test_unsaved_host_state_is_flagged(self):
+        report = render_shows_host_state(host_markup_count=11, rendered_annotation_count=0)
+        self.assertFalse(report["visual_verification_supported"])
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("RENDER_STALE_VS_HOST", codes)
+
+
+class _FakeProvenance:
+    def __init__(self, markup_id: str = "") -> None:
+        self.extra = {"bluebeam_markup_id": markup_id} if markup_id else {}
+
+
+class _FakeTakeoff:
+    def __init__(self, takeoff_id: str, rule_id: str, markup_id: str = "") -> None:
+        self.id = takeoff_id
+        self.rule_id = rule_id
+        self.provenance = _FakeProvenance(markup_id)
+
+
+class _FakeSession:
+    def __init__(self, measurements) -> None:
+        self.measurements = measurements
+
+
+class ReconcileTests(unittest.TestCase):
+    def test_fully_linked_session_is_in_sync(self):
+        session = _FakeSession(
+            [
+                _FakeTakeoff("TK-0001", "DRIVEWAY_CULVERT_300", "AAA-1"),
+                _FakeTakeoff("TK-0002", "DITCH_INFILL", "BBB-2"),
+            ]
+        )
+        report = reconcile(session, ["AAA-1", "BBB-2"])
+        self.assertTrue(report["in_sync"])
+        self.assertEqual(report["linked_count"], 2)
+        self.assertEqual(report["host_markups_without_proposal"], [])
+
+    def test_host_markup_without_a_proposal_breaks_sync(self):
+        session = _FakeSession([_FakeTakeoff("TK-0001", "DITCH_INFILL", "AAA-1")])
+        report = reconcile(session, ["AAA-1", "ORPHAN-9"])
+        self.assertFalse(report["in_sync"])
+        self.assertEqual(report["host_markups_without_proposal"], ["ORPHAN-9"])
+
+    def test_proposal_naming_a_deleted_markup_is_reported(self):
+        session = _FakeSession([_FakeTakeoff("TK-0001", "DITCH_INFILL", "GONE-1")])
+        report = reconcile(session, [])
+        statuses = {row["status"] for row in report["rows"]}
+        self.assertIn("HOST_MARKUP_MISSING", statuses)
+        self.assertFalse(report["in_sync"])
+
+    def test_proposal_without_any_host_link_is_reported(self):
+        session = _FakeSession([_FakeTakeoff("TK-0001", "DITCH_INFILL")])
+        report = reconcile(session, [])
+        statuses = {row["status"] for row in report["rows"]}
+        self.assertIn("NO_HOST_LINK", statuses)
+
+
+class PatternChaseGateTests(unittest.TestCase):
+    # A boundary taken from a hatch's extent oscillates at the hatch pitch for
+    # ever. It reached the host on 2026-09-03 and sat there wrong by 0.57 m
+    # along a whole edge while the area reconciled, the overlap was zero and
+    # the sliver ratio stayed well under threshold. Nothing else here can see
+    # it, so the gate now does.
+    PITCH = 13.6
+
+    def _sawtooth_band(self, n=14):
+        run = [(i * self.PITCH, 100.0 if i % 2 else 106.4) for i in range(n)]
+        return run + [(run[-1][0], 60.0), (run[0][0], 60.0)]
+
+    def test_a_pattern_chasing_boundary_is_refused(self):
+        report = polygon_health(self._sawtooth_band(), pattern_pitch_pt=self.PITCH)
+        self.assertFalse(report["safe_to_write"])
+        codes = {f["code"] for f in report["findings"]}
+        self.assertIn("BOUNDARY_CHASES_A_PATTERN", codes)
+
+    def test_the_refusal_names_the_repair(self):
+        report = polygon_health(self._sawtooth_band(), pattern_pitch_pt=self.PITCH)
+        detail = next(f["detail"] for f in report["findings"]
+                      if f["code"] == "BOUNDARY_CHASES_A_PATTERN")
+        self.assertIn("flatten_to_envelope", detail)
+        self.assertIn("vector_fill", detail)
+
+    def test_the_repaired_boundary_passes(self):
+        fixed = flatten_to_envelope(self._sawtooth_band(), keep="inner")["ring"]
+        self.assertTrue(polygon_health(fixed, pattern_pitch_pt=self.PITCH)["safe_to_write"])
+
+    def test_the_sliver_ratio_alone_would_have_let_it_through(self):
+        # Why a new check was needed rather than a tighter old one.
+        report = polygon_health(self._sawtooth_band(), pattern_pitch_pt=self.PITCH)
+        self.assertLess(report["compactness_ratio"], 25.0)
+
+    def test_a_clean_boundary_is_unaffected(self):
+        self.assertTrue(polygon_health(CLEAN_RECT)["safe_to_write"])
+
+    def test_the_check_can_be_turned_off_deliberately(self):
+        report = polygon_health(self._sawtooth_band(), check_pattern_chase=False)
+        self.assertTrue(report["safe_to_write"])
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class PatternLatticeGateTests(unittest.TestCase):
+    # A concave hull through stipple points has no sawtooth and passed every
+    # check on 2026-09-04 while five of them reached the host.
+    from tests_civil.test_pattern_edge import LatticeTests as _L
+    HULL = _L.HULL
+
+    def test_a_stipple_hull_is_refused_when_the_pitch_is_known(self):
+        report = polygon_health(self.HULL, metres_per_unit=20 / 226.8, pattern_pitch_pt=5.1)
+        codes = {f.code if hasattr(f, "code") else f["code"] for f in report["findings"]}
+        self.assertIn("BOUNDARY_ON_A_PATTERN_LATTICE", codes)
+        self.assertTrue(report["blocking"])
+
+    def test_without_a_pitch_the_lattice_check_is_silent(self):
+        report = polygon_health(self.HULL, metres_per_unit=20 / 226.8)
+        codes = {f.code if hasattr(f, "code") else f["code"] for f in report["findings"]}
+        self.assertNotIn("BOUNDARY_ON_A_PATTERN_LATTICE", codes)

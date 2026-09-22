@@ -1,119 +1,80 @@
-# Screen2XYZ
+# Screen2XYZ - civil takeoff research preview
 
-Screen2XYZ is a controlled Windows research/product repository for local
-screen/OCR review and preliminary civil-plan digitization.
+Related experimental source for **Applied AI for Estimating, issue 4**:
+*AI Takeoff Markups in Bluebeam Through MCP.*
 
-> **Current status:** the synthetic OCR baseline, M1 PNG review lab, and
-> M2-Live watcher are merged on private `main`. The Civil Plan Digitizer is
-> implemented and being stabilized on
-> `feature/assisted-c03-validation`; it is not merged, released, or
-> downstream-certified.
+A local, review-first **single-sheet** workflow for PDF evidence, geometry
+proposals, traceable takeoff records and an MCP host such as Claude Code.
+This is research code, not a production estimator or certified survey system.
 
-All PDF/image-derived coordinates and elevations are preliminary and require
-estimator or survey review. They are not certified survey data. The repository
-has no selected public licence and is not authorized for public release.
+## What is here
 
-## Civil Plan Digitizer
+- PDF text/vector and layer inspection, rendered-sheet evidence and geometric QA;
+- source-SHA-bound sessions and a separately registered editable working PDF;
+- line/area proposals, scale state, questions, evidence and a scope ledger;
+- a runnable stdio MCP gateway with proposal/review support;
+- a Bluebeam working-copy/markup-plan bridge and explicit read-back requirements;
+- synthetic regression tests for the pipeline and its failure cases.
 
-The new review-first workspace provides:
+The existing Tk point/terrain digitizer is a separate workflow. This branch is
+not a fully wired multi-sheet bid-set takeoff application. One sheet, one
+compatible scale context and one session writer remain important limits.
 
-- local PDF/PNG source intake, selected-page rendering, crop, scale, local
-  origin, arbitrary East orientation, and independent second-distance check;
-- reliable manual Existing/Design/Contour point entry;
-- asynchronous local PDF text/vector extraction and bounded multi-angle
-  Tesseract OCR, with Windows Media OCR as the local fallback;
-- explainable numeric filtering, symbol proposals, candidate associations,
-  alternatives, confidence/reasons, and explicit approve/reject/edit/merge;
-- a persistent Point Cart with point numbering, sheet/revision metadata,
-  undo/redo, bulk review, filtering, and reviewed contour-line vertices;
-- schema-versioned atomic save/reopen with calibration and decision history;
-- duplicate/conflict QA and approved-only, separate Existing/Design exports;
-- atomically published, versioned handoffs with an eight-sheet estimator XLSX,
-  AGTEK CSV, XYZ, NEZ, local GeoJSON, DXF, contour/breakline data, hashes,
-  reports, and audit records;
-- feature-flagged, separate Existing/Design preliminary TIN previews with
-  reviewed boundaries, exclusions, breakline/no-cross barriers, triangle
-  flags/disabling, point-sample cut/fill, and gated preliminary LandXML.
+## Install and inspect
 
-Automatic candidates are never approved silently. Editing or recalibrating
-invalidates approval/export freshness. Utility, slab, slope, and drawing
-metadata records are excluded from terrain exports by default.
-
-### Install and launch
-
-From the repository root on Windows:
+Use an isolated Windows environment with Python 3.14:
 
 ```powershell
+git clone --branch task/plan-layer-extraction https://github.com/taiduc1302/screen2xyz-civil-plan-digitizer.git
+cd screen2xyz-civil-plan-digitizer
 py -3.14 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-civil.txt
-powershell -ExecutionPolicy Bypass -File .\run_civil_plan_digitizer.ps1
-```
-
-The manual PNG workflow remains standard-library/Tkinter only. Optional PDF
-inspection uses pinned `pypdf`; PDF rendering requires a host-installed
-Poppler `pdftoppm` on `PATH`. If installed, local Tesseract is preferred for
-small rotated grade labels; Windows Media OCR remains the fallback. No drawing
-is uploaded.
-
-Read the [Civil Plan Digitizer guide](docs/civil-plan-digitizer/README.md),
-[QA checklist](docs/civil-plan-digitizer/QA_CHECKLIST.md), and
-[limitations](docs/civil-plan-digitizer/LIMITATIONS.md) before project use.
-
-### Civil validation
-
-```powershell
-$env:PYTHONPATH = "src"
+$env:PYTHONPATH = (Resolve-Path .\src)
+.\.venv\Scripts\python.exe -m screen2xyz_civil doctor
 .\.venv\Scripts\python.exe tests_civil\run_civil_tests.py
-.\.venv\Scripts\python.exe -m tests_civil.benchmark_civil
 ```
 
-The civil suite currently contains 113 deterministic tests. The benchmark uses
-synthetic rule fixtures only; its exact scores are not real-drawing OCR or
-symbol accuracy. See
-[BENCHMARK_RESULTS.md](docs/civil-plan-digitizer/BENCHMARK_RESULTS.md).
+PDFium/Pillow provide the pilot's portable rendering path. Optional OCR,
+OpenTakeoff, Revu and the AI host are separate installations; a green unit suite
+does not establish that those live applications work on a reader's machine.
+Review dependency licences in `THIRD_PARTY_NOTICES.md` and the requirements file.
+No model credentials or real drawing files are bundled.
 
-## Preserved product lines
+## Run safely
 
-| Area | Current scope |
-|---|---|
-| `src/screen2xyz_lab/` | Sealed synthetic OCR baseline, evidence, metrics, and CLI |
-| `src/screen2xyz_m1/` | Explicit local PNG review/correction/approval and approved-only export |
-| `src/screen2xyz_m2/` | Merged M2-Live local region watcher with owner-machine gate evidence |
-| `src/screen2xyz_civil/` | Feature-branch Civil Plan Digitizer described above |
-| `tests/` | 42 baseline tests |
-| `tests_m1/` | 34 M1 tests |
-| `tests_m2/` | 498 deterministic M2 tests plus 16 Windows integration tests |
-| `tests_civil/` | 113 deterministic civil tests and synthetic benchmark |
-| `runs/evidence/` | Immutable retained baseline/M1 evidence |
-| `docs/control/` | Current authorization, project state, and next action |
+Start with an owned, deliberately synthetic drawing. Follow
+[the operator runbook](docs/integrations/CLAUDE_CODE_MARKUP_OPERATOR.md) and
+[the disposable Revu acceptance gate](docs/integrations/BLUEBEAM_21_10_MEASUREMENT_ACCEPTANCE.md).
+Older version-specific commands in those notes must be checked against the
+actual installed connector's advertised schema; they are not a promise about
+every later connector release.
 
-The final standalone validation on 2026-07-29 passed baseline 42/42, M1
-34/34, M2 deterministic 498/498, M2 Windows integration 16/16, Civil
-113/113, retained-evidence verification, and compile. See the Civil worklog
-and project state for the exact scope and remaining external gates.
+Keep the source immutable. Register a separate Revu working copy, independently
+verify scale at the feature, review the rendered geometry, and compare against
+independent drawing evidence. A retrieved length only proves what path the tool
+measured, not that it follows the intended feature. Keep `QA CHECK / DO NOT SUM`
+geometry out of totals. Estimator approval is a human action.
 
-## Baseline commands
+## Validation and publication
 
-The baseline setup and commands remain documented in
-`docs/public/Screen2XYZ_Local_Run_Guide_v0.2.md`.
+Run `python tools/publication_check.py` to check the tracked public source and
+`python -m unittest discover -s publication_snapshot_tests -v` to test that guard.
+See [PUBLIC_RELEASE_AUDIT.md](PUBLIC_RELEASE_AUDIT.md) for executed checks, test
+counts, source-package scope and the separate GitHub historical-cache limitation.
 
-```powershell
-$env:PYTHONPATH = "src"
-py -3.14 tests\run_all.py
-py -3.14 tests_m1\run_m1_tests.py
-py -3.14 tests_m2\run_m2_tests.py
-py -3.14 -m screen2xyz_lab.cli verify-evidence
-```
+The real project input folder and project-specific operator records are not part
+of this publication. Only synthetic tests and reviewed generic implementation
+remain. Old clones must not be pushed back after the history cleanup.
 
-## Claims and release boundary
+This source is **related implementation work**, not the article's exact 21-markup
+synthetic demonstration, and it does not establish live Revu create/save/read-back
+success. [Reader guide](docs/public/ISSUE_4_READER_GUIDE.md).
 
-- Synthetic tests and a synthetic OCR integration image are not evidence of
-  real-plan accuracy.
-- Local East/North values are not geodetic coordinates.
-- The preliminary TIN is not an engineering surface; cut/fill samples are not
-  volumes or quantities.
-- AGTEK/Civil 3D/Kubla/LandXML compatibility is not certified.
-- Real drawing validation, default-branch merge, licence selection, and public
-  release require separate owner decisions.
+## Rights and attribution
+
+Original authorship and third-party notices are preserved. No new project-wide
+licence is granted by this cleanup; this Civil/MCP branch retains its existing
+all-rights-reserved status. Other branches may carry their own existing licence.
+Public visibility is not a claim of unrestricted reuse or employer endorsement.
 
 Conceptual and preliminary estimating data only.

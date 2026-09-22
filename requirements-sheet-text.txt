@@ -1,0 +1,4 @@
+# Optional second local OCR backend; Windows.Media.Ocr requires no pip package.
+# Upstream: https://github.com/RapidAI/RapidOCR (Apache-2.0).
+rapidocr==3.9.2
+onnxruntime==1.29.0

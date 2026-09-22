@@ -14,7 +14,9 @@ try {
         Write-Host "ERROR: Python virtual environment not found at:" -ForegroundColor Red
         Write-Host "  $VenvPython" -ForegroundColor Red
         Write-Host ""
-        Write-Host "Create it once: py -3.14 -m venv --without-pip .venv" -ForegroundColor Yellow
+        Write-Host "Create it once and install the Civil dependencies:" -ForegroundColor Yellow
+        Write-Host "  py -3.14 -m venv .venv" -ForegroundColor Yellow
+        Write-Host "  .\.venv\Scripts\python.exe -m pip install -r requirements-civil.txt" -ForegroundColor Yellow
         Read-Host "Press Enter to close"
         exit 1
     }
