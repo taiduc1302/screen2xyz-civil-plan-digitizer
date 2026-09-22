@@ -1,3 +1,9 @@
+> **Public source - September 2026:** This branch retains its own experimental
+> runtime and is not promoted to production by the privacy cleanup.
+> For the newsletter MCP/vector work, start with the
+> [issue 4 reader guide](docs/public/ISSUE_4_READER_GUIDE.md).
+> Read [the current audit](PUBLIC_RELEASE_AUDIT.md), not old private-scope notes.
+
 # Screen2XYZ
 
 Local Windows research tooling for screen/OCR review, preliminary civil-plan
