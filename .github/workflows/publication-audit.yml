@@ -1,0 +1,44 @@
+name: Publication audit
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'SECURITY.md'
+      - 'PUBLIC_RELEASE_AUDIT.md'
+      - 'docs/public/ISSUE_4_READER_GUIDE.md'
+      - 'tools/publication_audit.py'
+      - 'publication_tests/**'
+      - '.github/workflows/publication-audit.yml'
+  push:
+    branches:
+      - 'docs/publication-readiness-2026-09-22'
+permissions:
+  contents: read
+jobs:
+  publication-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: Synthetic scanner regressions
+        run: python -m unittest discover -s publication_tests -v
+      - name: Redacted reachable-history scan (not release authorization)
+        run: python tools/publication_audit.py --repo . > publication-audit-summary.json
+      - name: Publish redacted summary only
+        if: always()
+        shell: bash
+        run: |
+          if [ -f publication-audit-summary.json ]; then
+            cat publication-audit-summary.json
+            echo '## Bounded publication scan - human review required' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat publication-audit-summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
