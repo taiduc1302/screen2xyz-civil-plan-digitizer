@@ -4,6 +4,8 @@
 
 This is a bounded publication review, not a completed forensic/security audit,
 licence clearance, estimator sign-off, or native Bluebeam acceptance record.
+The changes are proposed in [PR #25](https://github.com/taiduc1302/screen2xyz-civil-plan-digitizer/pull/25),
+not merged into the default branch.
 
 ## Source snapshots inspected
 
@@ -13,7 +15,7 @@ licence clearance, estimator sign-off, or native Bluebeam acceptance record.
 - Integration baseline: `main` at
   `077f2b110498269bbd41c592fd0e68865ccfc21d`.
 - Related experimental branch: `task/plan-layer-extraction` at
-  `a99b2b24e536a4a3a3a3a5dd2fcc7e4aa469bc030b`.
+  `a99b2b24e536a4a3a3a5dd2fcc7e4aa469bc030b`.
 - README, SECURITY, parent audit, origin provenance, control-state files,
   repository sanitization test, relevant draft PR descriptions and source tree.
 
@@ -44,22 +46,51 @@ not be resolved. Repository reading and writes use the connected API. Consequent
 no local all-object scan, full application suite, Windows/Revu test, or fresh
 application install is claimed by this review.
 
-The added GitHub Actions workflow can run the new tests and a full-depth checkout
-scan on a hosted runner. Consult the exact commit's Actions result; merely adding
-that workflow does not mean it ran or passed. Findings, skipped content and missing
-coverage must be reviewed even if other CI checks pass.
+### Executed hosted check
+
+[GitHub Actions run 35747230631](https://github.com/taiduc1302/screen2xyz-civil-plan-digitizer/actions/runs/35747230631)
+ran against `9c807a59a2566e68a9d11f2b55ebf0eef38ca8c0` on 2026-09-22.
+The full-depth checkout fetched the remote branches and the published tag.
+The seven synthetic scanner tests passed on the hosted runner as well.
+
+The reachable-history scan completed with exit code **1** and status
+**INCOMPLETE**, not a clean pass:
+
+| Measure | Observed value |
+|---|---:|
+| Locally available refs | 33 |
+| Commit objects inventoried | 255 |
+| Blob objects inventoried | 1392 |
+| Tree objects inventoried | 1041 |
+| Tag objects inventoried | 1 |
+| Objects scanned | 2681 |
+| Objects skipped by configured resource limits | 8 |
+| Scanned objects with at least one pattern match | 266 |
+| Binary blobs identified for separate decoded/visual review | 228 |
+
+Matches included repository-policy terms, project-example references and
+home-directory path patterns. Counts are Git object versions, **not 266 confirmed
+leaks or 266 distinct files**. Some matches can be intentional synthetic tests,
+historical references or legitimate attribution; they require classification.
+No sensitive matched value or matched file path is reproduced in this report.
+
+The 228 binary blobs were not decoded or visually inspected by this scan. The
+8 skipped objects and hosted-only surfaces also remain uncovered. Do not convert
+the result to PASS by suppressing rules, deleting evidence, or treating raw-byte
+scanning as media review. These results apply to the exact checked commit and
+fetched refs, not automatically to later commits or another checkout.
 
 ## Checks still required
 
-- Run and review the reachable-history scan, including every intended public
-  branch/tag and author/committer metadata. Classify matches rather than deleting
-  legitimate attribution or synthetic negative-test fixtures blindly.
-- Independently inspect images, archives, decoded PDF streams, LFS content,
-  release assets, hosted issues/PR text, Actions artifacts and other uncovered
-  surfaces. Keyword scans cannot certify these.
+- Classify and remediate the reachable-history findings, including every intended
+  public branch/tag and author/committer metadata. Preserve legitimate attribution
+  and synthetic negative-test fixtures rather than blindly removing matches.
+- Review all skipped objects and independently inspect images, archives, decoded
+  PDF streams, LFS content, release assets, hosted issues/PR text, Actions artifacts
+  and other uncovered surfaces. Keyword scans cannot certify these.
 - Replace real-project-shaped operator examples with fictional examples on the
   relevant pilot branches; review their older versions and public PR descriptions
-  as well. Do not assume a clean README cleans the repository's history.
+  as well. A current-file edit does not remove its historical versions.
 - Confirm publication rights and the intended project licence with the owner.
   No MIT/Apache or other licence is selected by this task. Existing notices remain.
 - For a runnable article companion, verify a complete synthetic input, documented
@@ -83,3 +114,5 @@ and 2 means the scan could not run to completion. It always reports
 
 This review does not authorize force-pushes, ref deletion, visibility changes,
 public data uploads, source-rights decisions or removal of legitimate authorship.
+History remediation requires a verified private backup and coordinated owner
+approval. Neither was established by this documentation change.
