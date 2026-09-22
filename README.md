@@ -1,10 +1,14 @@
+> **Public source - September 2026:** This branch retains its own experimental
+> runtime and is not promoted to production by the privacy cleanup.
+> For the newsletter MCP/vector work, start with the
+> [issue 4 reader guide](docs/public/ISSUE_4_READER_GUIDE.md).
+> Read [the current audit](PUBLIC_RELEASE_AUDIT.md), not old private-scope notes.
+
 # Screen2XYZ
 
 Screen2XYZ is a controlled Windows research/product repository for local screen/OCR review, preliminary civil-plan digitization, and review-first civil quantity takeoff experimentation.
 
-> **Current status:** baseline, M1, and M2 are preserved on private `main`. Civil Plan Digitizer feature work lives outside `main`. The current Claude markup-operator branch adds a **runnable single-sheet MCP takeoff pilot** on top of the review-first quantity domain. It is not merged, released, or estimator/Bluebeam certified, and it deliberately does not auto-approve bid quantities.
-
-All PDF/image-derived coordinates, interpretations, elevations, and quantities are preliminary and require estimator/survey review appropriate to their use. The repository has no selected public licence and is not authorized for public release.
+All PDF/image-derived coordinates, interpretations, elevations, and quantities are preliminary and require estimator/survey review appropriate to their use. The repository retains its existing licence status; this cleanup grants no new licence.
 
 ## Two Civil workflows
 
