@@ -4,6 +4,11 @@ A hatch is many short strokes at one pitch, mostly perpendicular to a
 baseline. A line is fewer, longer polylines that continue each other.
 chains_on_layer has no notion of the difference, and chaining a hatch is
 meaningless whatever the tolerance.
+
+NOTE (2026-09-22): the drawing this reads is no longer tracked - the
+repository history was rewritten to remove `pilot/` for publication. The
+figures in FINDING_F_REAL_SHEETS.md are historical measurements taken
+when it was present; running this needs the owner's copy of that file.
 """
 import sys, math, collections, json
 sys.path.insert(0,'src')

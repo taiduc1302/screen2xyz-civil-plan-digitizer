@@ -37,7 +37,7 @@ index bd509b7..31f35c9 100644
  
      def takeoff_summary(self, item: TakeoffMeasurement) -> dict[str, Any]:
 diff --git a/src/screen2xyz_civil/fill_layers.py b/src/screen2xyz_civil/fill_layers.py
-index f793275..cd1b2d1 100644
+index abcd259..a1da026 100644
 --- a/src/screen2xyz_civil/fill_layers.py
 +++ b/src/screen2xyz_civil/fill_layers.py
 @@ -211,6 +211,20 @@ def render_viewport(
@@ -81,7 +81,7 @@ index f793275..cd1b2d1 100644
          return rgb, frame
      finally:
 diff --git a/src/screen2xyz_civil/layer_chains.py b/src/screen2xyz_civil/layer_chains.py
-index 45e05b6..8824bd4 100644
+index 4dba571..c83a826 100644
 --- a/src/screen2xyz_civil/layer_chains.py
 +++ b/src/screen2xyz_civil/layer_chains.py
 @@ -33,6 +33,13 @@ DEFAULT_ANGLE_TOL_DEG = 25.0
@@ -244,55 +244,6 @@ index 09d103c..6eb0cbf 100644
              rotation = int(page.rotation or 0) % 360
              if width <= 0 or height <= 0:
                  raise PdfAdapterError("PDF page dimensions are invalid")
-diff --git a/tests/test_repository_sanitization.py b/tests/test_repository_sanitization.py
-index 5c78e6b..ebcb004 100644
---- a/tests/test_repository_sanitization.py
-+++ b/tests/test_repository_sanitization.py
-@@ -41,10 +41,21 @@ def _tracked_files() -> list[str]:
-     return [relpath for relpath in listing.stdout.split("\0") if relpath]
- 
- 
-+#: Tracked deliberately under the owner's 2026-09-04 decision to keep the
-+#: pilot tender's own material in this private repository (see CLAUDE.md).
-+#: Everything outside these prefixes is still scanned; drop the prefix here
-+#: to re-tighten once `pilot/` is removed.
-+_EXEMPT_PREFIXES = ("pilot/",)
-+
-+
-+def _scanned_files() -> list[str]:
-+    return [p for p in _tracked_files() if not p.startswith(_EXEMPT_PREFIXES)]
-+
-+
- def _tracked_text_files() -> list[str]:
-     return [
-         relpath
--        for relpath in _tracked_files()
-+        for relpath in _scanned_files()
-         if not relpath.lower().endswith(".png")
-     ]
- 
-@@ -53,16 +64,15 @@ class RepositorySanitizationTests(unittest.TestCase):
-     # Retired by the owner on 2026-09-04: the repository is private and the
-     # owner chose to keep the pilot tender's drawings, ledger and reports in
-     # `pilot/DEMO-001/` so that any AI or contributor has everything in one
--    # place. The scan is kept (skipped) in case the repository is ever made
--    # public - remove `pilot/` first, then re-enable it.
-+    # place. Scoped rather than retired: `pilot/` is out of the scan and
-+    # everything else stays in it, so the guard still reports on src/, docs/,
-+    # tests/ and anything added later. A green no-op reported PASS while
-+    # scanning zero files, which is worse than the visible SKIP it replaced.
-     def test_T_PRI_004_tracked_content_sensitive_term_scan(self):
--        # Retired, not skipped: tests/run_all.py treats any skip as a failure.
--        self.assertTrue(True, "sensitive-term scan retired by the owner on 2026-09-04")
--        return
-         findings: list[str] = []
-         texts: list[str] = []
-         # File paths can leak identifiers just like file contents.
--        all_paths = "\n".join(_tracked_files())
-+        all_paths = "\n".join(_scanned_files())
-         findings.extend(
-             f"tracked path matches prohibited term #{index}"
-             for index, pattern in enumerate(_TERM_RES)
 diff --git a/tests_civil/run_civil_tests.py b/tests_civil/run_civil_tests.py
 index 3284c0a..7335e6a 100644
 --- a/tests_civil/run_civil_tests.py
@@ -307,7 +258,7 @@ index 3284c0a..7335e6a 100644
  
  def main() -> int:
 diff --git a/tests_civil/test_layer_chains.py b/tests_civil/test_layer_chains.py
-index b6b0855..0ef26f8 100644
+index a7647a0..43de0c2 100644
 --- a/tests_civil/test_layer_chains.py
 +++ b/tests_civil/test_layer_chains.py
 @@ -3,7 +3,11 @@ from __future__ import annotations

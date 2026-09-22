@@ -9,6 +9,11 @@ see the open question in that section before treating it as a fix.
         src pilot/DEMO-001/working/IssuedForTender_BASE.pdf
 
 Reads the drawing in place and prints JSON; embeds no drawing data.
+
+NOTE (2026-09-22): the drawing this reads is no longer tracked - the
+repository history was rewritten to remove `pilot/` for publication. The
+figures in FINDING_F_REAL_SHEETS.md are historical measurements taken
+when it was present; running this needs the owner's copy of that file.
 """
 import sys, json, math
 src, pdf = sys.argv[1], sys.argv[2]

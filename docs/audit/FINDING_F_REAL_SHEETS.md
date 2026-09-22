@@ -395,3 +395,33 @@ fragments it welded, the largest single weld) so that a person or a QA gate
 can see when a chain is meaningless. The defect that made finding F
 invisible was never the percentile. It was that a layer nobody should have
 chained returned a plausible number with nothing attached to say so.
+
+## After the 2026-09-22 rewrite: what still stands, and what cannot be re-run
+
+The repository history was rewritten to prepare a public research source:
+`pilot/` was removed entirely, and the tender's identifiers were replaced
+throughout the tree (the project number became `DEMO-001`, the road name
+`Example Road`). All three branches were force-updated.
+
+**The findings are unaffected.** Every `src/screen2xyz_civil/` change in
+that rewrite is comment text only - `layer_chains.py`, `fill_layers.py`,
+`vector_fill.py` and `cad_layers.py` differ by nothing but renamed identifiers, and
+`pdf.py` and `agent_session.py` were not touched at all. A, B, C, D, E and F
+all stand on the same code they were measured against.
+
+**The numbers can no longer be reproduced from this repository.**
+`real_sheet_gap_probe.py`, `hachure_vs_line_probe.py` and
+`linetype_mode_prototype.py` all read
+`pilot/DEMO-001/working/IssuedForTender_BASE.pdf`, which is no longer
+tracked. Their figures - the 11 layers, the 2,619.3 m, the 6,133 m
+drawing-wide - are historical measurements taken against a checkout that
+still had the drawing. They are not re-derivable here, and anyone who wants
+to re-derive them needs the owner's copy of that file. The synthetic probe
+`plan_layer_probes.py` builds its own PDFs and still runs anywhere.
+
+**T-PRI-004 is fixed, and not by me.** The rewrite restored a real
+sensitive-term scan over every tracked file. It is live, it passes, and
+because `pilot/` is gone it needs no path exemption - a better outcome than
+the exemption I proposed. `all_findings_A_B_C_D_E.patch` has had that hunk
+dropped: it is now eight files, 346 insertions, 14 deletions, and carries
+only the A/B/C/D/E source fixes and their tests.
