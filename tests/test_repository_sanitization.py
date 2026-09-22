@@ -3,78 +3,34 @@ from __future__ import annotations
 import re
 import subprocess
 import unittest
-
+from pathlib import Path
 from screen2xyz_lab.evidence import ensure_no_absolute_personal_path
-
 from helpers import ROOT
 
-# Employer-, person-, and machine-identifying terms that must never appear in
-# tracked repository content. Each term is assembled from fragments so this
-# test file cannot trigger its own scan.
-_PROHIBITED_TERMS = tuple(
-    "".join(parts)
-    for parts in (
-        ("ty", "bo"),
-        ("bee", "die"),
-        ("black", "bird"),
-        ("port", " ", "kells"),
-        ("mich", "ael"),
-        ("m", "vu"),
-        ("one", "drive"),
-    )
-)
-_TERM_RES = tuple(
-    re.compile(rf"(?i)\b{re.escape(term)}\b") for term in _PROHIBITED_TERMS
-)
-
-
-def _tracked_files() -> list[str]:
-    listing = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=30,
-        check=True,
-    )
-    return [relpath for relpath in listing.stdout.split("\0") if relpath]
-
-
-def _tracked_text_files() -> list[str]:
-    return [
-        relpath
-        for relpath in _tracked_files()
-        if not relpath.lower().endswith(".png")
-    ]
-
+# Organizational/project identifiers remain forbidden. Public authorship is not
+# a secret: do not erase contributor names or licences to pass this check.
+_TERMS = tuple("".join(x) for x in (
+    ("ty", "bo"), ("bee", "die"), ("black", "bird"), ("port", " kells"),
+    ("one", "drive"), ("King", "Road"), ("King ", "Road"),
+    ("Lef", "euvre"), ("Hunt", "ingdon"), ("24-", "047"),
+))
+_PATTERNS = tuple(re.compile(re.escape(x), re.I) for x in _TERMS)
 
 class RepositorySanitizationTests(unittest.TestCase):
-    # Retired by the owner on 2026-09-04: the repository is private and the
-    # owner chose to keep the pilot tender's drawings, ledger and reports in
-    # `pilot/DEMO-001/` so that any AI or contributor has everything in one
-    # place. The scan is kept (skipped) in case the repository is ever made
-    # public - remove `pilot/` first, then re-enable it.
     def test_T_PRI_004_tracked_content_sensitive_term_scan(self):
-        # Retired, not skipped: tests/run_all.py treats any skip as a failure.
-        self.assertTrue(True, "sensitive-term scan retired by the owner on 2026-09-04")
-        return
-        findings: list[str] = []
-        texts: list[str] = []
-        # File paths can leak identifiers just like file contents.
-        all_paths = "\n".join(_tracked_files())
-        findings.extend(
-            f"tracked path matches prohibited term #{index}"
-            for index, pattern in enumerate(_TERM_RES)
-            if pattern.search(all_paths)
-        )
-        for relpath in _tracked_text_files():
-            text = (ROOT / relpath).read_bytes().decode("utf-8", errors="replace")
-            texts.append(text)
-            findings.extend(
-                f"{relpath}: prohibited term #{index}"
-                for index, pattern in enumerate(_TERM_RES)
-                if pattern.search(text)
-            )
+        paths = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+            capture_output=True, check=True, timeout=30).stdout.split(b"\0")
+        findings = []
+        for raw in paths:
+            if not raw:
+                continue
+            rel = raw.decode("utf-8")
+            if Path(rel).parts[0] == "pilot":
+                findings.append("private input path")
+            data = (ROOT / rel).read_bytes()
+            text = data.decode("utf-8", errors="replace") if b"\0" not in data else ""
+            if any(p.search(rel) or p.search(text) for p in _PATTERNS):
+                findings.append("prohibited identifier in tracked content")
+            if text and ensure_no_absolute_personal_path([text]):
+                findings.append("personal home path in tracked text")
         self.assertEqual(findings, [])
-        self.assertEqual(ensure_no_absolute_personal_path(texts), [])

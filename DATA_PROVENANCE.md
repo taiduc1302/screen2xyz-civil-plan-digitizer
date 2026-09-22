@@ -1,42 +1,26 @@
-# Data Provenance
+# Public data provenance
 
-All data in this repository is synthetic and locally generated. No real
-drawings, screenshots, survey data, project records, or customer material is
-present, and automated tests enforce this boundary.
+The public source package contains generated OCR fixtures and synthetic tests,
+not the real operator drawing set. The input folder containing real drawings,
+workbooks, rendered crops and company procedures was removed from ordinary
+published branch/tag history, not renamed and relabelled as synthetic.
 
-## Authoritative registers
+The retained non-private image fixtures were inventoried and visually reviewed.
+`publication/binary_allowlist.json` records hashes for the files on this branch.
+Tests generate additional fictional PDFs in temporary directories at run time.
+No real drawing is required to run the deterministic tests.
 
-- `docs/guardrails/Screen2XYZ_Dataset_and_Licence_Register_v0.1.csv` — every
-  dataset (the 60-image fixture and the OCR preflight probe), with SHA-256
-  identities, generation commit, seed, classification, and redistribution
-  status.
-- `docs/guardrails/Screen2XYZ_Dependency_and_Licence_Register_v0.1.csv` —
-  every runtime dependency (CPython, Windows PowerShell, .NET Framework,
-  System.Drawing/GDI+, Windows.Media.Ocr, the in-place Arial system font),
-  with licence evidence status. No third-party Python package is used or
-  redistributed.
+Genericized names in source comments describe anonymized engineering lessons,
+not a claim that historical real-machine tests were synthetic or reproducible
+from this source package. Existing calibration/colour defaults are examples:
+each new drawing needs its own independent calibration and legend review.
 
-## How the fixture is produced
+Some historical capture logs had machine-path fields redacted for privacy.
+Those public copies are not byte-identical to the original private records and
+do not replace their hashes as original evidence. Test results reported before
+the cleanup are historical; consult current validation results for this release.
 
-`test_data/synthetic/s2xyz_fixture_v0.1/` is generated deterministically from
-seed `20260715` by `src/screen2xyz_lab/fixture.py` plus the Windows renderer
-adapter. `python -m screen2xyz_lab.cli generate` verifies an existing fixture
-byte-for-byte against the deterministic generation (ground truth, render
-jobs, manifest, and every PNG hash) instead of regenerating it. Images
-contain only the allowlisted PNG chunk types (`IHDR`, `sRGB`, `gAMA`,
-`pHYs`, `IDAT`, `IEND`), so no textual or EXIF-style metadata can be
-embedded.
-
-Three image pairs (S004/S020, S024/S040, S044/S060) are intentionally
-byte-identical: the stale and duplicate copies of the same base value share
-a render variation, and the pipeline classifies them differently (STALE vs
-DUPLICATE) purely from temporal order — demonstrating that classification
-depends on sequence context, not image content.
-
-## What "synthetic" does and does not support
-
-Results in `runs/evidence/S2XYZ-CODEX-003/` characterize OCR of clean,
-machine-rendered text on one Windows machine only. They are not evidence of
-real-world screenshot accuracy, cross-machine robustness, or production
-readiness. Output classification everywhere: *Conceptual and preliminary
-estimating data only.*
+Original Git author/contributor identities and licence notices are retained.
+This cleanup does not transfer copyright or grant a new licence. Follow the
+licence present on the selected branch; the Civil/MCP research branch retains
+its existing all-rights-reserved status where no project licence was selected.

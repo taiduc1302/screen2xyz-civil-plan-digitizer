@@ -62,3 +62,9 @@ Civil_Plan_Digitizer_Evidence/private/
 
 # Local MCP registration - contains absolute paths to private project sessions
 .mcp.json
+
+# Public repository: real work stays local, never tracked
+pilot/
+raw/
+local_restricted_data/
+*.s2a.json

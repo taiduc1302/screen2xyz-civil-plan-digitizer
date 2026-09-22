@@ -1,6 +1,12 @@
-# Historical operator state: private content excluded
+# Current public repository state - 2026-09-22
 
-This public-history copy omits the original project-specific operator notes.
-The original is preserved in the verified owner-controlled backup. This is
-a privacy redaction, not a new validation record or a claim that a project
-gate passed. Consult the current README, source and tests for public usage.
+The public-data cleanup removes real operator inputs from ordinary branch/tag
+histories while preserving source development branches and original authorship.
+The original history is retained in an encrypted, restore-verified owner backup.
+
+The default landing branch and `main` are the point/terrain baseline. The separate
+`task/plan-layer-extraction` branch contains the related MCP/vector research code.
+This cleanup is not a merge or estimator acceptance of the experimental stack.
+
+See the current README and PUBLIC_RELEASE_AUDIT.md for the exact source and tests.
+Historical operator-specific notes are not the public project's current state.
