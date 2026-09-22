@@ -1,0 +1,334 @@
+{
+  "scope": "reviewed public source and ordinary refs, not a server forensic purge",
+  "run_url": "https://github.com/taiduc1302/screen2xyz-civil-plan-digitizer/actions/runs/35752904631",
+  "validation": [
+    {
+      "branch": "main",
+      "checked_sha": "329dc8a8d154ed7601c1bb830802052ab7de0c68",
+      "python": "3.14.7",
+      "platform": "Windows",
+      "commands": [
+        {
+          "command": [
+            "python",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "publication_snapshot_tests",
+            "-v"
+          ],
+          "returncode": 0,
+          "log_sha256": "abdc9f831e45745f173712b1e9567059bab9a28026c4e5355be61404e3d24bf4",
+          "tests_run": 9,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tools/publication_check.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "67c00ee12aae8d55dd6037002b3de8e26c74a79b32dc822a1f85a97abf7e916a",
+          "tests_run": null,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests/run_all.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "23c383ddbf2134aae2bc3618cac1dcdb1dd9e61ebba3a02e591c1a453beb6d0d",
+          "tests_run": 42,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_m1/run_m1_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "e613d2cd137cf569e525f5a070104e5d82d9015f87d0b7efceefd091e3904516",
+          "tests_run": 34,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_m2/run_m2_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "8f68ab343d58caa31eef8d1ae5840dc7ce3dab7d8c8e5c62bd6e5b4ecdca4b1e",
+          "tests_run": 498,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_civil/run_civil_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "2d1094866b1f2bdc97dd7168bd24cbb73cd3740847ff474f3bc3e3b69baf2ccf",
+          "tests_run": 113,
+          "skipped": 1
+        },
+        {
+          "command": [
+            "python",
+            "-m",
+            "screen2xyz_lab.cli",
+            "verify-evidence"
+          ],
+          "returncode": 0,
+          "log_sha256": "d63d176d7692c1b2ab1fc916bb9744f9a55724e542e1833492e0b61c368fff36",
+          "tests_run": null,
+          "skipped": 0
+        }
+      ],
+      "result": "PASS",
+      "native_revu_acceptance": "NOT_RUN",
+      "external_opentakeoff_acceptance": "NOT_RUN"
+    },
+    {
+      "branch": "research",
+      "checked_sha": "5c6e80079239e6efeb55bce9f89c327a2f259681",
+      "python": "3.14.7",
+      "platform": "Windows",
+      "commands": [
+        {
+          "command": [
+            "python",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "publication_snapshot_tests",
+            "-v"
+          ],
+          "returncode": 0,
+          "log_sha256": "97ed9d473f8962811fff763af1694130bcbc463de6b36136b4f57ebe9d660e4b",
+          "tests_run": 9,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tools/publication_check.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "4df53adb1522f3cb545ef8976ba9ba8f8288d64c5a9fd38dfa1011423675cc58",
+          "tests_run": null,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests/run_all.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "f2514a1740c165beefc79082566c9cd5a78b613e775daff4f5796d7b9bb14278",
+          "tests_run": 42,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_m1/run_m1_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "c0fcf829792ac5d7c98bfd705bb17958a49690b45740593641a123dbdd4d93b3",
+          "tests_run": 34,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_m2/run_m2_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "084d62d6658ed402ee48f97e5cfb956f6cd6c5b6610c8a02fea5d0ae64f05b20",
+          "tests_run": 501,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_civil/run_civil_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "7523903f01ab897d25f2ebe14729f48a72ed7bf74426ea993336d3cca3b25d7a",
+          "tests_run": 639,
+          "skipped": 57
+        },
+        {
+          "command": [
+            "python",
+            "-m",
+            "screen2xyz_lab.cli",
+            "verify-evidence"
+          ],
+          "returncode": 0,
+          "log_sha256": "d63d176d7692c1b2ab1fc916bb9744f9a55724e542e1833492e0b61c368fff36",
+          "tests_run": null,
+          "skipped": 0
+        }
+      ],
+      "result": "PASS",
+      "native_revu_acceptance": "NOT_RUN",
+      "external_opentakeoff_acceptance": "NOT_RUN"
+    },
+    {
+      "branch": "research with optional geometry and stdio",
+      "checked_sha": "5c6e80079239e6efeb55bce9f89c327a2f259681",
+      "python": "3.14.7",
+      "platform": "Windows",
+      "commands": [
+        {
+          "command": [
+            "python",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "publication_snapshot_tests",
+            "-v"
+          ],
+          "returncode": 0,
+          "log_sha256": "17558ae490e49b36415210a44f6ea9106181a6a104057a8a623df3d164626ec4",
+          "tests_run": 9,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tools/publication_check.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "4df53adb1522f3cb545ef8976ba9ba8f8288d64c5a9fd38dfa1011423675cc58",
+          "tests_run": null,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests/run_all.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "3d1104cd2f6073a9c5009b86873ceda45940c341cc9eef577eebc29ae5c79d9f",
+          "tests_run": 42,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_m1/run_m1_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "763b2d84d17e2758473953bdfc6f2e93328e46907b92451006effddf962f3b6a",
+          "tests_run": 34,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_m2/run_m2_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "0535a4b511b1e1e0097f6f505fc9752c656820fc3e23d599f1c1e71897f79e32",
+          "tests_run": 501,
+          "skipped": 0
+        },
+        {
+          "command": [
+            "python",
+            "tests_civil/run_civil_tests.py"
+          ],
+          "returncode": 0,
+          "log_sha256": "f1c656241a21fd02c6a16f30dd6521e1604052a919c1c51d8cc2429c1ec1055d",
+          "tests_run": 639,
+          "skipped": 3
+        },
+        {
+          "command": [
+            "python",
+            "-m",
+            "screen2xyz_lab.cli",
+            "verify-evidence"
+          ],
+          "returncode": 0,
+          "log_sha256": "d63d176d7692c1b2ab1fc916bb9744f9a55724e542e1833492e0b61c368fff36",
+          "tests_run": null,
+          "skipped": 0
+        }
+      ],
+      "result": "PASS",
+      "native_revu_acceptance": "NOT_RUN",
+      "external_opentakeoff_acceptance": "NOT_RUN",
+      "optional_packages": [
+        "annotated-types==0.8.0",
+        "anyio==4.15.1",
+        "attrs==26.1.0",
+        "cffi==2.1.1",
+        "click==8.5.0",
+        "cryptography==50.0.1",
+        "defusedxml==0.7.1",
+        "et_xmlfile==2.0.0",
+        "h11==0.16.0",
+        "httpcore2==2.13.0",
+        "httpx2==2.13.0",
+        "idna==3.20",
+        "jsonschema==4.26.0",
+        "jsonschema-specifications==2025.9.1",
+        "mcp==2.2.0",
+        "mcp-types==2.2.0",
+        "numpy==2.5.2",
+        "openpyxl==3.1.5",
+        "opentelemetry-api==1.44.0",
+        "pillow==12.3.0",
+        "pycparser==3.0",
+        "pydantic==2.13.5",
+        "pydantic_core==2.46.5",
+        "PyJWT==2.14.0",
+        "pymupdf==1.28.2",
+        "pypdf==6.14.2",
+        "pypdfium2==5.13.0",
+        "python-multipart==0.0.32",
+        "pywin32==312",
+        "referencing==0.37.0",
+        "rpds-py==2026.6.3",
+        "shapely==2.1.2",
+        "sse-starlette==3.4.11",
+        "starlette==1.6.0",
+        "truststore==0.10.4",
+        "typing-inspection==0.4.4",
+        "typing_extensions==4.16.0",
+        "uvicorn==0.53.0"
+      ],
+      "external_screen2xyz_stdio_enabled": true,
+      "source_run_url": "https://github.com/taiduc1302/screen2xyz-civil-plan-digitizer/actions/runs/35754740497"
+    }
+  ],
+  "history_scan": {
+    "result": "PASS",
+    "objects": {
+      "commit": 277,
+      "tag": 1,
+      "tree": 1017,
+      "blob": 1140
+    },
+    "objects_scanned": 2435,
+    "objects_skipped": 0,
+    "matched_objects_or_paths": 0,
+    "binary_objects": 92,
+    "scope": "ordinary branch and tag histories only; no server-only or cached objects"
+  },
+  "backup": {
+    "run_id": 35748978842,
+    "artifact_id": 10703868530,
+    "artifact_zip_sha256": "2f2f6932228878e80e89649f7d2e1d372d73da84a1a164cada310ec91637efa2",
+    "restore_verified": true
+  },
+  "native_revu_acceptance": "NOT_RUN",
+  "github_cached_history_cleanup": "OWNER_SUPPORT_ACTION_REQUIRED"
+}
