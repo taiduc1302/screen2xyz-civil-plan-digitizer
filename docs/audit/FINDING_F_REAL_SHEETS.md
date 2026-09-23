@@ -425,3 +425,29 @@ because `pilot/` is gone it needs no path exemption - a better outcome than
 the exemption I proposed. `all_findings_A_B_C_D_E.patch` has had that hunk
 dropped: it is now eight files, 346 insertions, 14 deletions, and carries
 only the A/B/C/D/E source fixes and their tests.
+
+## A citation of mine that no longer resolves
+
+Several places above - and the pull-request comments that quote them - say
+the exposure is live because "the documented operator call at
+`docs/control/NEXT_ACTION.md:45` passes no `gap_tol`". **That citation is
+stale.** The publication restructure replaced that file with a nine-line
+note for readers and maintainers; the operator workflow it described was
+pilot material and went with `pilot/`. No document in the tree now shows a
+`chains_on_layer` call at all: `docs/integrations/PLAN_SHEET_LAYER_METHOD.md`
+describes the function but never its signature.
+
+What the citation was evidence *for* is unchanged, and checked on the
+current head:
+
+```
+def chain_fragments(..., gap_tol: float | None = None, ...)
+    if gap_tol is None:
+        gap_tol = max(MIN_GAP_TOL, GAP_TOL_FACTOR * stats["p90"])
+```
+
+The automatic tolerance is still what any caller gets for omitting
+`gap_tol`. So finding F stands exactly as measured; only the pointer to a
+specific documented caller is gone. If anything the position is now weaker
+rather than stronger for a future user: there is no longer a document
+telling anyone to set the parameter at all.
